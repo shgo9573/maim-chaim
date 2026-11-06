@@ -18,6 +18,7 @@ export default function TzuratHaDafPage() {
   const amud = params.get('amud') === 'b' ? 'b' : 'a';
   const initialDaf = `דף ${daf} ע״${amud === 'a' ? 'א' : 'ב'}`;
   const dark = settings.theme === 'dark';
+  const appBasePath = import.meta.env.BASE_URL.replace(/\/+$/, '');
   const requestedBookId = params.get('bookId');
   const suppliedBookId = requestedBookId && /^\d+$/.test(requestedBookId) ? requestedBookId : undefined;
   const [resolvedBookId, setResolvedBookId] = useState<string | undefined>(suppliedBookId);
@@ -75,7 +76,7 @@ export default function TzuratHaDafPage() {
             <p className="hidden text-[11px] text-on-variant sm:block">מסכת {tractate}</p>
           </div>
         </div>
-        <a href="/" className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-outline-variant bg-surface-1 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-surface-2">
+        <a href={`${appBasePath}/`} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-outline-variant bg-surface-1 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-surface-2">
           <Home size={16} /> <span className="hidden sm:inline">חזרה לאוצריא</span><ArrowRight size={16} />
         </a>
       </header>
