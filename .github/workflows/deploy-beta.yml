@@ -1,0 +1,63 @@
+name: Deploy Beta
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-beta
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy /beta/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # Skip package lifecycle scripts: package.json has a postinstall build
+      # using the root path. We build explicitly below with the /beta/ base.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build Beta frontend
+        run: |
+          npm run sync:vilna-html
+          npx vite build --base=/beta/
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.BETA_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.BETA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY" || { echo "Missing GitHub secret: BETA_SSH_PRIVATE_KEY"; exit 1; }
+          test -n "$SSH_KNOWN_HOSTS" || { echo "Missing GitHub secret: BETA_SSH_KNOWN_HOSTS"; exit 1; }
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy only to the Beta directory
+        env:
+          SSH_HOST: ${{ secrets.BETA_SSH_HOST }}
+          SSH_USER: opc
+        run: |
+          set -euo pipefail
+          test -n "$SSH_HOST" || { echo "Missing GitHub secret: BETA_SSH_HOST"; exit 1; }
+          rsync -az --delete \
+            -e "ssh -i $HOME/.ssh/id_ed25519 -p 22 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+            dist/ "${SSH_USER}@${SSH_HOST}:/var/www/beta/"
