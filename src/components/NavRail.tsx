@@ -15,7 +15,7 @@ interface Item {
 export default function NavRail() {
   const { screen, setScreen, tabs, activeTabId, openSearch, setDialog, settings, updateSettings } = useApp();
   const lang = settings.interfaceLanguage || 'he';
-  const isBetaDeployment = import.meta.env.BASE_URL.startsWith('/beta/');
+  const isBetaDeployment = typeof window !== 'undefined' && (window.location.pathname === '/beta' || window.location.pathname.startsWith('/beta/'));
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const searchActive = screen === 'reading' && activeTab?.kind === 'search';
 

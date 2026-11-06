@@ -18,7 +18,9 @@ export default function TzuratHaDafPage() {
   const amud = params.get('amud') === 'b' ? 'b' : 'a';
   const initialDaf = `דף ${daf} ע״${amud === 'a' ? 'א' : 'ב'}`;
   const dark = settings.theme === 'dark';
-  const appBasePath = import.meta.env.BASE_URL.replace(/\/+$/, '');
+  const currentPath = window.location.pathname;
+  const isBetaDeployment = currentPath === '/beta' || currentPath.startsWith('/beta/');
+  const appBasePath = isBetaDeployment ? '/beta' : '';
   const requestedBookId = params.get('bookId');
   const suppliedBookId = requestedBookId && /^\d+$/.test(requestedBookId) ? requestedBookId : undefined;
   const [resolvedBookId, setResolvedBookId] = useState<string | undefined>(suppliedBookId);
@@ -74,7 +76,7 @@ export default function TzuratHaDafPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="truncate font-serif text-sm font-bold">מיים חיים · צורת הדף</h1>
-              {import.meta.env.BASE_URL.startsWith('/beta/') && (
+              {isBetaDeployment && (
                 <span
                   title="גרסת בטא — סביבת בדיקה"
                   aria-label="גרסת בטא — סביבת בדיקה"
