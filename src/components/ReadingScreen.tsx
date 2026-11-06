@@ -3,6 +3,7 @@ import { BookOpen, Search as SearchIcon, X } from 'lucide-react';
 import { useApp } from '../store';
 import BookViewer from './BookViewer';
 import SearchTabView from './SearchTabView';
+import TabSearch from './TabSearch';
 import TzuratHaDafView from './TzuratHaDafView';
 import { Btn, EmptyState } from './ui';
 import { t } from '../i18n';
@@ -10,7 +11,7 @@ import { t } from '../i18n';
 export default function ReadingScreen() {
   const { tabs, activeTabId, setActiveTab, closeTab, closeAllTabs, setScreen, openSearch, settings } = useApp();
   const [confirmCloseAll, setConfirmCloseAll] = useState(false);
-  const lang = settings.interfaceLanguage;
+  const lang = settings.interfaceLanguage || 'he';
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
   const stripRef = useRef<HTMLDivElement>(null);
 
@@ -66,6 +67,7 @@ export default function ReadingScreen() {
             );
           })}
         </div>
+        <TabSearch tabs={tabs} activeTabId={active?.id ?? null} language={lang} onSelect={setActiveTab} onClose={closeTab} />
         {/* Closing every tab only means something once there is more than one. */}
         {tabs.length > 1 && (
           <button
