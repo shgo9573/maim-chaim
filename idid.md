@@ -86,3 +86,12 @@
 - `vite.config.ts` הנוכחי משתמש ב־`base: '/'`; יש לבנות עם override של `/new/` ולבדוק את קובצי הפלט והניווט לפני פרסום.
 - לא בוצעה גישה ל־SSH של השרת ולא שונה קובץ Nginx/PM2/שרת חי. נדרש לבדוק את `/etc/nginx/conf.d/otzaria.conf` בפועל לפני הוספת location.
 - נקודת מסלול אחת שדורשת בדיקה: `src/App.tsx` מזהה את נתיב צורת הדף רק כאשר `window.location.pathname === '/tzuratadaf'`; תחת `/new/tzuratadaf` המסלול הזה לא יזוהה בלי התאמת base path. אין לבצע את ההתאמה בלי בדיקת כל נתיבי הניווט הקיימים.
+
+
+## 6 בנובמבר 2026 — בדיקת ענף נוסף
+
+- בסריקה חוזרת הופיע ענף חדש: `arena/9c1ba425-maim-chaim`, ראש `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`.
+- ה־commit האחרון בענף הוא `Add search for open reading tabs`. הוא מוסיף את `src/components/TabSearch.tsx`, `src/utils/tabSearch.ts`, בדיקת `test/frontend/tabSearch.test.ts` ושינויים ב־`ReadingScreen.tsx`.
+- הענף הושווה ל־`main` (ראש `23c2e5c5734777fb5f5a1ddb63572cf7e6033f4c)): הוא מאחור ב־9 commits ואין בו commits ייחודיים קדימה. הקובץ `TabSearch.tsx` והקוד הקשור קיימים גם בעץ של main, ולכן לא נדרשת העתקה/מיזוג.
+- זו תכונת UI בכרטיסיות ולא שינוי של מנוע החיפוש. נותרה בדיקה ידנית של הממשק, נגישות, מקלדת ומובייל לפי המשימה שכבר קיימת ב־`todofromotzaria.md`.
+- טבלת הענפים עודכנה. מעתה נדרשת סריקה מלאה של כל הענפים בכל ריצה, גם אם מדובר בענף arena שנוצר אוטומטית.
