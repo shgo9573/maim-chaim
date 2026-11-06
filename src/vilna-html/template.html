@@ -212,8 +212,8 @@ body:not(.embed) .sheet{box-shadow:none!important}
 })();
 </script>
 <script type="module">
-import * as pdfjs from "/vilna-html/vendor/pdf.mjs";
-pdfjs.GlobalWorkerOptions.workerSrc = "/vilna-html/vendor/pdf.worker.mjs";
+import * as pdfjs from "./vendor/pdf.mjs";
+pdfjs.GlobalWorkerOptions.workerSrc = new URL("./vendor/pdf.worker.mjs", import.meta.url).href;
 
 const TRACTATES = __TRACTATES__;
 const DEFAULT_SOURCE = window.location.origin;
