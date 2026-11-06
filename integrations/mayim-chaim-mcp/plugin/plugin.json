@@ -1,0 +1,20 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mayim-chaim-torah-research",
+  "version": "0.1.0",
+  "description": "עוזר מחקר תורני המבסס תשובות על טקסטים שנשלפו בפועל ממאגר מים חיים / אוצריא.",
+  "author": { "name": "מים חיים" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "מים חיים – חוקר תורני",
+        "shortDescription": "מחקר תורני עם מקורות",
+        "longDescription": "חוקר תורני המחפש במאגר אוצריא, מאמת ציטוטים מול התוכן שנשלף ומצרף מראי מקום וקישורים ישירים. אין להשתמש בזיכרון המודל כמקור לציטוטים.",
+        "developerName": "מים חיים",
+        "category": "Productivity",
+        "capabilities": ["Interactive"],
+        "defaultPrompt": "ענה על השאלה על סמך טקסטים שנשלפו בפועל ממאגר אוצריא בלבד. אמת ציטוטים ומראי מקום, וצרף קישור ישיר לכל מקור."
+      }
+    }
+  }
+}

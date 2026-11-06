@@ -1,0 +1,108 @@
+import 'package:otzaria/models/books.dart';
+import 'package:otzaria/pdf_book/utils/pdf_spread_layout.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
+import 'package:pdfrx/pdfrx.dart';
+
+/// בונה מיפוי מ-מספר עמוד ל-תווית מה-outline של ה-PDF.
+/// משמש להצגת "דף ב'" במקום "2" בתפריטי בחירת טווח.
+///
+/// אם יותר מ-node מצביע על אותו עמוד, נשמרת התווית הראשונה (DFS).
+Map<int, String> buildPdfPageLabels(List<PdfOutlineNode> outline) {
+  final labels = <int, String>{};
+  void traverse(List<PdfOutlineNode> nodes) {
+    for (final node in nodes) {
+      final page = node.dest?.pageNumber;
+      if (page != null && node.title.isNotEmpty) {
+        labels[page] ??= node.title;
+      }
+      traverse(node.children);
+    }
+  }
+
+  traverse(outline);
+  return labels;
+}
+
+/// מחזיר את התווית של עמוד — התווית מה-outline אם קיימת, אחרת מספר העמוד.
+String labelForPdfPage(Map<int, String> labels, int pageNumber) =>
+    labels[pageNumber] ?? pageNumber.toString();
+
+/// מחשב את ה-endPage האפקטיבי להדפסת PDF.
+///
+/// מחזיר null כאשר אין צורך להגביל סוף — או כי לא במצב PDF, או כי
+/// pdfEndPage לא נקבע (≤ 0), או כי הוא חורג מסך-העמודים הידוע.
+///
+/// כש-totalPdfPages הוא 0 (עדיין לא נטען המסמך) — סומכים על הערך
+/// כדי לאפשר render מיידי לטווח שנבחר עוד לפני שגודל המסמך נודע.
+int? computePdfPrintEndPage({
+  required bool isPdfMode,
+  required int pdfEndPage,
+  required int totalPdfPages,
+}) {
+  if (!isPdfMode) return null;
+  if (pdfEndPage <= 0) return null;
+  if (totalPdfPages != 0 && pdfEndPage > totalPdfPages) return null;
+  return pdfEndPage;
+}
+
+/// בודק אם נדרש חיתוך טווח עמודים. טווח עד העמוד האחרון [totalPages] אינו
+/// חיתוך — אחרת כל PDF מוכן היה מרוסטר בפלט.
+bool hasPdfPageRange({
+  required int startPage,
+  required int? endPage,
+  int totalPages = 0,
+}) {
+  return startPage > 1 ||
+      (endPage != null && (totalPages == 0 || endPage < totalPages));
+}
+
+/// תווית סיכום לטווח עמודי ה-PDF שנבחר; כשמאוחדים כמה עמודים בגיליון,
+/// מוסיפה את מספר הגיליונות שיודפסו בפועל.
+String pdfPageRangeSummary({
+  required int startPage,
+  required int endPage,
+  required int totalPages,
+  required int pagesPerSheet,
+}) {
+  final pages = endPage - startPage + 1;
+  final base = '$pages עמודים מתוך $totalPages';
+  if (pagesPerSheet <= 1) return base;
+  final sheets = (pages / pagesPerSheet).ceil();
+  return sheets == 1 ? '$base (גיליון אחד)' : '$base ($sheets גיליונות)';
+}
+
+/// מחזיר את עמוד-ההתחלה לטווח ההדפסה כברירת מחדל.
+///
+/// בתצוגה רגילה (או על העמוד הראשון) — מחזיר את העמוד הנוכחי כפי שהוא.
+/// בתצוגת ספר (שני עמודים זה לצד זה), נדרש לסנכרן לתחילת ה-spread.
+int resolveInitialPdfPrintPage({
+  required int currentPage,
+  required PdfLayoutMode layoutMode,
+}) {
+  if (!layoutMode.isBookView || currentPage <= 1) {
+    return currentPage;
+  }
+  return pdfSpreadStartPage(currentPage, coverPage: layoutMode.hasCoverPage);
+}
+
+/// מחזיר את האינדקס של הכותרת האחרונה ברשימה ששורת ההתחלה שלה <= [lineIndex].
+///
+/// משמש לחישוב ברירת מחדל לטווח הדפסה: "מהכותרת האחרונה המוצגת עד הכותרת הבאה".
+/// אם כל הכותרות מתחילות אחרי [lineIndex], או שהרשימה ריקה, מחזיר 0.
+int findLastHeaderIndexAtOrBefore(List<TocEntry> headers, int lineIndex) {
+  if (headers.isEmpty) return 0;
+  int low = 0;
+  int high = headers.length - 1;
+  int result = 0;
+
+  while (low <= high) {
+    final mid = low + (high - low) ~/ 2;
+    if (headers[mid].index <= lineIndex) {
+      result = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return result;
+}

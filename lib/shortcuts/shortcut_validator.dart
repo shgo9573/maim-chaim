@@ -1,0 +1,539 @@
+import 'package:flutter_settings_screens/flutter_settings_screens.dart';
+import 'package:otzaria/shortcuts/shortcut_helper.dart';
+
+/// יעד הפעולה של קיצור מקלדת שתוסף הצהיר עליו: התוסף, מזהה הקיצור, תווית
+/// התצוגה, קיצור ברירת המחדל שהתוסף מציע, ומה הקיצור מפעיל (פקודה חופשית
+/// או פעולת תפריט הקשר).
+typedef PluginShortcutTarget = ({
+  String pluginId,
+  String shortcutId,
+  String label,
+  String defaultKey,
+  String? command,
+  String? contextMenuItemId,
+});
+
+/// Validator for keyboard shortcuts to detect conflicts
+class ShortcutValidator {
+  static const String currentWindowSearchKey =
+      'key-shortcut-search-current-window';
+  static const String legacySearchInBookKey = 'key-shortcut-search-in-book';
+  static const String openAdvancedSearchKey =
+      'key-shortcut-open-advanced-search';
+
+  /// פתיחת חלון אוצריא נוסף — פעיל רק בפלטפורמה שתומכת בריבוי חלונות.
+  static const String openNewWindowKey = 'key-shortcut-open-new-window';
+
+  /// דיווח על טעות בספר — פועל רק כשיש בחירה בטקסט או קטע נבחר.
+  static const String reportErrorKey = 'key-shortcut-report-error';
+
+  /// דפדוף בין עמודי תיקון קוראים.
+  static const String tikkunPrevPageKey = 'key-shortcut-tikkun-prev-page';
+  static const String tikkunNextPageKey = 'key-shortcut-tikkun-next-page';
+
+  static const Set<Set<String>> _compatibleShortcutGroups = {
+    {'key-shortcut-add-note', 'key-shortcut-calendar-toggle-events'},
+    {
+      'key-shortcut-calendar-toggle-times',
+      'key-shortcut-shamor-zachor-cycle-filter',
+    },
+  };
+
+  static const Map<String, List<String>> legacyShortcutAliases = {
+    currentWindowSearchKey: [legacySearchInBookKey],
+  };
+
+  /// קיצורי "פתיחת כלי" אופציונליים (deep-link `otzaria://open/tool/<id>`).
+  /// כל מפתח חייב להופיע גם ב-[shortcutKeys], [defaultShortcuts] (ריק), [shortcutNames].
+  static const Map<String, String> openToolShortcutKeys = {
+    'key-shortcut-open-tool-calendar': 'builtin.calendar',
+    'key-shortcut-open-tool-shamor-zachor': 'builtin.shamor_zachor',
+    'key-shortcut-open-tool-measurements': 'builtin.measurements',
+    'key-shortcut-open-tool-notes': 'builtin.notes',
+    'key-shortcut-open-tool-gematria': 'builtin.gematria',
+    'key-shortcut-open-tool-aramaic-dictionary': 'builtin.aramaic_dictionary',
+    'key-shortcut-open-tool-acronyms-dictionary': 'builtin.acronyms_dictionary',
+  };
+
+  /// קיצורי "העתק קישור" אופציונליים. הקיצור פועל לפי הטאב הפעיל: קישור למקטע
+  /// בספר טקסט, וקישור לעמוד ב-PDF — שניהם תחת אותו מפתח. שני האחרונים רלוונטיים
+  /// לספר טקסט בלבד (PDF אינו תומך בהדגשת מקטע/טקסט).
+  static const String copyBookLinkKey = 'key-shortcut-copy-book-link';
+  static const String copySectionLinkKey = 'key-shortcut-copy-section-link';
+  static const String copySectionMarkLinkKey =
+      'key-shortcut-copy-section-mark-link';
+  static const String copyTextMarkLinkKey = 'key-shortcut-copy-text-mark-link';
+
+  static const List<String> copyLinkShortcutKeys = [
+    copyBookLinkKey,
+    copySectionLinkKey,
+    copySectionMarkLinkKey,
+    copyTextMarkLinkKey,
+  ];
+
+  /// קיצורי הזום — משותפים לספר טקסט (גודל הגופן) ול-PDF (זום התצוגה).
+  static const String zoomInKey = 'key-shortcut-zoom-in';
+  static const String zoomOutKey = 'key-shortcut-zoom-out';
+  static const String zoomResetKey = 'key-shortcut-zoom-reset';
+
+  static const String _openPluginKeyPrefix = 'key-shortcut-open-plugin-';
+
+  /// מפתח הגדרת הקיצור לפתיחת תוסף לפי מזההו (deep-link
+  /// `otzaria://open/plugin/<id>`). אופציונלי, ללא ברירת מחדל.
+  static String openPluginShortcutKey(String pluginId) =>
+      '$_openPluginKeyPrefix$pluginId';
+
+  /// קיצורי "פתיחת תוסף" נרשמים דינמית לפי התוספים המותקנים הפעילים (מפתח →
+  /// שם תצוגה), כדי שזיהוי הקונפליקטים והתצוגה יכירו בהם. נדחף מ-PluginSystemBloc.
+  static Map<String, String> _pluginShortcutNames = const {};
+
+  static void registerPluginShortcutKeys(Map<String, String> keyToName) {
+    _pluginShortcutNames = Map.unmodifiable(keyToName);
+  }
+
+  /// המפתחות של קיצורי "פתיחת תוסף" הרשומים כעת (תוספים פעילים בלבד).
+  static Iterable<String> get pluginShortcutKeys => _pluginShortcutNames.keys;
+
+  /// מחלץ את מזהה התוסף ממפתח קיצור "פתיחת תוסף".
+  static String pluginIdFromShortcutKey(String key) =>
+      key.substring(_openPluginKeyPrefix.length);
+
+  static const String _pluginShortcutKeyPrefix = 'key-shortcut-plugin-';
+
+  /// מפתח הגדרת הקיצור שתוסף הצהיר עליו לפי [pluginId] ו-[shortcutId].
+  /// אופציונלי, בלי ברירת מחדל — ברירת המחדל מגיעה מהתוסף עצמו.
+  static String pluginShortcutKey(String pluginId, String shortcutId) =>
+      '$_pluginShortcutKeyPrefix$pluginId::$shortcutId';
+
+  /// קיצורי מקלדת שתוספים הצהירו עליהם (מניפסט / app.registerShortcut) —
+  /// מפתח → יעד. נדחף מ-PluginSystemBloc לפי PluginShortcutRegistry.
+  static Map<String, PluginShortcutTarget> _pluginShortcuts = const {};
+
+  static void registerPluginShortcuts(
+    Map<String, PluginShortcutTarget> shortcuts,
+  ) {
+    // פתרון התנגשויות בין קיצורי תוספים: אם שני תוספים מצהירים על אותו
+    // קיצור ברירת מחדל, הראשון (בסדר ממוין) זוכה והשני נשאר לא-מוגדר.
+    final takenDefaults = <String>{};
+    final resolved = <String, PluginShortcutTarget>{};
+    final entries = shortcuts.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    for (final entry in entries) {
+      final target = entry.value;
+      final defaultKey =
+          ShortcutHelper.normalizeShortcut(target.defaultKey) ?? '';
+      if (defaultKey.isEmpty || !takenDefaults.contains(defaultKey)) {
+        if (defaultKey.isNotEmpty) takenDefaults.add(defaultKey);
+        resolved[entry.key] = (
+          pluginId: target.pluginId,
+          shortcutId: target.shortcutId,
+          label: target.label,
+          defaultKey: defaultKey,
+          command: target.command,
+          contextMenuItemId: target.contextMenuItemId,
+        );
+      } else {
+        resolved[entry.key] = (
+          pluginId: target.pluginId,
+          shortcutId: target.shortcutId,
+          label: target.label,
+          defaultKey: '',
+          command: target.command,
+          contextMenuItemId: target.contextMenuItemId,
+        );
+      }
+    }
+    _pluginShortcuts = Map.unmodifiable(resolved);
+  }
+
+  static Map<String, PluginShortcutTarget> get pluginShortcuts =>
+      _pluginShortcuts;
+
+  /// קיצורים דינמיים (פעולה + פרמטרים שהמשתמש הגדיר) — מפתח סינתטי →
+  /// תווית וערך המקש. נדחף מ-DynamicShortcutRegistry.
+  static Map<String, ({String label, String key})> _dynamicShortcuts = const {};
+
+  static void registerDynamicShortcuts(
+    Map<String, ({String label, String key})> shortcuts,
+  ) {
+    _dynamicShortcuts = Map.unmodifiable(shortcuts);
+  }
+
+  static Iterable<String> get dynamicShortcutKeys => _dynamicShortcuts.keys;
+
+  /// המפתחות של קיצורי המקלדת שהתוספים הצהירו עליהם כעת.
+  static Iterable<String> get declaredPluginShortcutKeys =>
+      _pluginShortcuts.keys;
+
+  /// List of all shortcut setting keys (סטטיים + מפתחות תוספים רשומים)
+  static List<String> get shortcutKeys => [
+    ..._baseShortcutKeys,
+    ..._pluginShortcutNames.keys,
+    ..._pluginShortcuts.keys,
+    ..._dynamicShortcuts.keys,
+  ];
+
+  static const List<String> _baseShortcutKeys = [
+    'key-shortcut-open-library-browser',
+    currentWindowSearchKey,
+    'key-shortcut-open-find-ref',
+    'key-shortcut-close-tab',
+    'key-shortcut-close-all-tabs',
+    'key-shortcut-restore-closed-tab',
+    'key-shortcut-search-tabs',
+    'key-shortcut-open-reading-screen',
+    'key-shortcut-open-new-search',
+    openAdvancedSearchKey,
+    'key-shortcut-open-settings',
+    'key-shortcut-open-more',
+    'key-shortcut-open-bookmarks',
+    'key-shortcut-open-history',
+    'key-shortcut-add-bookmark',
+    // שמירת סימניה מרוכזת — אופציונלי, ללא ברירת מחדל.
+    'key-shortcut-save-group-bookmark',
+    'key-shortcut-add-note',
+    'key-shortcut-switch-workspace',
+    openNewWindowKey,
+    'key-shortcut-print',
+    'key-shortcut-toggle-pdf-view',
+    zoomInKey,
+    zoomOutKey,
+    zoomResetKey,
+    'key-shortcut-calendar-toggle-times',
+    'key-shortcut-calendar-toggle-events',
+    'key-shortcut-calendar-today',
+    'key-shortcut-calendar-create-event',
+    'key-shortcut-calendar-toggle-view',
+    'key-shortcut-shamor-zachor-cycle-filter',
+    tikkunPrevPageKey,
+    tikkunNextPageKey,
+    'key-shortcut-toggle-nav-pane',
+    'key-shortcut-toggle-commentators-pane',
+    'key-shortcut-open-commentators-tab',
+    'key-shortcut-prev-segment',
+    'key-shortcut-next-segment',
+    'key-shortcut-prev-toc',
+    'key-shortcut-next-toc',
+    reportErrorKey,
+    // פתיחת כלים — אופציונלי, ללא ברירת מחדל (ראה openToolShortcutKeys).
+    'key-shortcut-open-tool-calendar',
+    'key-shortcut-open-tool-shamor-zachor',
+    'key-shortcut-open-tool-measurements',
+    'key-shortcut-open-tool-notes',
+    'key-shortcut-open-tool-gematria',
+    'key-shortcut-open-tool-aramaic-dictionary',
+    'key-shortcut-open-tool-acronyms-dictionary',
+    // העתקת קישורים — אופציונלי, ללא ברירת מחדל (ראה copyLinkShortcutKeys).
+    copyBookLinkKey,
+    copySectionLinkKey,
+    copySectionMarkLinkKey,
+    copyTextMarkLinkKey,
+  ];
+
+  /// מקשים שתפריט המערכת ב-Mac בולע לפני שהאירוע מגיע ל-Flutter (⌘H הסתרת
+  /// היישום, ⌘M מזעור החלון) — קיצור בערך כזה לא ייתפס שם לעולם.
+  static const Set<String> macReservedShortcuts = {'ctrl+h', 'ctrl+m'};
+
+  /// ברירות המחדל שמחליפות ב-Mac את הקיצורים שב-[macReservedShortcuts].
+  static const Map<String, String> macDefaultShortcutOverrides = {
+    'key-shortcut-open-history': 'ctrl+y',
+    'key-shortcut-open-more': 'ctrl+shift+m',
+  };
+
+  /// Default values for shortcuts
+  static Map<String, String> get defaultShortcuts =>
+      ShortcutHelper.usesMacModifiers
+      ? {..._defaultShortcuts, ...macDefaultShortcutOverrides}
+      : _defaultShortcuts;
+
+  static const Map<String, String> _defaultShortcuts = {
+    'key-shortcut-open-library-browser': 'ctrl+l',
+    currentWindowSearchKey: 'ctrl+f',
+    'key-shortcut-open-find-ref': 'ctrl+o',
+    'key-shortcut-close-tab': 'ctrl+w',
+    'key-shortcut-close-all-tabs': 'ctrl+shift+w',
+    'key-shortcut-restore-closed-tab': 'ctrl+shift+t',
+    'key-shortcut-search-tabs': 'ctrl+shift+a',
+    'key-shortcut-open-reading-screen': 'ctrl+r',
+    'key-shortcut-open-new-search': 'ctrl+shift+f',
+    openAdvancedSearchKey: '',
+    'key-shortcut-open-settings': 'ctrl+comma',
+    'key-shortcut-open-more': 'ctrl+m',
+    'key-shortcut-open-bookmarks': 'ctrl+shift+b',
+    'key-shortcut-open-history': 'ctrl+h',
+    'key-shortcut-add-bookmark': 'ctrl+b',
+    'key-shortcut-save-group-bookmark': '',
+    'key-shortcut-add-note': 'ctrl+n',
+    'key-shortcut-switch-workspace': 'ctrl+k',
+    openNewWindowKey: 'ctrl+alt+n',
+    'key-shortcut-print': 'ctrl+p',
+    'key-shortcut-toggle-pdf-view': 'ctrl+shift+p',
+    zoomInKey: 'ctrl+equal',
+    zoomOutKey: 'ctrl+minus',
+    zoomResetKey: 'ctrl+0',
+    'key-shortcut-calendar-toggle-times': 'ctrl+t',
+    'key-shortcut-calendar-toggle-events': 'ctrl+e',
+    'key-shortcut-calendar-today': 'ctrl+d',
+    'key-shortcut-calendar-create-event': 'ctrl+shift+n',
+    'key-shortcut-calendar-toggle-view': 'ctrl+shift+e',
+    'key-shortcut-shamor-zachor-cycle-filter': 'ctrl+s',
+    tikkunPrevPageKey: 'ctrl+pageup',
+    tikkunNextPageKey: 'ctrl+pagedown',
+    'key-shortcut-toggle-nav-pane': 'ctrl+shift+l',
+    'key-shortcut-toggle-commentators-pane': 'ctrl+shift+c',
+    'key-shortcut-open-commentators-tab': '',
+    'key-shortcut-prev-segment': 'alt+arrowup',
+    'key-shortcut-next-segment': 'alt+arrowdown',
+    'key-shortcut-prev-toc': 'alt+pageup',
+    'key-shortcut-next-toc': 'alt+pagedown',
+    reportErrorKey: 'ctrl+shift+r',
+    'key-shortcut-open-tool-calendar': '',
+    'key-shortcut-open-tool-shamor-zachor': '',
+    'key-shortcut-open-tool-measurements': '',
+    'key-shortcut-open-tool-notes': '',
+    'key-shortcut-open-tool-gematria': '',
+    'key-shortcut-open-tool-aramaic-dictionary': '',
+    'key-shortcut-open-tool-acronyms-dictionary': '',
+    copyBookLinkKey: '',
+    copySectionLinkKey: '',
+    copySectionMarkLinkKey: '',
+    copyTextMarkLinkKey: '',
+  };
+
+  /// Shortcut names for display (סטטיים + שמות תוספים רשומים)
+  static Map<String, String> get shortcutNames => {
+    ..._baseShortcutNames,
+    ..._pluginShortcutNames,
+    for (final entry in _pluginShortcuts.entries) entry.key: entry.value.label,
+    for (final entry in _dynamicShortcuts.entries) entry.key: entry.value.label,
+  };
+
+  static const Map<String, String> _baseShortcutNames = {
+    'key-shortcut-open-library-browser': 'ספרייה',
+    currentWindowSearchKey: 'חיפוש בספר הפתוח',
+    'key-shortcut-open-find-ref': 'איתור',
+    'key-shortcut-close-tab': 'סגור ספר נוכחי',
+    'key-shortcut-close-all-tabs': 'סגור כל הספרים',
+    'key-shortcut-restore-closed-tab': 'פתח כרטיסייה אחרונה שנסגרה',
+    'key-shortcut-search-tabs': 'חיפוש כרטיסיות',
+    'key-shortcut-open-reading-screen': 'עיון',
+    'key-shortcut-open-new-search': 'חיפוש חדש בכל הספרים',
+    openAdvancedSearchKey: 'חיפוש מתקדם',
+    'key-shortcut-open-settings': 'הגדרות',
+    'key-shortcut-open-more': 'כלים',
+    'key-shortcut-open-bookmarks': 'סימניות',
+    'key-shortcut-open-history': 'היסטוריה',
+    'key-shortcut-add-bookmark': 'הוסף סימניה',
+    'key-shortcut-save-group-bookmark': 'שמור סימניה לכל הספרים הפתוחים',
+    'key-shortcut-add-note': 'הוספת הערה',
+    'key-shortcut-switch-workspace': 'החלף שולחן עבודה',
+    openNewWindowKey: 'חלון חדש',
+    'key-shortcut-print': 'הדפסה',
+    'key-shortcut-toggle-pdf-view': 'החלף מצב תצוגה (PDF/טקסט)',
+    zoomInKey: 'הגדלת הטקסט / התצוגה',
+    zoomOutKey: 'הקטנת הטקסט / התצוגה',
+    zoomResetKey: 'איפוס גודל הטקסט / התצוגה',
+    'key-shortcut-calendar-toggle-times': 'לוח שנה: פתיחה/סגירה זמני היום',
+    'key-shortcut-calendar-toggle-events': 'לוח שנה: פתיחה/סגירה אירועים',
+    'key-shortcut-calendar-today': 'לוח שנה: מעבר להיום',
+    'key-shortcut-calendar-create-event': 'לוח שנה: יצירת אירוע',
+    'key-shortcut-calendar-toggle-view': 'לוח שנה: מעבר בין תצוגות',
+    'key-shortcut-shamor-zachor-cycle-filter': 'שמור וזכור: מעבר בין הסינונים',
+    tikkunPrevPageKey: 'תיקון קוראים: העמוד הקודם',
+    tikkunNextPageKey: 'תיקון קוראים: העמוד הבא',
+    'key-shortcut-toggle-nav-pane': 'פתח/סגור חלונית ניווט',
+    'key-shortcut-toggle-commentators-pane': 'פתח/סגור חלונית מפרשים',
+    'key-shortcut-open-commentators-tab': 'פתח כרטיסיית מפרשים',
+    'key-shortcut-prev-segment': 'הקטע הקודם',
+    'key-shortcut-next-segment': 'הקטע הבא',
+    'key-shortcut-prev-toc': 'הדף/פרק הקודם',
+    'key-shortcut-next-toc': 'הדף/פרק הבא',
+    reportErrorKey: 'דווח על טעות בספר',
+    'key-shortcut-open-tool-calendar': 'פתיחת לוח שנה',
+    'key-shortcut-open-tool-shamor-zachor': 'פתיחת שמור וזכור',
+    'key-shortcut-open-tool-measurements': 'פתיחת מדות ושיעורים',
+    'key-shortcut-open-tool-notes': 'פתיחת הערות אישיות',
+    'key-shortcut-open-tool-gematria': 'פתיחת גימטריה',
+    'key-shortcut-open-tool-aramaic-dictionary': 'פתיחת מילון ארמי-עברי',
+    'key-shortcut-open-tool-acronyms-dictionary': 'פתיחת ראשי תיבות',
+    copyBookLinkKey: 'העתק קישור ישיר לספר',
+    copySectionLinkKey: 'העתק קישור למקטע / לעמוד',
+    copySectionMarkLinkKey: 'העתק קישור עם הדגשת המקטע',
+    copyTextMarkLinkKey: 'העתק קישור עם הדגשת הטקסט',
+  };
+
+  /// Check for conflicts in current shortcuts
+  /// Returns a map of conflicting shortcuts: {shortcut: [key1, key2, ...]}
+  static Map<String, List<String>> checkConflicts() {
+    final Map<String, List<String>> conflicts = {};
+    final Map<String, List<String>> shortcutToKeys = {};
+
+    for (final key in shortcutKeys) {
+      final value = _normalizedShortcutValue(getShortcutValue(key));
+      if (value.isNotEmpty) {
+        shortcutToKeys.putIfAbsent(value, () => []).add(key);
+      }
+    }
+
+    for (final entry in shortcutToKeys.entries) {
+      final conflictingKeys = entry.value;
+      if (conflictingKeys.length > 1 &&
+          !_isCompatibleGroup(conflictingKeys.toSet())) {
+        conflicts[entry.key] = conflictingKeys;
+      }
+    }
+
+    return conflicts;
+  }
+
+  /// Get a human-readable description of conflicts
+  static String getConflictsDescription() {
+    final conflicts = checkConflicts();
+
+    if (conflicts.isEmpty) {
+      return 'אין קונפליקטים בקיצורי המקשים';
+    }
+
+    final buffer = StringBuffer('נמצאו קונפליקטים בקיצורי המקשים:\n\n');
+
+    for (final entry in conflicts.entries) {
+      final shortcut = entry.key;
+      final keys = entry.value;
+
+      buffer.writeln('$shortcut משמש עבור:');
+      for (final key in keys) {
+        final name = shortcutNames[key] ?? key;
+        buffer.writeln('  • $name');
+      }
+      buffer.writeln();
+    }
+
+    return buffer.toString();
+  }
+
+  /// Check if a specific shortcut has conflicts
+  static bool hasConflict(String settingKey) {
+    final value = _normalizedShortcutValue(getShortcutValue(settingKey));
+    if (value.isEmpty) return false;
+
+    final matchingKeys = <String>{};
+    for (final key in shortcutKeys) {
+      final keyValue = _normalizedShortcutValue(getShortcutValue(key));
+      if (keyValue == value) {
+        matchingKeys.add(key);
+      }
+    }
+
+    return matchingKeys.length > 1 && !_isCompatibleGroup(matchingKeys);
+  }
+
+  /// מחזיר את ערך הקיצור הנוכחי עבור [settingKey], את ברירת המחדל שלו, או
+  /// `null` כשהמשתמש ביטל את הקיצור במפורש.
+  /// עבור קיצורי תוספים ברירת המחדל היא הקיצור שהתוסף הצהיר עליו — אלא אם
+  /// הוא מתנגש עם קיצור קיים (ואז התוסף מפנה את מקומו ונהיה לא-מוגדר).
+  static String? getShortcutValue(String settingKey) {
+    final normalizedKey = canonicalSettingKey(settingKey);
+    // קיצור דינמי שומר את המקש בתוך הרשומה שלו, לא במפתח הגדרות נפרד.
+    final dynamic = _dynamicShortcuts[normalizedKey];
+    if (dynamic != null) {
+      final value = _normalizedShortcutValue(dynamic.key);
+      return value.isEmpty ? null : value;
+    }
+    final directValue = Settings.getValue<String>(normalizedKey);
+    final declared = _pluginShortcuts[normalizedKey];
+    if (directValue != null && directValue.isNotEmpty) {
+      return _normalizedShortcutValue(directValue);
+    }
+
+    // ערך ריק שנשמר במפורש = ביטול הקיצור. נשאר לא-מוגדר כדי לחזור לרשימת
+    // "פעולות זמינות לקיצור", במקום ליפול לברירת המחדל.
+    if (directValue != null) {
+      return null;
+    }
+
+    for (final legacyKey in legacyShortcutAliases[normalizedKey] ?? const []) {
+      final legacyValue = Settings.getValue<String>(legacyKey);
+      if (legacyValue != null && legacyValue.isNotEmpty) {
+        return _normalizedShortcutValue(legacyValue);
+      }
+    }
+
+    if (declared != null) {
+      if (declared.defaultKey.isEmpty) return null;
+      if (_pluginDefaultKeyTaken(normalizedKey, declared.defaultKey)) {
+        return null;
+      }
+      return _normalizedShortcutValue(declared.defaultKey);
+    }
+
+    return _normalizedShortcutValue(defaultShortcuts[normalizedKey]);
+  }
+
+  /// האם קיצור ברירת המחדל של תוסף תפוס כבר על ידי קיצור קיים (בנוי, פתיחת
+  /// תוסף או העתקת קישור). קיצורי תוספים אחרים נפתרים ברישום, ולכן מדלגים
+  /// עליהם כאן כדי להימנע מרקורסיה.
+  static bool _pluginDefaultKeyTaken(String settingKey, String defaultKey) {
+    final normalizedDefaultKey = _normalizedShortcutValue(defaultKey);
+    if (normalizedDefaultKey.isEmpty) return false;
+    for (final key in shortcutKeys) {
+      if (key == settingKey) continue;
+      if (_pluginShortcuts.containsKey(key)) {
+        final userValue = Settings.getValue<String>(key);
+        if (userValue != null &&
+            userValue.isNotEmpty &&
+            _normalizedShortcutValue(userValue) == normalizedDefaultKey) {
+          return true;
+        }
+        continue;
+      }
+      final value = getShortcutValue(key) ?? '';
+      if (value.isNotEmpty &&
+          _normalizedShortcutValue(value) == normalizedDefaultKey) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static bool canShareShortcut(String firstKey, String secondKey) {
+    final normalizedFirst = canonicalSettingKey(firstKey);
+    final normalizedSecond = canonicalSettingKey(secondKey);
+    if (normalizedFirst == normalizedSecond) return true;
+
+    for (final group in _compatibleShortcutGroups) {
+      if (group.contains(normalizedFirst) && group.contains(normalizedSecond)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  static String canonicalSettingKey(String settingKey) {
+    if (settingKey == legacySearchInBookKey) {
+      return currentWindowSearchKey;
+    }
+    return settingKey;
+  }
+
+  static String _normalizedShortcutValue(String? value) =>
+      ShortcutHelper.normalizeShortcut(value ?? '') ?? '';
+
+  static Set<String> legacyKeysFor(String settingKey) {
+    final normalizedKey = canonicalSettingKey(settingKey);
+    return Set<String>.from(legacyShortcutAliases[normalizedKey] ?? const []);
+  }
+
+  static bool _isCompatibleGroup(Set<String> keys) {
+    if (keys.length < 2) return false;
+
+    final normalizedKeys = keys.map(canonicalSettingKey).toSet();
+    for (final group in _compatibleShortcutGroups) {
+      if (group.containsAll(normalizedKeys)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+}

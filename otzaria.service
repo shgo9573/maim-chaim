@@ -1,0 +1,17 @@
+[Unit]
+Description=Otzaria Web Server with RAM Warm-up
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/home/opc/otzaria
+ExecStartPre=/bin/bash -c 'if [ -f /var/data/otzaria/seforim.db ]; then dd if=/var/data/otzaria/seforim.db of=/dev/null bs=1M; fi'
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

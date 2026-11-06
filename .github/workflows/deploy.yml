@@ -1,0 +1,464 @@
+name: Deploy to Oracle Server
+
+on:
+  push:
+    branches:
+      - main
+
+# Never let two SSH deployments build/write dist concurrently. Keep the active
+# deployment intact and only queue the newest pending commit.
+concurrency:
+  group: otzarweb1-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy backend and the new root frontend
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          OTZARIA_UID: 6833b3cb-1444-437a-9b84-6dc2b731ab9d
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: OTZARIA_UID
+          script: |
+            set -euo pipefail
+            cd ~/otzaria-backend
+
+            echo "🔄 Pulling latest backend code..."
+            git pull --ff-only origin main
+
+            # The new frontend is the primary website at /. Build into dist/ intentionally.
+            echo "📦 Installing dependencies for the backend and root frontend..."
+            npm install --ignore-scripts --include=dev
+            npm rebuild better-sqlite3 esbuild
+
+            echo "🏗️ Building the new frontend into the root dist/..."
+            npm run build
+
+            echo "📚 Verifying and copying the standalone Tzurat HaDaf HTML bundle..."
+            test -s public/vilna-html/index.html
+            test -s public/vilna-html/vendor/pdf.mjs
+            test -s public/vilna-html/vendor/pdf.worker.mjs
+            mkdir -p dist/vilna-html/vendor
+            cp public/vilna-html/index.html dist/vilna-html/index.html
+            cp public/vilna-html/vendor/pdf.mjs dist/vilna-html/vendor/pdf.mjs
+            cp public/vilna-html/vendor/pdf.worker.mjs dist/vilna-html/vendor/pdf.worker.mjs
+            test -s dist/vilna-html/index.html
+            test -s dist/vilna-html/vendor/pdf.mjs
+            test -s dist/vilna-html/vendor/pdf.worker.mjs
+            cmp -s public/vilna-html/index.html dist/vilna-html/index.html
+
+            node --input-type=module <<'NODE'
+            import { readFileSync } from 'node:fs';
+            const html = readFileSync('dist/vilna-html/index.html', 'utf8');
+            const closeCount = (html.match(/<\/script>/g) || []).length;
+            const hasSafeExportClose = html.includes('<\\/script>');
+            if (closeCount !== 2 || !hasSafeExportClose || html.includes('__TRACTATES__')) {
+              console.error('[VILNA HTML BUILD] FAIL: generated HTML contains a broken script boundary or missing tractate data.');
+              process.exit(1);
+            }
+            console.log('[VILNA HTML BUILD] PASS standalone HTML, safe script boundary, and local PDF.js files exist.');
+            NODE
+
+            test -s dist/index.html
+            test -s dist/icon.svg
+            grep -Fq '<meta name="otzaria-frontend" content="v2" />' dist/index.html
+            echo "[FRONTEND ROOT BUILD] PASS dist/index.html and dist/icon.svg exist; v2 marker confirmed."
+            # Fail a deployment if the production bundle contains the retired portal button
+            # instead of the in-app local viewer button.
+            if ! grep -Fq 'פתח צורת הדף המקומית בתוך אוצריא' dist/index.html; then
+              echo "[LOCAL DAF BUTTON BUILD] FAIL: current in-app button is missing from dist/index.html."
+              exit 1
+            fi
+            if grep -Fq 'פתח צורת הדף בלשונית חדשה (פורטל הדף היומי)' dist/index.html; then
+              echo "[LOCAL DAF BUTTON BUILD] FAIL: retired external-portal button was bundled."
+              exit 1
+            fi
+            if grep -Fq 'פתח בפורטל הדף היומי' dist/index.html; then
+              echo "[LOCAL DAF BUTTON BUILD] FAIL: external portal link remains in the local daf viewer."
+              exit 1
+            fi
+            echo "[LOCAL DAF BUTTON BUILD] PASS local button present; old external portal links absent."
+
+            # Build the optional search binary only if this checkout contains its source.
+            if [ -d "search_service" ]; then
+              echo "🦀 Building Rust search service..."
+              (cd search_service && cargo build --release)
+              pm2 restart otzaria-search || pm2 start "./search_service/target/release/otzaria_search_service" --name otzaria-search
+            fi
+
+            # Use the known-good launcher verified by the content and search smoke tests.
+            # A prior ecosystem-config reload left this app in PM2's errored state.
+            echo "🧾 Recent backend logs before restart (diagnostic only)..."
+            pm2 logs otzaria-backend --lines 30 --nostream || true
+
+            echo "🚀 Recovering backend with the verified npx tsx launcher; preserve the currently approved dist/..."
+            pm2 delete otzaria-backend || true
+            NODE_ENV=production pm2 start "npx tsx server.ts" --name otzaria-backend --node-args="--max-old-space-size=2048"
+
+            echo "🧪 Running real book-content smoke test..."
+            sleep 4
+            node --input-type=module <<'NODE'
+            try {
+              const response = await fetch('http://127.0.0.1:3000/api/books/1/content?start=1&end=25');
+              let payload = {};
+              try { payload = await response.json(); } catch {}
+              const lines = Array.isArray(payload.lines) ? payload.lines : [];
+              const hasText = lines.some(line => typeof line.content === 'string' && line.content.trim().length > 0);
+              if (!response.ok || !hasText) {
+                console.error('[CONTENT SMOKE] FAIL status=' + response.status +
+                  ' lines=' + lines.length + ' error=' + (payload.error || 'no text returned'));
+                process.exit(1);
+              }
+              console.log('[CONTENT SMOKE] PASS bookId=' + payload.id +
+                ' lines=' + lines.length + ' totalLines=' + payload.totalLines);
+            } catch (error) {
+              console.error('[CONTENT SMOKE] FAIL ' + error.message);
+              process.exit(1);
+            }
+            NODE
+
+            echo "📖 Verifying locally extracted Talmud Bavli PDF is served by the site..."
+            node --input-type=module <<'NODE'
+            try {
+              const url = new URL('http://127.0.0.1:3000/api/tzurat-hadaf/book');
+              url.searchParams.set('masechta', 'ברכות');
+              url.searchParams.set('daf', '2');
+              url.searchParams.set('amud', 'a');
+              const response = await fetch(url, {
+                headers: { Range: 'bytes=0-7' },
+                signal: AbortSignal.timeout(10000)
+              });
+              const source = response.headers.get('x-otzaria-pdf-source');
+              const contentType = response.headers.get('content-type') || '';
+              const bytes = Buffer.from(await response.arrayBuffer());
+              if (![200, 206].includes(response.status) ||
+                  source !== 'local-talmud-bavli' ||
+                  !contentType.includes('application/pdf') ||
+                  bytes.subarray(0, 5).toString('utf8') !== '%PDF-') {
+                console.error('[LOCAL TALMUD PDF SMOKE] FAIL status=' + response.status +
+                  ' source=' + source + ' contentType=' + contentType +
+                  ' bytes=' + bytes.length);
+                process.exit(1);
+              }
+              console.log('[LOCAL TALMUD PDF SMOKE] PASS masechta=ברכות source=' +
+                source + ' status=' + response.status + ' rangeBytes=' + bytes.length);
+            } catch (error) {
+              console.error('[LOCAL TALMUD PDF SMOKE] FAIL ' + error.message);
+              process.exit(1);
+            }
+            NODE
+
+            echo "🔎 Running full-library search smoke test..."
+            node --input-type=module <<'NODE'
+            try {
+              const response = await fetch('http://127.0.0.1:3000/api/search', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Otzaria-UID': 'deploy_search_smoke_test'
+                },
+                body: JSON.stringify({
+                  query: 'שמע',
+                  category: 'all',
+                  mode: 'advanced',
+                  limit: 5
+                }),
+                signal: AbortSignal.timeout(15000)
+              });
+              let payload = {};
+              try { payload = await response.json(); } catch {}
+              const results = Array.isArray(payload.results) ? payload.results : [];
+              if (!response.ok || results.length === 0) {
+                console.error('[SEARCH SMOKE] FAIL status=' + response.status +
+                  ' results=' + results.length + ' error=' + (payload.error || payload.message || 'no results'));
+                process.exit(1);
+              }
+              console.log('[SEARCH SMOKE] PASS query=שמע results=' + results.length);
+            } catch (error) {
+              console.error('[SEARCH SMOKE] FAIL ' + error.message);
+              process.exit(1);
+            }
+            NODE
+
+            echo "🔎 Verifying the new v2 frontend is served at the root..."
+            FRONTEND_HTML="$(curl --fail --silent --show-error http://127.0.0.1:3000/)"
+            if ! grep -Fq '<meta name="otzaria-frontend" content="v2" />' <<< "$FRONTEND_HTML"; then
+              echo "[FRONTEND ROOT SMOKE] FAIL: root is not serving the new v2 frontend."
+              exit 1
+            fi
+            if ! grep -Fq 'פתח צורת הדף המקומית בתוך אוצריא' <<< "$FRONTEND_HTML"; then
+              echo "[LOCAL DAF BUTTON LIVE SMOKE] FAIL: deployed root HTML does not contain the in-app button."
+              exit 1
+            fi
+            if grep -Fq 'פתח צורת הדף בלשונית חדשה (פורטל הדף היומי)' <<< "$FRONTEND_HTML"; then
+              echo "[LOCAL DAF BUTTON LIVE SMOKE] FAIL: deployed root HTML still contains the retired external button."
+              exit 1
+            fi
+            if grep -Fq 'פתח בפורטל הדף היומי' <<< "$FRONTEND_HTML"; then
+              echo "[LOCAL DAF BUTTON LIVE SMOKE] FAIL: deployed root still shows the external portal link."
+              exit 1
+            fi
+            echo "[LOCAL DAF BUTTON LIVE SMOKE] PASS live root contains only the in-app daf viewer entry point."
+            if ! curl --fail --silent --show-error http://127.0.0.1:3000/icon.svg >/dev/null; then
+              echo "[FRONTEND ROOT SMOKE] FAIL: /icon.svg is not served."
+              exit 1
+            fi
+            echo "[FRONTEND ROOT SMOKE] PASS v2 frontend and icon are served at /."
+
+            A_STATUS="$(curl --silent --show-error -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/a)"
+            if [ "$A_STATUS" != "308" ]; then
+              echo "[FRONTEND /a SMOKE] FAIL: expected /a to redirect to /; got HTTP $A_STATUS."
+              exit 1
+            fi
+            echo "[FRONTEND /a SMOKE] PASS /a is retired and redirects to /."
+
+            echo "🕎 Deploying Mayim Chaim MCP service..."
+            MCP_DIR="$HOME/otzaria-backend/integrations/mayim-chaim-mcp/server"
+            test -s "$MCP_DIR/src/server.js"
+            cd "$MCP_DIR"
+
+            echo "📦 Installing MCP service dependencies..."
+            npm install --omit=dev --no-audit --no-fund --package-lock=false
+            npm run check
+            npm test
+
+            if [ -z "$OTZARIA_UID" ]; then
+              echo "[MCP DEPLOY] FAIL: OTZARIA_UID is not set."
+              exit 1
+            fi
+            cat > .env <<EOF
+            OTZARIA_BASE_URL=https://otzaria.duckdns.org
+            OTZARIA_UID=$OTZARIA_UID
+            HOST=127.0.0.1
+            PORT=3010
+            OTZARIA_TIMEOUT_MS=20000
+            MCP_RATE_LIMIT_PER_MINUTE=90
+            EOF
+            chmod 600 .env
+
+            echo "🚀 Starting/reloading MCP service with PM2..."
+            pm2 startOrReload ecosystem.config.cjs --only mayim-chaim-mcp --update-env
+            # Give the restarted MCP process time to bind its localhost port before the health probe.
+            sleep 8
+            curl --fail --silent --show-error http://127.0.0.1:3010/health
+            echo
+
+            echo "🔧 Installing MCP reverse-proxy locations in the existing HTTPS Nginx server..."
+            sudo -n python3 - <<'PY'
+            from datetime import datetime
+            from pathlib import Path
+            import re
+            import shutil
+            import subprocess
+
+            path = Path("/etc/nginx/conf.d/otzaria.conf")
+            marker = "# BEGIN MAYIM CHAIM MCP (managed by deployment)"
+            if not path.is_file():
+                raise SystemExit(f"[MCP NGINX] FAIL: expected Nginx config was not found: {path}")
+
+            source = path.read_text(encoding="utf-8")
+            backup = None
+            matched_blocks = 0
+            targets = []
+
+            def block_end(text, open_brace):
+                depth = 0
+                quote = None
+                escaped = False
+                comment = False
+                for i in range(open_brace, len(text)):
+                    ch = text[i]
+                    if comment:
+                        if ch == "\n":
+                            comment = False
+                        continue
+                    if quote:
+                        if escaped:
+                            escaped = False
+                        elif ch == "\\":
+                            escaped = True
+                        elif ch == quote:
+                            quote = None
+                        continue
+                    if ch == "#":
+                        comment = True
+                    elif ch in ("'", '"'):
+                        quote = ch
+                    elif ch == "{":
+                        depth += 1
+                    elif ch == "}":
+                        depth -= 1
+                        if depth == 0:
+                            return i
+                return -1
+
+            pattern = re.compile(r"(?m)^[ \t]*server[ \t]*\{")
+            for match in pattern.finditer(source):
+                opening = source.find("{", match.start(), match.end())
+                closing = block_end(source, opening)
+                if closing < 0:
+                    continue
+                block = source[match.start():closing + 1]
+                has_domain = re.search(r"(?m)^[ \t]*server_name[ \t]+[^;]*\botzaria\.duckdns\.org\b[^;]*;", block)
+                has_tls = re.search(r"(?m)^[ \t]*listen[ \t]+(?:\[::\]:)?443(?:[ \t;])", block)
+                if has_domain and has_tls:
+                    matched_blocks += 1
+                    if marker not in block:
+                        targets.append(closing)
+
+            if matched_blocks == 0:
+                raise SystemExit("[MCP NGINX] FAIL: no HTTPS server block matched otzaria.duckdns.org.")
+            if targets:
+                backup = path.with_name(path.name + ".bak-mcp-" + datetime.now().strftime("%Y%m%d%H%M%S"))
+                shutil.copy2(path, backup)
+                additions = """
+                # BEGIN MAYIM CHAIM MCP (managed by deployment)
+                location = /mcp {
+                    proxy_pass http://127.0.0.1:3010/mcp;
+                    proxy_http_version 1.1;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_buffering off;
+                    proxy_read_timeout 60s;
+                    proxy_send_timeout 60s;
+                }
+
+                location = /mcp-health {
+                    proxy_pass http://127.0.0.1:3010/health;
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                }
+                # END MAYIM CHAIM MCP (managed by deployment)
+            """
+                for closing in sorted(targets, reverse=True):
+                    source = source[:closing] + additions + source[closing:]
+                path.write_text(source, encoding="utf-8")
+                print(f"[MCP NGINX] Added MCP locations to {len(targets)} additional HTTPS server block(s); backup: {backup}")
+            else:
+                print(f"[MCP NGINX] All {matched_blocks} matching HTTPS server block(s) already contain MCP locations.")
+
+            test = subprocess.run(["nginx", "-t"])
+            if test.returncode:
+                if backup is not None:
+                    shutil.copy2(backup, path)
+                    subprocess.run(["nginx", "-t"])
+                raise SystemExit("[MCP NGINX] FAIL: nginx -t failed; config was restored if this run changed it.")
+
+            subprocess.run(["systemctl", "reload", "nginx"], check=True)
+            print("[MCP NGINX] PASS: config validated and Nginx reloaded.")
+            PY
+
+            echo "🌐 Testing public MCP health route through local TLS/Nginx..."
+            MCP_HEALTH="$(curl --fail --silent --show-error --resolve otzaria.duckdns.org:443:127.0.0.1 https://otzaria.duckdns.org/mcp-health)"
+            printf '%s' "$MCP_HEALTH" | node -e 'let data = ""; process.stdin.on("data", chunk => data += chunk); process.stdin.on("end", () => { try { const value = JSON.parse(data); if (value.ok !== true || value.service !== "mayim-chaim-otzaria-mcp") throw new Error("wrong service response"); console.log("[MCP PUBLIC HEALTH] PASS service=" + value.service); } catch (error) { console.error("[MCP PUBLIC HEALTH] FAIL: endpoint did not return MCP health JSON: " + data.slice(0, 200)); process.exit(1); } });'
+
+            echo "🌐 Testing MCP initialize, tools/list and search through public TLS/Nginx..."
+            MCP_INIT_HEADERS="$(mktemp)"
+            MCP_INIT_BODY="$(mktemp)"
+            MCP_TOOLS_BODY="$(mktemp)"
+            MCP_SEARCH_BODY="$(mktemp)"
+            MCP_SESSION_ID=""
+
+            curl --fail --silent --show-error --resolve otzaria.duckdns.org:443:127.0.0.1 \
+              -D "$MCP_INIT_HEADERS" -o "$MCP_INIT_BODY" \
+              -H 'Accept: application/json, text/event-stream' \
+              -H 'Content-Type: application/json' \
+              --data-raw '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"github-deploy-smoke","version":"1.0.0"}}}' \
+              https://otzaria.duckdns.org/mcp
+            MCP_SESSION_ID="$(awk 'tolower($1) == "mcp-session-id:" { gsub("\r", "", $2); print $2; exit }' "$MCP_INIT_HEADERS")"
+            if [ -z "$MCP_SESSION_ID" ] || ! grep -q '"protocolVersion"' "$MCP_INIT_BODY"; then
+              echo "[MCP PUBLIC ROUTE] FAIL: initialize did not return an MCP session through Nginx."
+              head -c 1000 "$MCP_INIT_BODY" || true
+              exit 1
+            fi
+
+            curl --fail --silent --show-error --resolve otzaria.duckdns.org:443:127.0.0.1 \
+              -o "$MCP_TOOLS_BODY" \
+              -H "MCP-Session-Id: $MCP_SESSION_ID" \
+              -H 'MCP-Protocol-Version: 2025-03-26' \
+              -H 'Accept: application/json, text/event-stream' \
+              -H 'Content-Type: application/json' \
+              --data-raw '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+              https://otzaria.duckdns.org/mcp
+            if ! grep -q 'search_otzaria' "$MCP_TOOLS_BODY"; then
+              echo "[MCP PUBLIC ROUTE] FAIL: tools/list did not expose search_otzaria through Nginx."
+              head -c 1000 "$MCP_TOOLS_BODY" || true
+              exit 1
+            fi
+
+            curl --fail --silent --show-error --resolve otzaria.duckdns.org:443:127.0.0.1 \
+              -o "$MCP_SEARCH_BODY" \
+              -H "MCP-Session-Id: $MCP_SESSION_ID" \
+              -H 'MCP-Protocol-Version: 2025-03-26' \
+              -H 'Accept: application/json, text/event-stream' \
+              -H 'Content-Type: application/json' \
+              --data-raw '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"search_otzaria","arguments":{"query":"שמע","limit":5,"category":"all","mode":"advanced"}}}' \
+              https://otzaria.duckdns.org/mcp
+            if ! grep -q 'otzariaUrl' "$MCP_SEARCH_BODY"; then
+              echo "[MCP PUBLIC ROUTE] FAIL: public MCP search did not return a direct source link."
+              head -c 1000 "$MCP_SEARCH_BODY" || true
+              exit 1
+            fi
+            echo "[MCP PUBLIC ROUTE] PASS initialize, tools/list, and search via TLS/Nginx"
+            rm -f "$MCP_INIT_HEADERS" "$MCP_INIT_BODY" "$MCP_TOOLS_BODY" "$MCP_SEARCH_BODY"
+
+            echo "🧪 Running end-to-end MCP tool tests against the live Otzaria API..."
+            node --input-type=module <<'NODE'
+            import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+            import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+            const client = new Client(
+              { name: 'otzaria-deploy-smoke-test', version: '1.0.0' },
+              { capabilities: {} }
+            );
+            const transport = new StreamableHTTPClientTransport(new URL('http://127.0.0.1:3010/mcp'));
+            try {
+              await client.connect(transport);
+              const listed = await client.listTools();
+              const required = [
+                'search_otzaria',
+                'get_book_content',
+                'get_line_commentaries',
+                'get_book_toc',
+                'check_otzaria_connection'
+              ];
+              const available = new Set(listed.tools.map(tool => tool.name));
+              const missing = required.filter(name => !available.has(name));
+              if (missing.length) throw new Error('Missing MCP tools: ' + missing.join(', '));
+              console.log('[MCP TOOLS SMOKE] PASS tools=' + listed.tools.length);
+
+              const check = await client.callTool({ name: 'check_otzaria_connection', arguments: {} });
+              const checkText = (check.content || []).filter(item => item.type === 'text').map(item => item.text).join('\n');
+              if (check.isError) throw new Error('Connection tool reported failure: ' + checkText);
+              const checkPayload = JSON.parse(checkText);
+              if (checkPayload.ok !== true) throw new Error('Connection tool did not confirm the upstream API.');
+              console.log('[MCP UPSTREAM SMOKE] PASS endpoint=' + checkPayload.endpoint);
+
+              const search = await client.callTool({
+                name: 'search_otzaria',
+                arguments: { query: 'שמע', limit: 5, category: 'all', mode: 'advanced' }
+              });
+              const searchText = (search.content || []).filter(item => item.type === 'text').map(item => item.text).join('\n');
+              if (search.isError) throw new Error('Search tool reported failure: ' + searchText);
+              const payload = JSON.parse(searchText);
+              const results = Array.isArray(payload.results) ? payload.results : [];
+              if (!results.length) throw new Error('MCP search returned no results for the smoke-test query.');
+              console.log('[MCP SEARCH SMOKE] PASS query=שמע results=' + results.length);
+            } finally {
+              await client.close();
+            }
+            NODE
+
+            echo "[MCP DEPLOY] PASS: service started, Nginx route works, tools are exposed, and the upstream API search returned results."
+
+
+            pm2 save
+            echo "✅ Backend deployment complete. The new v2 frontend is served at /; /a redirects to the root."
+            pm2 list

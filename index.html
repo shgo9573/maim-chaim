@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="otzaria-frontend" content="v2" />
+    <meta name="google-site-verification" content="CKKMlzb7xAEmsRg1kFRr8n4j2niaKeJz-XlJFiWw4dc" />
+    <meta name="description" content="מיים חיים - מאגר ספרים תורני מקוון" />
+    <meta property="og:title" content="מיים חיים - מאגר ספרים תורני מקוון" />
+    <meta property="og:description" content="מאגר ספרים תורני מקוון לעיון וללימוד" />
+    <title>מיים חיים - מאגר ספרים תורני מקוון</title>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-0G73LNQC82"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-0G73LNQC82');
+    </script>
+    <link rel="icon" type="image/svg+xml" href="./icon.svg?v=20261012-goldbook" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=David+Libre:wght@400;500;700&family=Frank+Ruhl+Libre:wght@300;400;500;700;900&family=Heebo:wght@300;400;500;700&family=Noto+Rashi+Hebrew:wght@400;700&family=Assistant:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // If React never mounts, cover the page with a clean unavailable message instead of a blank screen.
+      (() => {
+        const root = document.getElementById('root');
+        if (!root) return;
+        let timer = 0;
+        const showUnavailable = () => {
+          if (root.childNodes.length > 0 || document.getElementById('otzaria-unavailable-cover')) return;
+          const cover = document.createElement('div');
+          cover.id = 'otzaria-unavailable-cover';
+          cover.dir = 'rtl';
+          cover.setAttribute('role', 'alert');
+          cover.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:#fff;color:#202124;padding:24px;text-align:center;font-family:Arial,sans-serif;';
+          cover.innerHTML = '<div style="max-width:520px"><h1 style="font-size:24px;line-height:1.5;margin:0 0 12px">הממשק לא זמין כרגע</h1><p style="font-size:16px;line-height:1.8;color:#5f6368;margin:0 0 24px">טעינת הממשק נכשלה. אפשר לנסות לרענן את הדף בעוד כמה רגעים.</p><button type="button" style="border:0;border-radius:8px;padding:10px 18px;background:#f0f0f0;color:#202124;font-size:15px;cursor:pointer" onclick="window.location.reload()">רענון הדף</button></div>';
+          document.body.appendChild(cover);
+        };
+        const observer = new MutationObserver(() => {
+          if (root.childNodes.length > 0) {
+            window.clearTimeout(timer);
+            observer.disconnect();
+          }
+        });
+        observer.observe(root, { childList: true });
+        timer = window.setTimeout(showUnavailable, 12000);
+        window.addEventListener('error', (event) => {
+          if (root.childNodes.length > 0) return;
+          const target = event.target;
+          if (target === window || (target && target.tagName === 'SCRIPT')) {
+            window.clearTimeout(timer);
+            showUnavailable();
+          }
+        }, true);
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

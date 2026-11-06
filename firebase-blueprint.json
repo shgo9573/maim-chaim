@@ -1,0 +1,174 @@
+{
+  "entities": {
+    "UserBookmark": {
+      "title": "UserBookmark",
+      "description": "A saved bookmark in a book for a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the bookmark"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The anonymous or authenticated user ID"
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Identifier of the book"
+        },
+        "bookTitle": {
+          "type": "string",
+          "description": "Hebrew title of the book"
+        },
+        "chapter": {
+          "type": "string",
+          "description": "Chapter or section name"
+        },
+        "lineIndex": {
+          "type": "number",
+          "description": "Line or paragraph index"
+        },
+        "previewText": {
+          "type": "string",
+          "description": "Snippet of text at bookmark location"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when the bookmark was created"
+        }
+      },
+      "required": ["id", "userId", "bookId", "bookTitle", "createdAt"]
+    },
+    "SearchHistory": {
+      "title": "SearchHistory",
+      "description": "Recent searches performed by a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Search item identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User identifier"
+        },
+        "query": {
+          "type": "string",
+          "description": "Search query text in Hebrew"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category filtered or 'all'"
+        },
+        "searchedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the search"
+        }
+      },
+      "required": ["id", "userId", "query", "searchedAt"]
+    },
+    "ReadingHistory": {
+      "title": "ReadingHistory",
+      "description": "History of books opened and read by the user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique record ID (usually userId_bookId)"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User identifier"
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Identifier of the book"
+        },
+        "bookTitle": {
+          "type": "string",
+          "description": "Hebrew title of the book"
+        },
+        "category": {
+          "type": "string",
+          "description": "Book category"
+        },
+        "lastPosition": {
+          "type": "number",
+          "description": "Last scroll or line position"
+        },
+        "lastSection": {
+          "type": "string",
+          "description": "Last section or chapter read"
+        },
+        "lastReadAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when last read"
+        }
+      },
+      "required": ["id", "userId", "bookId", "bookTitle", "lastReadAt"]
+    },
+    "PersonalNote": {
+      "title": "PersonalNote",
+      "description": "User personal note on a specific text segment",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique note ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "User identifier"
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Identifier of the book"
+        },
+        "bookTitle": {
+          "type": "string",
+          "description": "Book title"
+        },
+        "ref": {
+          "type": "string",
+          "description": "Reference or section identifier"
+        },
+        "selectedText": {
+          "type": "string",
+          "description": "Selected passage text"
+        },
+        "noteContent": {
+          "type": "string",
+          "description": "User note text"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["id", "userId", "bookId", "noteContent", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/bookmarks/{bookmarkId}": {
+      "schema": "UserBookmark",
+      "description": "Bookmarks created by user"
+    },
+    "/users/{userId}/searches/{searchId}": {
+      "schema": "SearchHistory",
+      "description": "Search history of user"
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": "ReadingHistory",
+      "description": "Reading history of user"
+    },
+    "/users/{userId}/notes/{noteId}": {
+      "schema": "PersonalNote",
+      "description": "Personal notes of user"
+    }
+  }
+}

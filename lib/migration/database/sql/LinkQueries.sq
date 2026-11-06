@@ -1,0 +1,151 @@
+-- Queries for links
+
+selectLinkById:
+SELECT l.*, ct.name AS connectionType
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+WHERE l.id = ?;
+
+countAllLinks:
+SELECT COUNT(*) FROM link;
+
+selectLinksBySourceLineIds:
+SELECT l.*, ct.name AS connectionType, b.title AS targetBookTitle, tl.content AS targetText
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+JOIN book b ON l.targetBookId = b.id
+JOIN line tl ON l.targetLineId = tl.id
+WHERE l.sourceLineId IN ?
+ORDER BY b.orderIndex;
+
+selectLinksBySourceBook:
+SELECT l.*, ct.name AS connectionType
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+WHERE l.sourceBookId = ?;
+
+selectCommentatorsByBook:
+SELECT DISTINCT l.targetBookId, b.title AS targetBookTitle, a.name AS author, COUNT(*) AS linkCount
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+JOIN book b ON l.targetBookId = b.id
+LEFT JOIN book_author ba ON b.id = ba.bookId
+LEFT JOIN author a ON ba.authorId = a.id
+WHERE l.sourceBookId = ?
+AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'ELUCIDATION', 'FOOTNOTES')
+/*LINK_VISIBILITY_FILTER*/
+GROUP BY l.targetBookId, b.title, a.name
+ORDER BY b.orderIndex, b.title;
+
+-- מחזיר את כל המפרשים על **טווח** שורות מקור (מ-startLineIndex ועד
+-- endLineIndex, לא כולל), עם `targetLineIndex` (=MIN(tl.lineIndex)) — השורה
+-- הראשונה בספר המפרש על פני כל הטווח. כך אפשר לאסוף את כל מפרשי הקטע
+-- (כותרת ועד הכותרת הבאה) ולפתוח כל מפרש במיקום המקביל הראשון שלו.
+--
+-- הטווח מסונן לפי `sl.lineIndex` של שורת המקור (לא לפי id), כדי להתיישר עם
+-- ה-`segment` של ערכי ה-TOC (=`line.lineIndex`). אינדקס `idx_line_book_index`
+-- על `line(bookId, lineIndex)` משרת את הסינון.
+-- פרמטרים: (sourceBookId, startLineIndex, endLineIndex).
+selectCommentatorsByLineRange:
+SELECT l.targetBookId, b.title AS targetBookTitle, a.name AS author,
+       COUNT(*) AS linkCount, MIN(tl.lineIndex) AS targetLineIndex
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+JOIN book b ON l.targetBookId = b.id
+JOIN line sl ON l.sourceLineId = sl.id
+JOIN line tl ON l.targetLineId = tl.id
+LEFT JOIN book_author ba ON b.id = ba.bookId
+LEFT JOIN author a ON ba.authorId = a.id
+WHERE l.sourceBookId = ?
+AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'ELUCIDATION', 'FOOTNOTES')
+AND sl.lineIndex >= ?
+AND sl.lineIndex < ?
+/*LINK_VISIBILITY_FILTER*/
+GROUP BY l.targetBookId, b.title, a.name
+ORDER BY b.orderIndex, b.title;
+
+-- מחזיר את **הקישורים** למפרשים על טווח שורות מקור [startLineIndex,
+-- endLineIndex), עם כל השדות הדרושים לבניית Link לניווט ולתצוגה מקדימה. מפרש
+-- אחד לכל ספר (GROUP BY). מחזיר שלושה מיקומים בספר המפרש:
+--   `exactTargetLineIndex` — המיקום המקביל לשורת המקור המדויקת (`exactLine`),
+--      או NULL אם המפרש אינו מקושר לאותה שורה בדיוק. כשקיים — התצוגה המקדימה
+--      תציג את הקטע המדויק בלבד.
+--   `minTargetLineIndex`/`maxTargetLineIndex` — קצות טווח המפרש על פני כל הקטע;
+--      כשאין התאמה מדויקת מציגים את כל התוכן שבטווח זה.
+-- מסנן את `excludeBookId` (ספר המפרש שממנו הגיע המשתמש).
+-- פרמטרים: (exactLine, sourceBookId, startLineIndex, endLineIndex, excludeBookId).
+selectCommentaryLinksByLineRange:
+SELECT l.targetBookId, b.title AS targetBookTitle,
+       b.categoryId AS targetCategoryId, NULL AS targetFileType,
+       MIN(ct.name) AS connectionType,
+       MIN(tl.lineIndex) AS minTargetLineIndex,
+       MAX(tl.lineIndex) AS maxTargetLineIndex,
+       MIN(CASE WHEN sl.lineIndex = ? THEN tl.lineIndex END) AS exactTargetLineIndex
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+JOIN book b ON l.targetBookId = b.id
+JOIN line sl ON l.sourceLineId = sl.id
+JOIN line tl ON l.targetLineId = tl.id
+WHERE l.sourceBookId = ?
+AND ct.name IN ('COMMENTARY', 'SUPER_COMMENTARY', 'TARGUM', 'MIDRASH', 'PARSHANUT', 'DIBUR_HAMATCHIL', 'FOOTNOTES')
+AND sl.lineIndex >= ?
+AND sl.lineIndex < ?
+AND l.targetBookId != ?
+/*LINK_VISIBILITY_FILTER*/
+GROUP BY l.targetBookId, b.title, b.categoryId
+ORDER BY b.orderIndex, b.title;
+
+-- מחזיר את מפרשי ברירת המחדל ("מפרשים בסיסיים") של ספר, ממוינים לפי position.
+-- position ממיין את המפרשים בתוך טבלה זו בלבד (תרגומים יושבים בטבלה נפרדת
+-- עם position משלהם) — הוא קובע את ההקדמה ברשימה ואת סדר המיקומים בצורת הדף.
+-- פרמטר: (bookId).
+selectDefaultCommentators:
+SELECT b.title AS targetBookTitle, dc.position
+FROM default_commentator dc
+JOIN book b ON dc.commentatorBookId = b.id
+WHERE dc.bookId = ?
+ORDER BY dc.position;
+
+-- מחזיר את תרגומי ברירת המחדל של ספר, ממוינים לפי position.
+-- פרמטר: (bookId).
+selectDefaultTargums:
+SELECT b.title AS targetBookTitle, dt.position
+FROM default_targum dt
+JOIN book b ON dt.targumBookId = b.id
+WHERE dt.bookId = ?
+ORDER BY dt.position;
+
+insert:
+INSERT INTO link (sourceBookId, targetBookId, sourceLineId, targetLineId, connectionTypeId)
+VALUES (?, ?, ?, ?, ?);
+
+delete:
+DELETE FROM link WHERE id = ?;
+
+deleteByBookId:
+DELETE FROM link WHERE sourceBookId = ? OR targetBookId = ?;
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+-- Count links by source book
+countLinksBySourceBook:
+SELECT COUNT(*) FROM link WHERE sourceBookId = ?;
+
+-- Count links by target book
+countLinksByTargetBook:
+SELECT COUNT(*) FROM link WHERE targetBookId = ?;
+
+-- Count links by source book and connection type
+countLinksBySourceBookAndType:
+SELECT COUNT(*)
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+WHERE l.sourceBookId = ? AND ct.name = ?;
+
+-- Count links by target book and connection type
+countLinksByTargetBookAndType:
+SELECT COUNT(*)
+FROM link l
+JOIN connection_type ct ON l.connectionTypeId = ct.id
+WHERE l.targetBookId = ? AND ct.name = ?;

@@ -1,0 +1,7 @@
+{
+  "name": "מים חיים",
+  "description": "ספרייה תורנית מקוונת מתקדמת - מים חיים",
+  "request_frame_permission": false,
+  "prompt": "מים חיים - מאגר ספרים תורני מקוון",
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

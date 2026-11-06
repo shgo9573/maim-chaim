@@ -1,0 +1,107 @@
+import 'package:otzaria/search/models/search_configuration.dart';
+
+/// קונפיגורציית החיפוש של טאב קריאה, בצורה שנשמרת לדיסק.
+///
+/// משותפת לטאב טקסט ולטאב PDF. בלעדיה שמירת שולחן עבודה ויציאה מהאפליקציה
+/// מאפסות את החיפוש, והספר נפתח מחדש במסלול המחרוזת הרצופה — "אין תוצאות"
+/// על מה שהחיפוש הגלובלי כן מצא.
+class ReadingTabSearchState {
+  const ReadingTabSearchState({
+    this.searchText = '',
+    this.searchOptions = const {},
+    this.alternativeWords = const {},
+    this.spacingValues = const {},
+    this.searchMode = SearchMode.exact,
+    this.searchDistance = 0,
+    this.matchPolicy = SearchMatchPolicy.standard,
+  });
+
+  final String searchText;
+  final Map<String, Map<String, bool>> searchOptions;
+  final Map<int, List<String>> alternativeWords;
+  final Map<String, String> spacingValues;
+  final SearchMode searchMode;
+  final int searchDistance;
+  final SearchMatchPolicy matchPolicy;
+
+  /// שדות ה-JSON נוספים למפת הטאב הקיימת, ולכן השמות מקודמת `search`.
+  /// שאילתה ריקה אינה נשמרת בכלל — טאב בלי חיפוש נשאר עם אותו JSON כמו קודם.
+  Map<String, dynamic> toJson() {
+    if (searchText.isEmpty) return const {};
+    return {
+      'searchText': searchText,
+      if (searchOptions.isNotEmpty) 'searchOptions': searchOptions,
+      if (alternativeWords.isNotEmpty)
+        'searchAlternativeWords': {
+          for (final entry in alternativeWords.entries)
+            entry.key.toString(): entry.value,
+        },
+      if (spacingValues.isNotEmpty) 'searchSpacingValues': spacingValues,
+      'searchMode': searchMode.name,
+      'searchDistance': searchDistance,
+      if (!matchPolicy.isStandard || matchPolicy.wordMatchCount != 2)
+        'searchMatchPolicy': matchPolicy.toJson(),
+    };
+  }
+
+  /// קריאה סובלנית: כל שדה חסר או פגום חוזר לברירת המחדל, כדי ששמירה ישנה
+  /// (או מהגרסה שלפני השימור) תיטען בלי לאבד את הטאב עצמו.
+  factory ReadingTabSearchState.fromJson(Map<String, dynamic> json) {
+    return ReadingTabSearchState(
+      searchText: json['searchText'] is String ? json['searchText'] : '',
+      searchOptions: _decodeSearchOptions(json['searchOptions']),
+      alternativeWords: _decodeAlternativeWords(json['searchAlternativeWords']),
+      spacingValues: _decodeSpacingValues(json['searchSpacingValues']),
+      searchMode: _decodeSearchMode(json['searchMode']),
+      searchDistance: json['searchDistance'] is int
+          ? json['searchDistance'] as int
+          : 0,
+      matchPolicy: SearchMatchPolicy.fromJson(json['searchMatchPolicy']),
+    );
+  }
+
+  static Map<String, Map<String, bool>> _decodeSearchOptions(Object? raw) {
+    if (raw is! Map) return const {};
+    final decoded = <String, Map<String, bool>>{};
+    for (final entry in raw.entries) {
+      final options = entry.value;
+      if (options is! Map) continue;
+      decoded['${entry.key}'] = {
+        for (final option in options.entries)
+          if (option.value is bool) '${option.key}': option.value as bool,
+      };
+    }
+    return decoded;
+  }
+
+  static Map<int, List<String>> _decodeAlternativeWords(Object? raw) {
+    if (raw is! Map) return const {};
+    final decoded = <int, List<String>>{};
+    for (final entry in raw.entries) {
+      final index = int.tryParse('${entry.key}');
+      final words = entry.value;
+      if (index == null || words is! List) continue;
+      decoded[index] = [
+        for (final word in words)
+          if (word is String) word,
+      ];
+    }
+    return decoded;
+  }
+
+  static Map<String, String> _decodeSpacingValues(Object? raw) {
+    if (raw is! Map) return const {};
+    return {
+      for (final entry in raw.entries)
+        if (entry.value is String) '${entry.key}': entry.value as String,
+    };
+  }
+
+  static SearchMode _decodeSearchMode(Object? raw) {
+    if (raw is! String) return SearchMode.exact;
+    return SearchMode.values.firstWhere(
+      (mode) => mode.name == raw,
+      orElse: () => SearchMode.exact,
+    );
+  }
+}

@@ -1,0 +1,103 @@
+name: Validate Tzurat HaDaf HTML integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/components/TzuratHaDafView.tsx"
+      - "src/components/AdminStats.tsx"
+      - "src/store.tsx"
+      - "src/utils/talmud.ts"
+      - "test/frontend/dafHeading.test.ts"
+      - "server.ts"
+      - ".github/workflows/deploy.yml"
+      - "src/components/TzuratHaDafPage.tsx"
+      - "src/components/TzuratHaDaf.tsx"
+      - "src/components/BookReader.tsx"
+      - "src/components/ReadingScreen.tsx"
+      - "src/vilna-html/**"
+      - "public/vilna-html/**"
+      - "scripts/sync-vilna-html.mjs"
+      - "docs/VILNA-HTML-INTEGRATION.md"
+      - "package.json"
+      - ".github/workflows/validate-vilna-html-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Rebuild native tools
+        run: npm rebuild better-sqlite3 esbuild
+      - name: Type-check backend
+        run: npm run lint
+      - name: Type-check frontend
+        run: npm run typecheck:frontend
+      - name: Test frontend
+        run: npm run test:frontend
+      - name: Build frontend
+        run: npm run build
+      - name: Verify embedded HTML bridge is present
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const html = fs.readFileSync('public/vilna-html/index.html', 'utf8');
+          const source = fs.readFileSync('src/components/TzuratHaDafView.tsx', 'utf8');
+          const server = fs.readFileSync('server.ts', 'utf8');
+          const admin = fs.readFileSync('src/components/AdminStats.tsx', 'utf8');
+          const store = fs.readFileSync('src/store.tsx', 'utf8');
+          const util = fs.readFileSync('src/utils/talmud.ts', 'utf8');
+          const deploy = fs.readFileSync('.github/workflows/deploy.yml', 'utf8');
+          const checks = [
+            ['static HTML file exists', html.length > 5000],
+            ['embed mode exists', html.includes('embed=1') || html.includes('const EMBED =')],
+            ['word selection message exists', html.includes('type:"select-word"')],
+            ['parent highlight message exists', html.includes('highlight-word')],
+            ['viewer has HTML mode', source.includes('/vilna-html/index.html?embed=1')],
+            ['HTML iframe has current cache bust and passes admin display settings', source.includes('v=20261105-html-reader4') && source.includes('brackets=${htmlBracketMode}') && source.includes('wordRecognition=${htmlWordRecognition}')],
+            ['HTML zoom controls are relayed to the iframe', source.includes("type: 'set-zoom'") && html.includes('event.data?.type === "set-zoom"') && html.includes('html.style.zoom')],
+            ['HTML bracket orientation has an admin-controlled swap mode', html.includes('const BRACKET_MODE') && html.includes('BRACKET_SWAP') && html.includes('esc(displayText(w.text))') && admin.includes('htmlBracketMode')],
+            ['HTML word-recognition sensitivity is adjustable and reaches the reader', html.includes('const WORD_RECOGNITION') && html.includes('presets[WORD_RECOGNITION]') && admin.includes('htmlWordRecognition')],
+            ['Daf reference parser recognizes explicit amud labels', util.includes('עמוד\\s*([אב]|ראשון|שני)') && util.includes('export function parseDafRef')],
+            ['global search creates a new tab when no query is supplied', store.includes('if (query === undefined)') && store.includes('setTabs((ts) => [...ts, tab])')],
+            ['HTML document is served separately with explicit missing-file error', server.includes("app.get('/vilna-html/index.html'") && server.includes('Tzurat HaDaf HTML unavailable')],
+            ['HTML reader assets bypass the one-year immutable cache', server.includes("app.use('/vilna-html', express.static(vilnaHtmlRoot") && server.includes("Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'")],
+            ['missing PDF.js modules return 404 instead of the app shell', server.includes("req.path.endsWith('.mjs')")],
+            ['deploy explicitly copies the standalone HTML and local PDF.js files', deploy.includes('cp public/vilna-html/index.html dist/vilna-html/index.html') && deploy.includes('cp public/vilna-html/vendor/pdf.worker.mjs dist/vilna-html/vendor/pdf.worker.mjs')],
+            ['existing commentary bridge exists', source.includes('selectBubble(best)')],
+            ['saved snapshot has no unresolved placeholder', !html.includes('__TRACTATES__')],
+            ['embed DOM helper is defined before use', html.indexOf('const $ = (id)') >= 0 && html.indexOf('const $ = (id)') < html.indexOf('if (EMBED)')],
+            ['embedded source setup has optional DOM lookup', html.includes('$("embedTools")?.classList.add("external-source-tools")')],
+            ['HTML export does not dereference a missing Google Fonts link', !html.includes('document.querySelector(\'link[href*="fonts.googleapis"]\').outerHTML')],
+            ['attribution footer is present in generated HTML', html.includes('id="sourceAttribution"') && html.includes('SHAS.org') && html.includes('HebrewBooks License')],
+            ['full HebrewBooks license paragraph 1 is included', html.includes('No commercial use') && html.includes('No resale') && html.includes('Local Law') && html.includes('restrictions on further distribution')],
+            ['word frames are suppressed in embedded HTML mode', html.includes('const wordClass = EMBED ? ""') && html.includes('body.embed .html-sheet span:hover{outline:none!important}')],
+            ['exported HTML reuses the source attribution footer', html.includes('function attributionFooterHtml(source = EMBED_SOURCE)') && html.includes('const attribution = attributionFooterHtml(EMBED_SOURCE);')],
+            ['HTML settings are hidden in the simplified standalone view', html.includes('body:not(.embed) #aside') && html.includes('body:not(.embed) header #dlZip')],
+            ['embed layout is applied before PDF.js module imports', html.indexOf('document.body.classList.add("embed")') >= 0 && html.indexOf('document.body.classList.add("embed")') < html.indexOf('import * as pdfjs')],
+            ['embedded status is empty after successful HTML load', html.includes('status(EMBED ? "" :') && html.includes('body.embed #status:empty')],
+            ['HTML disabled banners are absent from the embedded view', !html.includes('HTML ניסיוני — לא פעיל כברירת מחדל')],
+            ['HTML toggle is available and its selected PDF source is actually used', source.includes('onClick={() => {') && source.includes('const activePageSource = pageSource;') && source.includes('{htmlView && (') && source.includes('value={activePageSource}')],
+            ['SHAS.org and HebrewBooks sources are not blocked by the obsolete admin feature gate', !server.includes("if (!readSiteFeatureSettings().allowExternalHtmlSource)") && !server.includes("req.query.forHtml === '1' && !readSiteFeatureSettings().allowExternalHtmlSource")],
+            ['HTML reader reports loading errors and falls back when no live text can be extracted', source.includes("data.type === 'html-status'") && html.includes('info.family = \'Noto Serif Hebrew\'') && html.includes('if (!PAGE.words.length)')],
+            ['unrecognized Mac control glyphs retain their original font glyph instead of being guessed as nun', html.includes('String.fromCodePoint(0xE000 + c)') && html.includes('\\uE001-\\uE01F') && !html.includes('if (c > 0 && c < 32) return "נ"')],
+            ['HTML toggle does not advertise an inactive state', !source.includes('לא פעיל')],
+            ['browser storage access is guarded so it cannot strand HTML at loading', (html.match(/localStorage\.getItem\(/g) || []).length === 1 && (html.match(/localStorage\.setItem\(/g) || []).length === 1],
+            ['inner exported script close is escaped so HTML parsing cannot break the page', html.includes('<\\/script>') && (html.match(/<\/script>/g) || []).length === 2],
+          ];
+          const failed = checks.filter(([, ok]) => !ok);
+          for (const [name, ok] of checks) console.log((ok ? 'PASS ' : 'FAIL ') + name);
+          if (failed.length) process.exit(1);
+          NODE

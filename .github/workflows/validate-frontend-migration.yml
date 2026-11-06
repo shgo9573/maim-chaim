@@ -1,0 +1,61 @@
+name: Validate frontend migration
+
+on:
+  push:
+    branches:
+      - frontend-migration
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install from committed lockfile without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Type-check backend and shared project
+        run: npm run lint
+      - name: Type-check frontend
+        run: npm run typecheck:frontend
+      - name: Build frontend
+        run: npm run build
+      - name: Verify frontend/backend API contract
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const api = fs.readFileSync('src/api.ts', 'utf8');
+          const server = fs.readFileSync('server.ts', 'utf8');
+          const html = fs.readFileSync('dist/index.html', 'utf8');
+          const vite = fs.readFileSync('vite.config.ts', 'utf8');
+          const deploy = fs.readFileSync('.github/workflows/deploy.yml', 'utf8');
+          const checks = [
+            ['same-origin API base', api.includes("API_BASE = '/api'")],
+            ['status route', server.includes("app.get('/api/status'")],
+            ['library route', server.includes("app.get('/api/library/tree'")],
+            ['search route', server.includes("app.post('/api/search'")],
+            ['search health route', server.includes("app.get('/api/search-health'")],
+            ['single-item history deletion', server.includes("app.delete('/api/user/history/:id'")],
+            ['feedback route', server.includes("app.post('/api/feedback'")],
+            ['external search dependency retained', server.includes("process.env.SEARCH_SERVICE_URL || 'http://localhost:8080/search'")],
+            ['root static dist serving retained', server.includes('express.static(distPath')],
+            ['/a redirects to the root', server.includes("app.get(['/a', '/a/*']") && server.includes("res.redirect(308, '/')")],
+            ['Vite base is the origin root', vite.includes("base: '/'")],
+            ['Vite output is the root dist', vite.includes("outDir: 'dist'")],
+            ['deploy builds the root frontend', deploy.includes('npm run build') && deploy.includes('test -s dist/index.html')],
+            ['root build checks the public icon', deploy.includes('test -s dist/icon.svg')],
+            ['approved frontend marker built', html.includes('<meta name="otzaria-frontend" content="v2" />')],
+            ['production entrypoint built', !html.includes('/src/main.tsx')],
+            ['public icon copied to root build', fs.existsSync('dist/icon.svg')],
+          ];
+          const failed = checks.filter(([, ok]) => !ok);
+          for (const [name, ok] of checks) console.log((ok ? 'PASS ' : 'FAIL ') + name);
+          if (failed.length) process.exit(1);
+          NODE

@@ -1,0 +1,1747 @@
+import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:collection/collection.dart';
+import 'package:flutter/material.dart';
+import 'package:otzaria/core/error_log_file.dart';
+import 'package:otzaria/data/data_providers/book_database_resolver.dart';
+import 'package:otzaria/text_book/view/text_correction_editor.dart';
+import 'package:otzaria/widgets/controls/segmented_control.dart';
+import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart';
+import 'package:html/parser.dart' as html_parser;
+import 'package:otzaria/core/messages/report_messages.dart';
+import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/theme/theme_exports.dart';
+import 'package:otzaria/models/books.dart';
+import 'package:otzaria/models/direct_error_report.dart';
+import 'package:otzaria/settings/settings_exports.dart';
+import 'package:otzaria/text_book/bloc/text_book_state.dart';
+import 'package:otzaria/models/phone_report_data.dart';
+import 'package:otzaria/services/data_collection_service.dart';
+import 'package:otzaria/services/direct_error_report_service.dart';
+import 'package:otzaria/services/phone_report_service.dart';
+import 'package:otzaria/services/book_details_service.dart';
+import 'package:otzaria/widgets/controls/action_buttons.dart';
+import 'package:otzaria/widgets/dialogs/dialogs_exports.dart';
+import 'package:otzaria/widgets/dialogs/error_report_sender_email_dialog.dart';
+import 'package:otzaria/widgets/misc/app_selection_area.dart';
+import 'package:otzaria/widgets/misc/phone_report_tab.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:otzaria/widgets/text/rtl_text_field.dart';
+import 'package:otzaria/utils/text/ref_helper.dart';
+import 'package:otzaria/utils/canonical_json.dart';
+
+/// נתוני הדיווח שנאספו מתיבת סימון הטקסט + פירוט הטעות שהמשתמש הקליד.
+class ReportedErrorData {
+  final String selectedText; // הטקסט שסומן ע"י המשתמש
+  final String errorDetails; // פירוט הטעות (שדה טקסט נוסף)
+
+  /// הצעת תיקון מובנית; null בדיווח חופשי.
+  final TextCorrection? correction;
+
+  const ReportedErrorData({
+    required this.selectedText,
+    required this.errorDetails,
+    this.correction,
+  });
+}
+
+/// מה שהתוכנה יודעת בוודאות על השורה המדווחת מתוך seforim.db.
+class ReportSourceSnapshot {
+  final int bookId;
+  final int lineIndex;
+  final String? heRef;
+
+  /// `line.content` הגולמי, כפי שהוא ב-DB.
+  final String originalLine;
+
+  const ReportSourceSnapshot({
+    required this.bookId,
+    required this.lineIndex,
+    required this.heRef,
+    required this.originalLine,
+  });
+}
+
+/// פעולה שנבחרה בדיאלוג האישור.
+enum ErrorReportAction {
+  cancel,
+  sendEmail,
+  sendDirect,
+  saveForLater,
+  phone,
+}
+
+/// מחלקה עזר להחזרת תוצאה מהדיאלוג (פעולה + נתונים)
+class ReportDialogResult {
+  final ErrorReportAction action;
+  final dynamic data; // ReportedErrorData OR PhoneReportData
+
+  ReportDialogResult(this.action, this.data);
+}
+
+/// תוצאת רזולוציית בחירה עבור חישוב הקשר בדיווח שגיאה.
+class SelectionContextResolution {
+  final String contextText;
+  final int selectionStart;
+  final int selectionEnd;
+  final bool usedLineFallback;
+
+  const SelectionContextResolution({
+    required this.contextText,
+    required this.selectionStart,
+    required this.selectionEnd,
+    required this.usedLineFallback,
+  });
+}
+
+class _DirectReportDetails extends StatelessWidget {
+  final DirectErrorReport report;
+
+  const _DirectReportDetails({required this.report});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 560,
+      child: AppSelectionArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (report.rejectionReason != null)
+                _ReportDetailRow(
+                  label: 'הדיווח לא נקלט',
+                  value: report.rejectionReason!,
+                ),
+              _ReportDetailRow(label: 'ספר', value: report.bookTitle),
+              _ReportDetailRow(label: 'מיקום', value: report.currentRef),
+              _ReportDetailRow(
+                label: 'שורה',
+                value: report.lineNumber.toString(),
+              ),
+              _ReportDetailRow(label: 'כתובת זיהוי', value: report.senderEmail),
+              _ReportDetailRow(label: 'טקסט שנבחר', value: report.selectedText),
+              _ReportDetailRow(
+                label: 'פירוט הטעות',
+                value: report.errorDetails,
+              ),
+              if (report.correction != null)
+                _ReportDetailRow(
+                  label: report.serverAcceptedCorrection == false
+                      ? 'הצעת תיקון (נקלטה כטקסט בלבד)'
+                      : 'הצעת תיקון',
+                  value: report.correction!.fallbackBlock,
+                ),
+              _ReportDetailRow(label: 'הקשר', value: report.contextText),
+              _ReportDetailRow(label: 'נתיב קובץ', value: report.filePath),
+              _ReportDetailRow(
+                label: 'תיקיית מקור',
+                value: report.sourceFolder,
+              ),
+              _ReportDetailRow(
+                label: 'גרסת ספרייה',
+                value: report.libraryVersion,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportDetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ReportDetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final displayValue = value.trim().isEmpty ? 'לא נשלח ערך' : value.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelMedium,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            displayValue,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Helper class for managing error report dialogs and actions
+class ErrorReportHelper {
+  static const String _fallbackMail = 'otzaria.200@gmail.com';
+  static const String _otzariaDirectReportTarget = 'אוצריא';
+  static const String _sefariaDirectReportTarget = 'ספריא';
+
+  /// עמוד העריכה העצמית של ספרי דיקטה.
+  static const String dictaEditUrl = 'https://otzaria.org/library/dicta-edit';
+
+  /// תקרת אורך לקטע שמועבר בקישור — קטע חלקי עדיין מאותר באתר (התאמת
+  /// substring), וכך נמנעים מ-URL ארוך מדי.
+  static const int _dictaEditTextMaxLength = 300;
+
+  /// בונה קישור עמוק לתיקון עצמי: נתיב `goto` באתר מתרגם את שם הספר למזהה
+  /// במרחב העריכה ומפנה לעורך עם הקטע המדווח ממוקד ומסומן (?find=).
+  /// כשאין התאמה חד-משמעית האתר נופל לרשימת הספרים מסוננת לפי השם.
+  static String dictaEditUrlFor(String bookTitle, {String selectedText = ''}) {
+    final trimmed = bookTitle.trim();
+    if (trimmed.isEmpty) return dictaEditUrl;
+
+    final params = <String, String>{'title': trimmed};
+    var text = selectedText.trim();
+    if (text.length > _dictaEditTextMaxLength) {
+      text = text.substring(0, _dictaEditTextMaxLength);
+      // חיתוך בגבול מילה כדי שההתאמה באתר לא תיפול על מילה קטועה
+      final lastSpace = text.lastIndexOf(' ');
+      if (lastSpace > 0) text = text.substring(0, lastSpace);
+    }
+    if (text.isNotEmpty) params['text'] = text;
+
+    return Uri.parse(
+      '$dictaEditUrl/goto',
+    ).replace(queryParameters: params).toString();
+  }
+
+  /// [state] הוא null בדיווח ממשטח ללא `TextBookBloc` (חלונית ה-PDF); אז
+  /// [reportContent] חייב להיות מסופק, והוא מקור התוכן היחיד.
+  static List<String> resolveReportContent({
+    required TextBookLoaded? state,
+    List<String>? reportContent,
+  }) {
+    return reportContent ?? state?.content ?? const [];
+  }
+
+  /// [reportBook] נדרש כשאין [state] — ראה [resolveReportContent].
+  static TextBook? resolveReportBook({
+    required TextBookLoaded? state,
+    TextBook? reportBook,
+  }) {
+    return reportBook ?? state?.book;
+  }
+
+  /// קורא את השורה הגולמית מ-seforim.db. null כשאין מקור מוסמך: ספר אישי,
+  /// מהדורה חלופית, ספר מקובץ, או שורה שאינה זהה למה שהוצג למשתמש.
+  static Future<ReportSourceSnapshot?> resolveReportSource({
+    required TextBook book,
+    required int lineIndex,
+    required List<String> content,
+    String? reportLine,
+  }) async {
+    if (!book.isOfficialLibraryBook || book.versionTitle != null) return null;
+    try {
+      final resolved = await BookDatabaseResolver.resolveBook(
+        title: book.title,
+        categoryId: book.categoryId,
+        fileType: book.fileType,
+        filePath: book.filePath,
+        officialOnly: true,
+      );
+      if (resolved == null ||
+          !resolved.source.isOfficial ||
+          resolved.book.isFileBacked) {
+        return null;
+      }
+      final line = await resolved.repository.getLineByIndex(
+        resolved.book.id,
+        lineIndex,
+      );
+      if (line == null) return null;
+      final snapshot = ReportSourceSnapshot(
+        bookId: resolved.book.id,
+        lineIndex: lineIndex,
+        heRef: line.heRef,
+        originalLine: line.content,
+      );
+      return isSourceConsistentWithContent(
+            snapshot,
+            content,
+            reportLine: reportLine,
+          )
+          ? snapshot
+          : null;
+    } catch (e) {
+      debugPrint('Resolving report source failed: $e');
+      return null;
+    }
+  }
+
+  /// השורה מה-DB חייבת להיות זהה לשורה שהוצגה, אחרת המשתמש סימן במקום אחר.
+  /// [reportLine] — השורה שהוצגה כש-[content] אינו מסודר לפי אינדקס השורה (מפרש).
+  static bool isSourceConsistentWithContent(
+    ReportSourceSnapshot snapshot,
+    List<String> content, {
+    String? reportLine,
+  }) {
+    if (reportLine != null) return reportLine == snapshot.originalLine;
+    final index = snapshot.lineIndex;
+    return index >= 0 &&
+        index < content.length &&
+        content[index] == snapshot.originalLine;
+  }
+
+  static String resolveReportTargetText({
+    required List<String> content,
+    required String selectedText,
+    int? preferredLineNumber,
+  }) {
+    if (selectedText.trim().isNotEmpty) {
+      return sanitizeReportText(selectedText);
+    }
+
+    final hasValidPreferredLine =
+        preferredLineNumber != null &&
+        preferredLineNumber >= 0 &&
+        preferredLineNumber < content.length;
+    if (!hasValidPreferredLine) {
+      return sanitizeReportText(selectedText);
+    }
+
+    return sanitizeReportText(content[preferredLineNumber]);
+  }
+
+  static bool isSefariaSourceFolder(String? sourceFolder) {
+    final normalizedSource = sourceFolder?.trim().toLowerCase() ?? '';
+    return normalizedSource.contains('sefariatootzaria') ||
+        normalizedSource.contains('sefaria');
+  }
+
+  /// נמעני המייל לפי מקור הספר, מופרדים בפסיק. סדר המפתחות חשוב, והמיפוי
+  /// חייב להישאר תואם ל-getEmailRecipients בשרת (Otzaria_Website).
+  ///
+  /// ההתאמה היא `contains` על המחרוזת המנורמלת לאותיות קטנות בלבד — בלי הסרת
+  /// מפרידים. לכן מפתח חייב להיות תת-מחרוזת של שם המקור ב-`seforim.db` כפי
+  /// שהוא (למשל `wikiJewishBooksToOtzaria`); מפתח עם קו תחתון לעולם לא יתאים.
+  static String emailRecipientsFor(String? sourceFolder) {
+    if (sourceFolder == null) return _fallbackMail;
+    const sourceToEmailMap = {
+      'sefariaToOtzaria': 'corrections@sefaria.org,jewishoffice@gmail.com',
+      'sefaria': 'corrections@sefaria.org,jewishoffice@gmail.com',
+      'wikiJewishBooks': '$_fallbackMail,WikiJewishBooks@gmail.com',
+      'wikiSource': '$_fallbackMail,novartza@gmail.com',
+      'Pninim': '$_fallbackMail,contact@pninim.org',
+      'Tashma': '$_fallbackMail,jewishoffice@gmail.com',
+      'Ben-Yehuda': '$_fallbackMail,editor@benyehuda.org',
+      // רישיון "ים החכמה" מחייב שדיווח על ספר משלהם יגיע גם אליהם.
+      'yam-HaHachma': '$_fallbackMail,y025837086@gmail.com',
+    };
+    final normalizedSource = sourceFolder.toLowerCase();
+    return sourceToEmailMap.entries
+            .firstWhereOrNull(
+              (entry) => normalizedSource.contains(entry.key.toLowerCase()),
+            )
+            ?.value ??
+        _fallbackMail;
+  }
+
+  /// האם דיווח על ספר מהמקור הזה מגיע לתיבת אוצריא. רק דיווח כזה נכנס
+  /// למערכת התיקונים באתר, ולכן רק לו מוצע מסלול "הצעת תיקון".
+  static bool reportReachesOtzaria(String? sourceFolder) =>
+      emailRecipientsFor(sourceFolder).split(',').contains(_fallbackMail);
+
+  static bool isDictaSourceFolder(String? sourceFolder) {
+    final normalizedSource = sourceFolder?.trim().toLowerCase() ?? '';
+    return normalizedSource.contains('dicta');
+  }
+
+  static String resolveDirectReportTargetLabel(String? sourceFolder) {
+    return isSefariaSourceFolder(sourceFolder)
+        ? _sefariaDirectReportTarget
+        : _otzariaDirectReportTarget;
+  }
+
+  /// מנקה טקסט לדיווח: מסיר תגיות HTML ומפענח ישויות HTML נפוצות.
+  static String sanitizeReportText(String text) {
+    if (text.trim().isEmpty) {
+      return '';
+    }
+
+    final decoded = html_parser.parseFragment(text).text ?? '';
+    return decoded.replaceAll('\u00A0', ' ').trim();
+  }
+
+  /// Build 4+4 words context around a selection range within fullText
+  static String buildContextAroundSelection(
+    String fullText,
+    int selectionStart,
+    int selectionEnd, {
+    int wordsBefore = 4,
+    int wordsAfter = 4,
+  }) {
+    if (selectionStart < 0 || selectionEnd <= selectionStart) {
+      return fullText;
+    }
+    final wordRegex = RegExp("\\S+", multiLine: true);
+    final matches = wordRegex.allMatches(fullText).toList();
+    if (matches.isEmpty) return fullText;
+
+    int startWordIndex = 0;
+    int endWordIndex = matches.length - 1;
+
+    for (int i = 0; i < matches.length; i++) {
+      final m = matches[i];
+      if (selectionStart >= m.start && selectionStart < m.end) {
+        startWordIndex = i;
+        break;
+      }
+      if (selectionStart < m.start) {
+        startWordIndex = i;
+        break;
+      }
+    }
+
+    for (int i = matches.length - 1; i >= 0; i--) {
+      final m = matches[i];
+      final selEndMinusOne = selectionEnd - 1;
+      if (selEndMinusOne >= m.start && selEndMinusOne < m.end) {
+        endWordIndex = i;
+        break;
+      }
+      if (selEndMinusOne > m.end) {
+        endWordIndex = i;
+        break;
+      }
+    }
+
+    final ctxStart = (startWordIndex - wordsBefore) < 0
+        ? 0
+        : (startWordIndex - wordsBefore);
+    final ctxEnd = (endWordIndex + wordsAfter) >= matches.length
+        ? matches.length - 1
+        : (endWordIndex + wordsAfter);
+
+    final from = matches[ctxStart].start;
+    final to = matches[ctxEnd].end;
+    if (from < 0 || to <= from || to > fullText.length) return fullText;
+    return fullText.substring(from, to);
+  }
+
+  /// פותר את מיקום הבחירה והקשר סביבה בצורה יציבה.
+  ///
+  /// נותן עדיפות לשורה שנבחרה. אם יש בשורה כמה מופעים של אותו טקסט (עמימות),
+  /// לא בוחרים מופע שרירותי אלא מבצעים fallback בטוח להקשר ברמת השורה.
+  static SelectionContextResolution resolveSelectionContext({
+    required List<String> content,
+    required String selectedText,
+    int? preferredLineNumber,
+    int wordsBefore = 4,
+    int wordsAfter = 4,
+  }) {
+    final allText = content.join('\n');
+    if (allText.isEmpty) {
+      return const SelectionContextResolution(
+        contextText: '',
+        selectionStart: -1,
+        selectionEnd: -1,
+        usedLineFallback: false,
+      );
+    }
+
+    final hasValidPreferredLine =
+        preferredLineNumber != null &&
+        preferredLineNumber >= 0 &&
+        preferredLineNumber < content.length;
+
+    final int? lineNumber = hasValidPreferredLine ? preferredLineNumber : null;
+    final lineStart = lineNumber != null
+        ? _lineStartOffset(content, lineNumber)
+        : 0;
+    final lineEnd = lineNumber != null
+        ? lineStart + content[lineNumber].length
+        : 0;
+
+    int selectionStart = -1;
+    bool usedLineFallback = false;
+
+    if (selectedText.isNotEmpty) {
+      if (lineNumber != null) {
+        final lineText = content[lineNumber];
+        final occurrencesInLine = _findAllOccurrences(lineText, selectedText);
+
+        if (occurrencesInLine.length == 1) {
+          // מופע יחיד בשורה — חד-משמעי
+          selectionStart = lineStart + occurrencesInLine.first;
+        } else if (occurrencesInLine.length > 1) {
+          // עמימות: אותו טקסט מופיע כמה פעמים באותה שורה.
+          // ל-SelectionArea של Flutter אין API שחושף את ה-offset המדויק
+          // של הבחירה, לכן אין לנו דרך לדעת איזה מופע נבחר.
+          // במקום לנחש (ראשון/אחרון), נחזיר את כל השורה כהקשר —
+          // כך מי שקורא את הדיווח יראה את כל המופעים ויוכל להבין
+          // בשילוב עם תיאור השגיאה של המשתמש.
+          usedLineFallback = true;
+          final contextText = buildContextAroundSelection(
+            allText,
+            lineStart,
+            lineEnd,
+            wordsBefore: wordsBefore,
+            wordsAfter: wordsAfter,
+          );
+          return SelectionContextResolution(
+            contextText: contextText,
+            selectionStart: lineStart,
+            selectionEnd: lineEnd,
+            usedLineFallback: usedLineFallback,
+          );
+        } else {
+          // הטקסט לא נמצא בשורה המועדפת — מחפשים מהשורה ואילך
+          selectionStart = allText.indexOf(selectedText, lineStart);
+        }
+      } else {
+        selectionStart = allText.indexOf(selectedText);
+      }
+
+      if (selectionStart < 0) {
+        selectionStart = allText.indexOf(selectedText);
+      }
+    }
+
+    if (selectionStart >= 0 && selectedText.isNotEmpty) {
+      final selectionEnd = selectionStart + selectedText.length;
+      final contextText = buildContextAroundSelection(
+        allText,
+        selectionStart,
+        selectionEnd,
+        wordsBefore: wordsBefore,
+        wordsAfter: wordsAfter,
+      );
+      return SelectionContextResolution(
+        contextText: contextText,
+        selectionStart: selectionStart,
+        selectionEnd: selectionEnd,
+        usedLineFallback: usedLineFallback,
+      );
+    }
+
+    if (lineNumber != null) {
+      final contextText = buildContextAroundSelection(
+        allText,
+        lineStart,
+        lineEnd,
+        wordsBefore: wordsBefore,
+        wordsAfter: wordsAfter,
+      );
+      return SelectionContextResolution(
+        contextText: contextText,
+        selectionStart: lineStart,
+        selectionEnd: lineEnd,
+        usedLineFallback: true,
+      );
+    }
+
+    return SelectionContextResolution(
+      contextText: allText,
+      selectionStart: 0,
+      selectionEnd: allText.length,
+      usedLineFallback: usedLineFallback,
+    );
+  }
+
+  static int _lineStartOffset(List<String> content, int lineNumber) {
+    int offset = 0;
+    for (int i = 0; i < lineNumber; i++) {
+      offset += content[i].length + 1; // +1 עבור \n
+    }
+    return offset;
+  }
+
+  static List<int> _findAllOccurrences(String text, String pattern) {
+    final indices = <int>[];
+    if (text.isEmpty || pattern.isEmpty) return indices;
+
+    int searchFrom = 0;
+    while (searchFrom <= text.length - pattern.length) {
+      final found = text.indexOf(pattern, searchFrom);
+      if (found < 0) break;
+      indices.add(found);
+      searchFrom = found + pattern.length;
+    }
+    return indices;
+  }
+
+  /// Build email body for error report
+  static String buildEmailBody(
+    String bookTitle,
+    String currentRef,
+    Map<String, String> bookDetails,
+    String selectedText,
+    String errorDetails,
+    int lineNumber,
+    String contextText,
+    String libraryVersion,
+    String? senderEmail,
+  ) {
+    final senderSection = (senderEmail == null || senderEmail.isEmpty)
+        ? ''
+        : '\nכתובת ליצירת קשר: $senderEmail\n';
+
+    final detailsSection = (() {
+      final base = errorDetails.isEmpty ? '' : '\n$errorDetails';
+      final extra =
+          '''
+      
+    מספר שורה: $lineNumber
+    הקשר (4 מילים לפני ואחרי):
+    $contextText''';
+      return '$base$extra';
+    })();
+
+    return '''
+שם הספר: $bookTitle
+מיקום: $currentRef
+גרסת ספרייה: $libraryVersion
+שם הקובץ: ${bookDetails['שם הקובץ']}
+נתיב הקובץ: ${bookDetails['נתיב הקובץ']}
+תיקיית המקור: ${bookDetails['תיקיית המקור']}
+$senderSection
+
+הטקסט שבו נמצאה הטעות:
+$selectedText
+
+פירוט הטעות:
+$detailsSection
+''';
+  }
+
+  /// Encode query parameters for mailto URL
+  static String? encodeQueryParameters(Map<String, String> params) {
+    return params.entries
+        .map(
+          (MapEntry<String, String> e) =>
+              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+        )
+        .join('&');
+  }
+
+  /// Launch mailto URL
+  static Future<void> launchMail(String email, BuildContext context) async {
+    final emailUri = Uri(
+      scheme: 'mailto',
+      path: email,
+    );
+    try {
+      await launchUrl(emailUri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (context.mounted) {
+        UiSnack.show(ReportMessages.cannotOpenMailApp);
+      }
+    }
+  }
+
+  /// Show simple snackbar message
+  static void showSimpleSnack(BuildContext context, String message) {
+    if (!context.mounted) return;
+    UiSnack.show(message);
+  }
+
+  static Future<String?> ensureSenderEmail(BuildContext context) async {
+    final reportService = DirectErrorReportService();
+    final currentEmail = reportService.senderEmail;
+
+    if (DirectErrorReportService.isValidSenderEmail(currentEmail)) {
+      return currentEmail;
+    }
+
+    final enteredEmail = await showErrorReportSenderEmailDialog(
+      context: context,
+      initialValue: currentEmail,
+      validator: (email) => DirectErrorReportService.isValidSenderEmail(email)
+          ? null
+          : 'יש להזין כתובת דוא"ל תקינה.',
+    );
+
+    if (enteredEmail == null || enteredEmail.isEmpty) {
+      return null;
+    }
+
+    await reportService.saveSenderEmail(enteredEmail);
+    if (context.mounted) {
+      UiSnack.showSuccess(ReportMessages.senderEmailSaved);
+    }
+    return enteredEmail.trim();
+  }
+
+  static DirectErrorReport buildDirectReport({
+    required String senderEmail,
+    required ReportedErrorData reportData,
+    required String bookTitle,
+    required String currentRef,
+    required Map<String, String> bookDetails,
+    required int lineNumber,
+    required String contextText,
+    required String libraryVersion,
+    ReportSourceSnapshot? source,
+  }) {
+    final normalizedLibraryVersion = libraryVersion.trim().isEmpty
+        ? 'unknown'
+        : libraryVersion.trim();
+    final correction = source == null ? null : reportData.correction;
+    const fit = DirectErrorReport.fitDisplayField;
+    return DirectErrorReport(
+      schemaVersion: DirectErrorReport.currentSchemaVersion,
+      reportKind: correction == null
+          ? DirectErrorReportKind.freeText
+          : DirectErrorReportKind.textCorrection,
+      correction: correction,
+      location: ReportLocation(
+        lineIndex: source?.lineIndex,
+        bookId: source?.bookId,
+        libraryBuildId: normalizedLibraryVersion == 'unknown'
+            ? null
+            : normalizedLibraryVersion,
+        heRef: source?.heRef,
+      ),
+      client: ReportClientInfo(
+        appVersion: ErrorLogFile.appVersion,
+        platform: Platform.operatingSystem,
+      ),
+      id: '${DateTime.now().microsecondsSinceEpoch}-${widgetHash(bookTitle, currentRef, reportData.selectedText)}',
+      senderEmail: senderEmail,
+      // שדות התצוגה מקוצרים כאן, לפני ה-digest: האתר דוחה חריגה ב-v2.
+      subject: fit(
+        ReportMessages.reportSubject(bookTitle),
+        DirectErrorReport.maxSubjectLength,
+      ),
+      bookTitle: fit(bookTitle, DirectErrorReport.maxTitleOrRefLength),
+      currentRef: fit(currentRef, DirectErrorReport.maxTitleOrRefLength),
+      lineNumber: lineNumber,
+      // שדות חופשיים; surrogate בודד היה פוסל את ה-digest של הדיווח כולו.
+      selectedText: fit(
+        replaceLoneSurrogates(reportData.selectedText),
+        DirectErrorReport.maxSelectedTextLength,
+      ),
+      errorDetails: replaceLoneSurrogates(reportData.errorDetails),
+      contextText: fit(
+        replaceLoneSurrogates(contextText),
+        DirectErrorReport.maxContextTextLength,
+      ),
+      filePath: bookDetails['נתיב הקובץ'] ?? '',
+      sourceFolder: bookDetails['תיקיית המקור'] ?? '',
+      libraryVersion: normalizedLibraryVersion,
+      createdAt: DateTime.now().toUtc(),
+    );
+  }
+
+  /// Show success dialog for phone report
+  static void showPhoneReportSuccessDialog(
+    BuildContext context,
+    VoidCallback onReportAgain,
+  ) {
+    if (!context.mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('דיווח נשלח בהצלחה'),
+        content: const Text(ReportMessages.phoneSentThanks),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('סגור'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              onReportAgain();
+            },
+            child: const Text('פתח דוח שגיאות אחר'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Future<void> showDirectReportDetailsDialog(
+    BuildContext context, {
+    required String title,
+    required DirectErrorReport report,
+  }) async {
+    await showSingleActionDialog(
+      context: context,
+      title: title,
+      confirmText: 'סגור',
+      customContent: _DirectReportDetails(report: report),
+    );
+  }
+
+  /// Handle phone report submission
+  static Future<void> handlePhoneReport(
+    BuildContext context,
+    PhoneReportData reportData,
+  ) async {
+    try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      final phoneReportService = PhoneReportService();
+      final result = await phoneReportService.submitReport(reportData);
+
+      if (!context.mounted) return;
+
+      // Hide loading indicator
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (result.isSuccess) {
+        // Success callback will be handled by caller
+      } else {
+        showSimpleSnack(context, result.message);
+      }
+    } catch (e) {
+      // Hide loading indicator
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      debugPrint('Phone report error: $e');
+      showSimpleSnack(context, ReportMessages.sendError(e));
+    }
+  }
+
+  static Future<void> handleDirectReport(
+    BuildContext context,
+    DirectErrorReport reportData,
+  ) async {
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      final reportService = DirectErrorReportService();
+      final result = await reportService.submitReport(reportData);
+
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      if (!context.mounted) {
+        return;
+      }
+
+      if (result.isSent) {
+        if (result.isDuplicate || result.correctionNotSupported) {
+          UiSnack.show(result.message);
+        } else {
+          await showDirectReportDetailsDialog(
+            context,
+            title: ReportMessages.sentSuccessTitle,
+            report: reportData,
+          );
+        }
+      } else if (result.isQueued) {
+        UiSnack.show(result.message);
+      } else {
+        UiSnack.showError(result.message);
+      }
+    } catch (e) {
+      if (context.mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      debugPrint('Direct report error: $e');
+      if (context.mounted) {
+        UiSnack.showError(ReportMessages.sendError(e));
+      }
+    }
+  }
+
+  /// Handle regular report action (email or save)
+  static Future<void> handleRegularReportAction(
+    BuildContext context,
+    ErrorReportAction action,
+    ReportedErrorData reportData,
+    String bookTitle,
+    String currentRef,
+    Map<String, String> bookDetails,
+    int lineNumber,
+    String contextText,
+    String libraryVersion, {
+    ReportSourceSnapshot? source,
+  }) async {
+    final emailBody = buildEmailBody(
+      bookTitle,
+      currentRef,
+      bookDetails,
+      reportData.selectedText,
+      reportData.correction?.appendFallbackTo(reportData.errorDetails) ??
+          reportData.errorDetails,
+      lineNumber,
+      contextText,
+      libraryVersion,
+      null,
+    );
+
+    if (action == ErrorReportAction.sendEmail) {
+      final emailUri = Uri(
+        scheme: 'mailto',
+        path: emailRecipientsFor(bookDetails['תיקיית המקור']),
+        query: encodeQueryParameters(<String, String>{
+          'subject': ReportMessages.reportSubject(bookTitle),
+          'body': emailBody,
+        }),
+      );
+
+      try {
+        if (!await launchUrl(emailUri, mode: LaunchMode.externalApplication)) {
+          if (context.mounted) {
+            showSimpleSnack(context, ReportMessages.cannotOpenMailApp);
+          }
+        }
+      } catch (_) {
+        if (context.mounted) {
+          showSimpleSnack(context, 'לא ניתן לפתוח את תוכנת הדואר');
+        }
+      }
+    } else if (action == ErrorReportAction.saveForLater) {
+      final senderEmail = await ensureSenderEmail(context);
+      if (senderEmail == null) {
+        return;
+      }
+
+      final directReport = buildDirectReport(
+        senderEmail: senderEmail,
+        reportData: reportData,
+        bookTitle: bookTitle,
+        currentRef: currentRef,
+        bookDetails: bookDetails,
+        lineNumber: lineNumber,
+        contextText: contextText,
+        libraryVersion: libraryVersion,
+        source: source,
+      );
+
+      final reportService = DirectErrorReportService();
+      await reportService.queueReport(
+        directReport,
+        queueType: DirectErrorReportQueueType.manual,
+      );
+      final count = await reportService.getPendingReportsCount();
+      if (context.mounted) {
+        UiSnack.show(ReportMessages.savedForLater(count));
+      }
+    }
+  }
+
+  /// Show error report dialog for text book
+  ///
+  /// This is a shared helper to avoid code duplication across different views.
+  ///
+  /// Parameters:
+  /// - [context]: BuildContext for showing the dialog
+  /// - [selectedText]: The text selected by the user
+  /// - [state]: מצב הטקסט, או null במשטח ללא `TextBookBloc` (חלונית ה-PDF).
+  ///   כשהוא null חובה לספק [reportBook] — הוא מזהה את הספר המדווח.
+  /// - [fontSize]: Font size to use in the dialog
+  /// - [bookTitle]: Title of the book
+  /// - [savedSelectedIndex]: Optional saved selected index (can be int or ValueNotifier of int)
+  /// - [reportContent]: Optional content override for reports that target a secondary text
+  /// - [reportBook]: Optional book override for reports that target a secondary text
+  /// - [reportLine]: השורה הגולמית ב-[savedSelectedIndex] כש-[reportContent] אינו
+  ///   הספר כולו (מפרש); בלעדיה אין מסלול הצעת תיקון.
+  static Future<void> showErrorReportDialog({
+    required BuildContext context,
+    required String selectedText,
+    required TextBookLoaded? state,
+    required double fontSize,
+    required String bookTitle,
+    int? savedSelectedIndex,
+    List<String>? reportContent,
+    TextBook? reportBook,
+    String? reportLine,
+  }) async {
+    final effectiveContent = resolveReportContent(
+      state: state,
+      reportContent: reportContent,
+    );
+    final effectiveBook = resolveReportBook(
+      state: state,
+      reportBook: reportBook,
+    );
+    if (effectiveBook == null) {
+      UiSnack.showError(ReportMessages.cannotIdentifyReportedBook);
+      return;
+    }
+
+    // קבלת מספר השורה הנוכחי
+    int? currentLineNumber;
+
+    // אם יש savedSelectedIndex, נשתמש בו
+    currentLineNumber = savedSelectedIndex;
+
+    // אם אין savedSelectedIndex, נשתמש ב-state
+    currentLineNumber ??=
+        state?.selectedIndex ??
+        (state != null && state.visibleIndices.isNotEmpty
+            ? state.visibleIndices.first
+            : 0);
+
+    final resolvedSelectedText = resolveReportTargetText(
+      content: effectiveContent,
+      selectedText: selectedText,
+      preferredLineNumber: currentLineNumber,
+    );
+    final bookDetails = await BookDetailsService().getBookDetails(
+      effectiveBook,
+    );
+    final directReportTargetLabel = resolveDirectReportTargetLabel(
+      bookDetails['תיקיית המקור'],
+    );
+    final isDictaSource = isDictaSourceFolder(bookDetails['תיקיית המקור']);
+    // הצעת תיקון נבנית רק על השורה הגולמית מה-DB, לא על הטקסט המעובד שהוצג.
+    final source = reportReachesOtzaria(bookDetails['תיקיית המקור'])
+        ? await resolveReportSource(
+            book: effectiveBook,
+            lineIndex: currentLineNumber,
+            content: effectiveContent,
+            reportLine: reportLine,
+          )
+        : null;
+    final correctionTemplate = source == null
+        ? null
+        : buildCorrectionTemplate(source.originalLine, selectedText);
+
+    if (!context.mounted) return;
+    final lineIndex = currentLineNumber;
+
+    // משותף לבדיקת הגודל לפני סגירת הדיאלוג ולבניית הדיווח אחריה.
+    Future<_PreparedReport> prepareReport(ReportedErrorData errorData) async {
+      final data = ReportedErrorData(
+        selectedText: sanitizeReportText(errorData.selectedText),
+        errorDetails: errorData.errorDetails.trim(),
+        correction: errorData.correction,
+      );
+      final selectionResolution = resolveSelectionContext(
+        content: effectiveContent,
+        selectedText: data.selectedText,
+        preferredLineNumber: lineIndex,
+        wordsBefore: 4,
+        wordsAfter: 4,
+      );
+      return (
+        data: data,
+        contextText: sanitizeReportText(selectionResolution.contextText),
+        currentRef: await refFromIndex(
+          lineIndex,
+          effectiveBook.tableOfContents,
+        ),
+        libraryVersion: await DataCollectionService().readLibraryVersion(),
+      );
+    }
+
+    DirectErrorReport buildFor(_PreparedReport prepared, String senderEmail) =>
+        buildDirectReport(
+          senderEmail: senderEmail,
+          reportData: prepared.data,
+          bookTitle: bookTitle,
+          currentRef: prepared.currentRef,
+          bookDetails: bookDetails,
+          lineNumber: lineIndex + 1,
+          contextText: prepared.contextText,
+          libraryVersion: prepared.libraryVersion,
+          source: source,
+        );
+
+    // פתיחת הדיאלוג. בספר דיקטה מוצג בתוכו קישור בולט לתיקון עצמי.
+    final ReportDialogResult? result = await showDialog<ReportDialogResult>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return TabbedReportDialog(
+          selectedText: resolvedSelectedText,
+          fontSize: fontSize,
+          bookTitle: bookTitle,
+          currentLineNumber: lineIndex + 1, // +1 כי השורות מתחילות מ-1
+          directReportTargetLabel: directReportTargetLabel,
+          isDictaSource: isDictaSource,
+          correctionTemplate: correctionTemplate,
+          validateBeforeSubmit: (data) async {
+            final report = buildFor(
+              await prepareReport(data),
+              _longestEmailPlaceholder,
+            );
+            return report.exceedsApiBodyLimit
+                ? ReportMessages.bodyTooLarge(
+                    DirectErrorReport.maxApiBodyBytes ~/ 1024,
+                  )
+                : null;
+          },
+        );
+      },
+    );
+
+    // טיפול בתוצאה
+    if (result == null || !context.mounted) return;
+
+    try {
+      if (result.data is ReportedErrorData) {
+        final prepared = await prepareReport(result.data as ReportedErrorData);
+        if (!context.mounted) return;
+        if (result.action == ErrorReportAction.sendEmail ||
+            result.action == ErrorReportAction.saveForLater) {
+          await handleRegularReportAction(
+            context,
+            result.action,
+            prepared.data,
+            bookTitle,
+            prepared.currentRef,
+            bookDetails,
+            lineIndex + 1,
+            prepared.contextText,
+            prepared.libraryVersion,
+            source: source,
+          );
+        } else if (result.action == ErrorReportAction.sendDirect) {
+          final senderEmail = await ensureSenderEmail(context);
+          if (senderEmail == null || !context.mounted) {
+            return;
+          }
+          await handleDirectReport(context, buildFor(prepared, senderEmail));
+        }
+      } else if (result.data is PhoneReportData) {
+        // === דיווח טלפוני ===
+        if (!context.mounted) return;
+        await handlePhoneReport(context, result.data as PhoneReportData);
+      }
+    } catch (e) {
+      debugPrint('Error handling report result: $e');
+      if (context.mounted) {
+        showSimpleSnack(context, ReportMessages.handleError(e));
+      }
+    }
+  }
+}
+
+typedef _PreparedReport = ({
+  ReportedErrorData data,
+  String contextText,
+  String currentRef,
+  String libraryVersion,
+});
+
+/// הכתובת עוד לא ידועה לפני סגירת הדיאלוג: בודקים מול האורך המרבי (RFC 5321).
+final String _longestEmailPlaceholder = 'a' * 254;
+
+String widgetHash(String bookTitle, String currentRef, String selectedText) {
+  final normalized = '$bookTitle|$currentRef|$selectedText';
+  return normalized.hashCode.abs().toString();
+}
+
+/// Tabbed dialog for error reporting with regular and phone options
+class TabbedReportDialog extends StatefulWidget {
+  final String selectedText;
+  final double fontSize;
+  final String bookTitle;
+  final int currentLineNumber;
+  final String directReportTargetLabel;
+  final bool isDictaSource;
+  final TextCorrection? correctionTemplate;
+  final Future<String?> Function(ReportedErrorData data)? validateBeforeSubmit;
+
+  const TabbedReportDialog({
+    super.key,
+    required this.selectedText,
+    required this.fontSize,
+    required this.bookTitle,
+    required this.currentLineNumber,
+    required this.directReportTargetLabel,
+    this.isDictaSource = false,
+    this.correctionTemplate,
+    this.validateBeforeSubmit,
+  });
+
+  @override
+  State<TabbedReportDialog> createState() => _TabbedReportDialogState();
+}
+
+/// הגובה שבו טופס הצעת התיקון נכנס כמעט בלי גלילה.
+const double _comfortableReportDialogHeight = 640;
+
+class _TabbedReportDialogState extends State<TabbedReportDialog>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final DataCollectionService _dataService = DataCollectionService();
+
+  // Phone report data
+  String _libraryVersion = 'unknown';
+  int? _bookId;
+  bool _isLoadingData = true;
+  List<String> _dataErrors = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadPhoneReportData();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadPhoneReportData() async {
+    try {
+      final availability = await _dataService.checkDataAvailability(
+        widget.bookTitle,
+      );
+
+      if (mounted) {
+        setState(() {
+          _libraryVersion = availability['libraryVersion'] ?? 'unknown';
+          _bookId = availability['bookId'];
+          _dataErrors = List<String>.from(availability['errors'] ?? []);
+          _isLoadingData = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading phone report data: $e');
+      if (mounted) {
+        setState(() {
+          _dataErrors = ['שגיאה בטעינת נתוני הדיווח'];
+          _isLoadingData = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // חישוב גובה זמין בפועל (ללא שורת המשימות ואזורים מוגנים אחרים)
+    final mediaQuery = MediaQuery.of(context);
+    final availableHeight =
+        mediaQuery.size.height -
+        mediaQuery.padding.top -
+        mediaQuery.padding.bottom;
+
+    // minWidth/minHeight נסגרים ל-max, אחרת במסך קטן הקונסטריינטים
+    // אינם נורמליים → BoxConstraints assertion crash.
+    final screenWidth = mediaQuery.size.width;
+    final isNarrow = screenWidth < 600;
+    final maxWidth = isNarrow ? screenWidth : screenWidth * 0.6;
+    final minWidth = maxWidth < 400 ? maxWidth : 400.0;
+    // במסך נמוך 70% חותך את הטופס; Dialog עצמו מצמצם לגובה הפנוי.
+    final maxHeight = math.max(
+      availableHeight * 0.7,
+      math.min(availableHeight, _comfortableReportDialogHeight),
+    );
+    final minHeight = maxHeight < 400 ? maxHeight : 400.0;
+    final isCompact = isNarrow || maxHeight > availableHeight * 0.7;
+
+    return Dialog(
+      clipBehavior: Clip.antiAlias,
+      insetPadding: isCompact ? const EdgeInsets.all(8) : null,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minWidth: minWidth,
+          maxWidth: maxWidth,
+          minHeight: minHeight,
+          maxHeight: maxHeight,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                'דיווח על טעות בספר',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+            ),
+            TabBar(
+              controller: _tabController,
+              splashBorderRadius: AppTokens.borderRadiusAll,
+              tabs: const [
+                Tab(text: 'שליחת דיווח'),
+                Tab(text: 'דיווח דרך קו אוצריא'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _buildRegularReportTab(),
+                  _buildPhoneReportTab(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRegularReportTab() {
+    return RegularReportTab(
+      selectedText: widget.selectedText,
+      fontSize: widget.fontSize,
+      directReportTargetLabel: widget.directReportTargetLabel,
+      bookTitle: widget.bookTitle,
+      isDictaSource: widget.isDictaSource,
+      correctionTemplate: widget.correctionTemplate,
+      validateBeforeSubmit: widget.validateBeforeSubmit,
+      onActionSelected: (action, reportData) {
+        Navigator.of(context).pop(ReportDialogResult(action, reportData));
+      },
+      onCancel: () {
+        Navigator.of(context).pop();
+      },
+    );
+  }
+
+  Widget _buildPhoneReportTab() {
+    if (_isLoadingData) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('טוען נתוני דיווח...'),
+          ],
+        ),
+      );
+    }
+
+    if (_dataErrors.isNotEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'לא ניתן לטעון את נתוני הדיווח:',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            ..._dataErrors.map(
+              (error) => Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  error,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('סגור'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return PhoneReportTab(
+      selectedText: widget.selectedText,
+      fontSize: widget.fontSize,
+      libraryVersion: _libraryVersion,
+      bookId: _bookId,
+      lineNumber: widget.currentLineNumber,
+      onSubmit: (selectedText, errorId, moreInfo, lineNumber) async {
+        final reportData = PhoneReportData(
+          selectedText: selectedText,
+          errorId: errorId,
+          moreInfo: moreInfo,
+          libraryVersion: _libraryVersion,
+          bookId: _bookId!,
+          lineNumber: lineNumber,
+        );
+        Navigator.of(
+          context,
+        ).pop(ReportDialogResult(ErrorReportAction.phone, reportData));
+      },
+      onCancel: () {
+        Navigator.of(context).pop();
+      },
+    );
+  }
+}
+
+/// Regular report tab widget
+class RegularReportTab extends StatefulWidget {
+  final String selectedText;
+  final double fontSize;
+  final String directReportTargetLabel;
+  final String bookTitle;
+  final bool isDictaSource;
+
+  /// השורה הגולמית (ובחירה אם אותרה). null = אין מקור מוסמך — רק דיווח חופשי.
+  final TextCorrection? correctionTemplate;
+
+  /// שגיאה חוסמת לפני שמירה/שליחה ישירה; הדיאלוג נשאר פתוח עם מה שהוקלד.
+  final Future<String?> Function(ReportedErrorData data)? validateBeforeSubmit;
+  final void Function(ErrorReportAction, ReportedErrorData) onActionSelected;
+  final VoidCallback onCancel;
+
+  const RegularReportTab({
+    super.key,
+    required this.selectedText,
+    required this.fontSize,
+    required this.directReportTargetLabel,
+    this.bookTitle = '',
+    this.isDictaSource = false,
+    this.correctionTemplate,
+    this.validateBeforeSubmit,
+    required this.onActionSelected,
+    required this.onCancel,
+  });
+
+  @override
+  State<RegularReportTab> createState() => _RegularReportTabState();
+}
+
+enum _ReportMode { correction, freeText }
+
+class _RegularReportTabState extends State<RegularReportTab> {
+  final TextEditingController _detailsController = TextEditingController();
+  late _ReportMode _mode = widget.correctionTemplate == null
+      ? _ReportMode.freeText
+      : _ReportMode.correction;
+  TextCorrectionDraft? _draft;
+
+  bool get _isCorrection => _mode == _ReportMode.correction;
+
+  bool get _hasDetails => _detailsController.text.trim().isNotEmpty;
+
+  bool get _canSubmit {
+    if (!_isCorrection) return _hasDetails;
+    final draft = _draft;
+    return draft != null && draft.isValid && (draft.hasProposal || _hasDetails);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsController.addListener(_handleDetailsChanged);
+  }
+
+  @override
+  void dispose() {
+    _detailsController.removeListener(_handleDetailsChanged);
+    _detailsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitValidated(
+    ErrorReportAction action,
+    ReportedErrorData data,
+  ) async {
+    final error = await widget.validateBeforeSubmit?.call(data);
+    if (!mounted) return;
+    if (error != null) {
+      UiSnack.showError(error);
+      return;
+    }
+    widget.onActionSelected(action, data);
+  }
+
+  void _handleDetailsChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /// פותח את עמוד התיקון העצמי באתר, ממוקד בקטע שנבחר, וסוגר את טופס הדיווח.
+  Future<void> _openDictaSelfEdit() async {
+    final opened = await launchDictaEditPage(
+      widget.bookTitle,
+      selectedText: widget.selectedText,
+    );
+    if (!mounted) return;
+    if (opened) {
+      widget.onCancel(); // המשתמש עבר לתקן באתר — אין צורך בטופס הדיווח
+    } else {
+      UiSnack.showError(ReportMessages.cannotOpenEditPage);
+    }
+  }
+
+  /// באנר בולט לספרי דיקטה במצב מחובר — תיקון עצמי במקום דיווח.
+  Widget _buildDictaSelfEditBanner() {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.primaryContainer,
+      borderRadius: AppTokens.borderRadiusAll,
+      child: InkWell(
+        onTap: _openDictaSelfEdit,
+        borderRadius: AppTokens.borderRadiusAll,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              Icon(
+                FluentIcons.edit_24_filled,
+                color: colorScheme.onPrimaryContainer,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'לחץ כאן על מנת לתקן את הספר בעצמך',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'ספר זה מקורו בדיקטה — התיקון ייפתח באתר אוצריא ישירות בקטע שנבחר. לחילופין, ניתן להמשיך בדיווח רגיל.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                FluentIcons.open_24_regular,
+                size: 18,
+                color: colorScheme.onPrimaryContainer,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isOfflineMode =
+        Settings.getValue<bool>(SettingsRepository.keyOfflineMode) ?? false;
+    final showDictaSelfEdit = widget.isDictaSource && !isOfflineMode;
+
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.correctionTemplate != null) ...[
+                  AppSegmentedControl<_ReportMode>(
+                    options: const [
+                      SegmentOption(
+                        value: _ReportMode.correction,
+                        label: 'הצעת תיקון',
+                        icon: FluentIcons.text_edit_style_24_regular,
+                      ),
+                      SegmentOption(
+                        value: _ReportMode.freeText,
+                        label: 'דיווח חופשי',
+                        icon: FluentIcons.comment_24_regular,
+                      ),
+                    ],
+                    currentValue: _mode,
+                    onChanged: (mode) => setState(() => _mode = mode),
+                    expandToFillWidth: true,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                if (_isCorrection)
+                  TextCorrectionEditor(
+                    original: widget.correctionTemplate!,
+                    fontSize: widget.fontSize,
+                    onChanged: (draft) => setState(() => _draft = draft),
+                  )
+                else ...[
+                  Text(
+                    'הטקסט שנבחר:',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    constraints: const BoxConstraints(
+                      maxHeight: 150,
+                    ),
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                      borderRadius: AppTokens.borderRadiusAll,
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        widget.selectedText,
+                        style: TextStyle(
+                          fontSize: widget.fontSize,
+                          fontFamily:
+                              Settings.getValue('key-font-family') ??
+                              AppFonts.defaultFont,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ),
+                ],
+                if (showDictaSelfEdit) ...[
+                  const SizedBox(height: 12),
+                  _buildDictaSelfEditBanner(),
+                ],
+                const SizedBox(height: 16),
+                RtlTextField(
+                  key: const ValueKey('report-details-field'),
+                  controller: _detailsController,
+                  minLines: 2,
+                  maxLines: 6,
+                  autofocus: !_isCorrection,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: const OutlineInputBorder(),
+                    labelText: _isCorrection
+                        ? 'הסבר לתיקון (חובה אם אין הצעה)'
+                        : 'פירוט הטעות (חובה)',
+                    hintText: 'מה לא תקין כאן? בלא פירוט לא נוכל לטפל',
+                    helperText:
+                        _isCorrection &&
+                            _draft?.hasProposal == false &&
+                            !_hasDetails
+                        ? ReportMessages.proposalNeedsDetailsOrChange
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: _buildActionButtons(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons() {
+    // בדיקת מצב אופליין
+    final isOfflineMode =
+        Settings.getValue<bool>(SettingsRepository.keyOfflineMode) ?? false;
+
+    final reportData = ReportedErrorData(
+      selectedText: widget.selectedText,
+      errorDetails: _detailsController.text.trim(),
+      correction: _isCorrection ? _draft?.correction : null,
+    );
+
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+        spacing: 8.0,
+        runSpacing: 8.0,
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ActionButton.neutral(
+            text: 'ביטול',
+            onPressed: widget.onCancel,
+          ),
+          if (_canSubmit)
+            ActionButton.neutral(
+              text: 'שמור לשליחה מאוחרת',
+              icon: FluentIcons.save_24_regular,
+              onPressed: () =>
+                  _submitValidated(ErrorReportAction.saveForLater, reportData),
+            ),
+          if (!isOfflineMode && _canSubmit)
+            ActionButton.neutral(
+              text: 'שלח בדוא"ל',
+              icon: FluentIcons.mail_24_regular,
+              onPressed: () {
+                widget.onActionSelected(
+                  ErrorReportAction.sendEmail,
+                  reportData,
+                );
+              },
+            ),
+          if (_canSubmit)
+            ActionButton.recommended(
+              text: isOfflineMode
+                  ? 'שמור בתור ל${widget.directReportTargetLabel}'
+                  : 'שלח ישירות ל${widget.directReportTargetLabel}',
+              icon: FluentIcons.arrow_upload_24_regular,
+              onPressed: () async {
+                // דיאלוג אישור לפני שליחה ישירה
+                final shouldSend = await showTwoActionsDialog(
+                  context: context,
+                  title: 'אישור שליחת דיווח',
+                  content:
+                      'לחיצה על שלח דיווח תשלח את השגיאה ישירות '
+                      'ל${widget.directReportTargetLabel}, יש לשים לב '
+                      'לתקינות הדיווח לפני השליחה',
+                  cancelText: 'ביטול',
+                  confirmText: 'שלח דיווח',
+                );
+                if (shouldSend == true) {
+                  await _submitValidated(
+                    ErrorReportAction.sendDirect,
+                    reportData,
+                  );
+                }
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// מנסה לפתוח את עמוד התיקון העצמי של ספרי דיקטה באתר, ממוקד בקטע שנבחר
+/// (כשנמסר). מחזיר אם הפתיחה הצליחה (כדי שהקורא יוכל להציג הודעת שגיאה
+/// כשהדפדפן לא נפתח).
+Future<bool> launchDictaEditPage(
+  String bookTitle, {
+  String selectedText = '',
+}) async {
+  try {
+    final uri = Uri.parse(
+      ErrorReportHelper.dictaEditUrlFor(bookTitle, selectedText: selectedText),
+    );
+    if (await canLaunchUrl(uri)) {
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  } catch (e) {
+    debugPrint('פתיחת עמוד עריכת דיקטה נכשלה: $e');
+  }
+  return false;
+}

@@ -1,0 +1,1368 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart';
+import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
+import 'package:otzaria/models/link_types.dart';
+import 'package:otzaria/shortcuts/shortcut_helper.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:otzaria/bookmarks/bloc/bookmark_bloc.dart';
+import 'package:otzaria/bookmarks/models/bookmark.dart';
+import 'package:otzaria/bookmarks/view/bookmark_screen.dart';
+import 'package:otzaria/core/focus_repository.dart';
+import 'package:otzaria/core/messages/notes_messages.dart';
+import 'package:otzaria/core/ui_snack.dart';
+import 'package:otzaria/tabs/models/pdf_commentators_tab.dart';
+import 'package:otzaria/pdf_book/view/pdf_commentary_panel.dart';
+import 'package:otzaria/text_book/utils/commentary_search_utils.dart';
+import 'package:otzaria/text_book/utils/commentary_type_filter.dart';
+import 'package:otzaria/widgets/commentary/commentary_search_results_list.dart';
+import 'package:otzaria/models/books.dart';
+import 'package:otzaria/data/repository/data_repository.dart';
+import 'package:otzaria/utils/text/text_manipulation.dart' as utils;
+import 'package:otzaria/utils/navigation/open_book.dart';
+import 'package:otzaria/utils/file/page_converter.dart';
+import 'package:otzaria/pdf_book/utils/pdf_spread_layout.dart';
+import 'package:otzaria/models/pdf_headings.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'package:otzaria/text_book/models/commentator_group.dart';
+import 'package:otzaria/text_book/utils/commentator_group_builder.dart';
+import 'package:otzaria/text_book/view/page_shape/utils/default_commentators.dart';
+import 'package:otzaria/widgets/lists/commentators_selection_panel.dart';
+import 'package:otzaria/settings/settings_exports.dart';
+import 'package:otzaria/text_display/text_display_exports.dart';
+import 'package:otzaria/text_display/view/text_display_bar_button.dart';
+import 'package:otzaria/settings/services/per_book_settings_service.dart';
+import 'package:otzaria/text_book/utils/category_settings_utils.dart';
+import 'package:otzaria/widgets/lists/nav_tree_tile.dart';
+import 'package:otzaria/widgets/navigation/nav_panel_search.dart';
+import 'package:otzaria/widgets/navigation/nav_side_panel.dart';
+import 'package:otzaria/widgets/widgets_exports.dart';
+import 'package:otzaria/widgets/navigation/app_top_bar.dart';
+import 'package:otzaria/widgets/navigation/responsive_action_bar.dart';
+import 'package:otzaria/widgets/navigation/search_pane_base.dart';
+import 'package:otzaria/widgets/text/otzaria_search_field.dart';
+import 'package:otzaria/widgets/navigation/reader_nav_center.dart';
+import 'package:otzaria/widgets/layout/reading_area_width.dart';
+
+/// ערך מיוחד ל-_selectedParagraphIdx שמשמעו "כל הכותרת" (כל המפרשים בקטע),
+/// במקביל ל-_kAllChapter בכרטסיית הטקסט.
+const int _kAllPara = -1;
+
+/// מסך כרטסיית המפרשים של PDF — עצמאי לחלוטין, כמו CommentatorsTabScreen.
+/// רוחב חלונית הניווט בכרטיסיית המפרשים.
+const double _kNavPaneWidth = 320;
+
+class PdfCommentatorsTabScreen extends StatefulWidget {
+  final PdfCommentatorsTab tab;
+
+  const PdfCommentatorsTabScreen({super.key, required this.tab});
+
+  @override
+  State<PdfCommentatorsTabScreen> createState() =>
+      _PdfCommentatorsTabScreenState();
+}
+
+class _PdfCommentatorsTabScreenState extends State<PdfCommentatorsTabScreen>
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  // שומר את ה-State חי כשהטאב יוצא מתחום ה-PageView, כדי שבחירת הכותרת/פסקה
+  // לא תאבד במעבר לטאב אחר וחזרה.
+  @override
+  bool get wantKeepAlive => true;
+
+  List<MapEntry<String, int>>? _sortedHeadings;
+  int _selectedHeadingIdx = 0;
+  int _selectedParagraphIdx = 0;
+  List<String>? _textLines;
+
+  // ריבוי-בחירה ב'ניווט' (Ctrl+לחיצה): מספרי שורות נוספים להצגת מפרשים מעבר
+  // לטווח הראשי. ריק = בחירה יחידה רגילה. מתאפס בכל ניווט רגיל.
+  final Set<int> _extraLines = <int>{};
+
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  final _navSearchController = TextEditingController();
+  final _totalResultsNotifier = ValueNotifier<int>(0);
+  final _currentIdxNotifier = ValueNotifier<int>(0);
+  final _searchSnippetsNotifier = ValueNotifier<List<CommentarySearchSnippet>>(
+    [],
+  );
+  final _typeSelection = CommentaryTypeSelection();
+  final _panelKey = GlobalKey<PdfCommentaryPanelState>();
+  final Set<int> _expandedHeadings = {};
+
+  // גלילת רשימת הניווט לכותרת הנבחרת בעת פתיחת הפאנל/מעבר ללשונית הניווט.
+  final ItemScrollController _navScrollController = ItemScrollController();
+
+  /// סרגל 3 הלשוניות בפאנל הצד (זהה לכרטיסיית הטקסט): ניווט / מפרשים / חיפוש
+  late final TabController _navTabController;
+
+  /// פעולות החיפוש של לשוניות החלונית — מוזנות לסרגל שבסרגל העליון.
+  final NavPanelSearchHost _searchHost = NavPanelSearchHost();
+  static const int _commentatorsTabIndex = 1;
+  static const int _searchTabIndex = 2;
+
+  /// האם פאנל הצד פתוח, והאם הוא נעוץ (לא נסגר אוטומטית)
+  bool _navPaneOpen = false;
+  bool _pinLeftPane = false;
+
+  /// קבוצות המפרשים ללשונית הבחירה (נטענות מתוך links של ה-sourceTab)
+  List<CommentatorGroup> _commentatorGroups = [];
+
+  /// משקף את מצב "הכל מורחב" מתוך PdfCommentaryPanel (לכפתור כיווץ/הרחבה בסרגל).
+  final _allExpandedInChild = ValueNotifier<bool>(true);
+
+  /// עקיפת התצוגה של הכרטיסייה (זמנית, אינה נשמרת). החרגות התנ"ך אינן
+  /// חלות כאן: תוכן הכרטיסייה הוא מפרשים, ואינו תנ"ך.
+  final _displayOverride = ValueNotifier<TextDisplayPatch>(
+    TextDisplayPatch.empty,
+  );
+
+  TextDisplayProfile _baseProfile(BuildContext context, TextDisplaySlot slot) =>
+      context.read<SettingsBloc>().state.textDisplayPolicy.resolve(slot);
+
+  /// הפרופיל הגלובלי של [slot] עם עקיפת הכרטיסייה.
+  TextDisplayProfile _profileFor(BuildContext context, TextDisplaySlot slot) =>
+      _displayOverride.value.applyTo(
+        context.watch<SettingsBloc>().state.textDisplayPolicy.resolve(slot),
+      );
+
+  TextDisplayProfile get _commentaryProfile => _displayOverride.value.applyTo(
+    _baseProfile(context, TextDisplaySlot.commentaryDisplay),
+  );
+
+  void _toggleRemoveNikud() {
+    final remove = !_commentaryProfile.removeNikud;
+    _displayOverride.value = _displayOverride.value.merge(
+      TextDisplayPatch(
+        nikud: remove ? MarkVisibility.hide : MarkVisibility.show,
+      ),
+    );
+  }
+
+  Widget _buildDisplayPanel(BuildContext context) => ValueListenableBuilder(
+    valueListenable: _displayOverride,
+    builder: (context, override, _) {
+      final base = _baseProfile(context, TextDisplaySlot.commentaryDisplay);
+      final current = override.applyTo(base);
+      return TextDisplayPopupPanel(
+        viewLabel: 'כרטיסיית מפרשים',
+        sections: [
+          TextDisplaySection(
+            title: 'מפרשים',
+            profile: current,
+            showAnchorMarkers: false,
+            onChanged: (next) => _displayOverride.value = override.merge(
+              next.toPatch().pruneAgainst(current),
+            ),
+          ),
+        ],
+        footer: 'השינויים חלים על כרטיסייה זו בלבד',
+        onReset: override.isEmpty
+            ? null
+            : () => _displayOverride.value = TextDisplayPatch.empty,
+      );
+    },
+  );
+
+  bool get _isNavigationReady =>
+      _sortedHeadings != null && _sortedHeadings!.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayOverride.addListener(() => setState(() {}));
+    _navTabController = TabController(length: 3, vsync: this);
+    _navTabController.addListener(_handleTabChanged);
+    _initHeadings();
+    widget.tab.sourceTab.currentTitle.addListener(_syncWithSourceTab);
+    _ensureDataLoaded();
+    _loadTextContent();
+    _loadCommentatorGroups();
+
+    // ממקד את חלונית המפרשים כשהטאב הופך פעיל (מעבר טאב) כדי שגלילה עם
+    // החיצים תעבוד מיד בלי לחיצה.
+    FocusRepository().registerTabContentFocusRequester(
+      widget.tab,
+      () => _panelKey.currentState?.requestScrollFocus(),
+    );
+  }
+
+  /// מרענן את הדגשת כפתורי הסרגל בעת מעבר לשונית, וממקד את שדה החיפוש.
+  void _handleTabChanged() {
+    if (!mounted) return;
+    _searchHost.activeTab = _navTabController.index;
+    setState(() {});
+    if (_navTabController.index == _searchTabIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocusNode.requestFocus();
+      });
+    } else if (_navTabController.index == 0) {
+      // לשונית הניווט: גלילה לכותרת הנבחרת.
+      _scrollNavToSelectedHeading();
+    }
+  }
+
+  /// אינדקסי הכותרות המוצגות בלשונית הניווט, מסוננים לפי שאילתת החיפוש.
+  List<int> _navFilteredIndices(String query) {
+    final headings = _sortedHeadings;
+    if (headings == null) return const [];
+    final q = query.trim();
+    final all = List<int>.generate(headings.length, (i) => i);
+    if (q.isEmpty) return all;
+    return all.where((i) => headings[i].key.contains(q)).toList();
+  }
+
+  /// גוללת את רשימת הניווט לכותרת הנבחרת. ה-BlocListener/פתיחת הפאנל לא
+  /// מבצעים זאת לבדם, ולכן יש לקרוא לכך בעת פתיחה ומעבר ללשונית.
+  void _scrollNavToSelectedHeading() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_navScrollController.isAttached) return;
+      final headingIdx = _navFilteredIndices(
+        _navSearchController.text,
+      ).indexOf(_selectedHeadingIdx);
+      if (headingIdx < 0) return;
+      _navScrollController.scrollTo(
+        // +1: פריט 0 הוא הכותרת הראשית.
+        index: headingIdx + 1,
+        alignment: 0.4,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant PdfCommentatorsTabScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.tab.sourceTab != widget.tab.sourceTab) {
+      oldWidget.tab.sourceTab.currentTitle.removeListener(_syncWithSourceTab);
+      widget.tab.sourceTab.currentTitle.addListener(_syncWithSourceTab);
+      _syncWithSourceTab();
+    }
+  }
+
+  void _initHeadings() {
+    final headings = widget.tab.sourceTab.pdfHeadings?.getSortedHeadings();
+    if (headings == null || headings.isEmpty) return;
+    _sortedHeadings = headings;
+    final currentTitle = widget.tab.sourceTab.currentTitle.value;
+    final selection = _resolveTitleSelection(headings, currentTitle);
+    _selectedHeadingIdx = selection.firstIdx >= 0 ? selection.firstIdx : 0;
+    _selectedParagraphIdx = _kAllPara;
+    _extraLines
+      ..clear()
+      ..addAll(_spreadExtraLines(selection));
+  }
+
+  void _syncWithSourceTab() {
+    if (!mounted) return;
+
+    final headings = widget.tab.sourceTab.pdfHeadings?.getSortedHeadings();
+    final currentTitle = widget.tab.sourceTab.currentTitle.value;
+    var nextSelectedHeadingIdx = _selectedHeadingIdx;
+    var selection = (firstIdx: nextSelectedHeadingIdx, secondIdx: -1);
+
+    if (headings != null && headings.isNotEmpty) {
+      _sortedHeadings = headings;
+      selection = _resolveTitleSelection(headings, currentTitle);
+      if (selection.firstIdx >= 0) {
+        nextSelectedHeadingIdx = selection.firstIdx;
+      }
+    }
+
+    setState(() {
+      _selectedHeadingIdx = nextSelectedHeadingIdx;
+      _selectedParagraphIdx = _kAllPara;
+      _extraLines
+        ..clear()
+        ..addAll(_spreadExtraLines(selection));
+    });
+  }
+
+  /// מזהה את בחירת הכותרת עבור [title]. מנסה תחילה התאמה מלאה (כדי לא לפצל
+  /// בטעות כותרת חוקית שמכילה מקף ארוך), ורק אחריה מזהה ספירייד — פיצול לשתי
+  /// כותרות קיימות. [secondIdx] >= 0 רק בספירייד אמיתי. [firstIdx] = -1 כשאין
+  /// התאמה כלל.
+  ({int firstIdx, int secondIdx}) _resolveTitleSelection(
+    List<MapEntry<String, int>> headings,
+    String title,
+  ) {
+    final full = headings.indexWhere((e) => e.key == title);
+    if (full >= 0) return (firstIdx: full, secondIdx: -1);
+    final known = headings.map((e) => e.key).toSet();
+    final split = pdfSplitSpreadTitleByKnown(title, known);
+    if (split == null) return (firstIdx: -1, secondIdx: -1);
+    return (
+      firstIdx: headings.indexWhere((e) => e.key == split.first),
+      secondIdx: headings.indexWhere((e) => e.key == split.second),
+    );
+  }
+
+  /// בתצוגת ספר — שורות העמוד השני בספירייד (עד [secondIdx]), כדי שמפרשי שני
+  /// העמודים יוצגו יחד עם הטווח הראשי. בעמוד יחיד מחזיר רשימה ריקה.
+  List<int> _spreadExtraLines(({int firstIdx, int secondIdx}) selection) {
+    if (selection.firstIdx < 0 || selection.secondIdx <= selection.firstIdx) {
+      return const [];
+    }
+    final lines = <int>[];
+    for (int i = selection.firstIdx; i <= selection.secondIdx; i++) {
+      lines.addAll(_linesForNavItem(i, _kAllPara));
+    }
+    return lines;
+  }
+
+  void _openSearchPanel() {
+    setState(() => _navPaneOpen = true);
+    _navTabController.animateTo(_searchTabIndex);
+  }
+
+  void _openCommentatorsTab() {
+    setState(() => _navPaneOpen = true);
+    _navTabController.animateTo(_commentatorsTabIndex);
+  }
+
+  void _zoomIn(BuildContext context) {
+    final bloc = context.read<SettingsBloc>();
+    final next = (bloc.state.commentatorsFontSize + 2).clamp(10.0, 40.0);
+    bloc.add(UpdateCommentatorsFontSize(next));
+  }
+
+  void _zoomOut(BuildContext context) {
+    final bloc = context.read<SettingsBloc>();
+    final next = (bloc.state.commentatorsFontSize - 2).clamp(10.0, 40.0);
+    bloc.add(UpdateCommentatorsFontSize(next));
+  }
+
+  /// ניווט לכותרת הקודמת (כל הכותרת) — מקביל ל"הפרק הקודם" בכרטיסיית הטקסט.
+  void _navigateToPrevHeading() {
+    if (!_isNavigationReady || _selectedHeadingIdx <= 0) return;
+    setState(() {
+      _selectedHeadingIdx--;
+      _selectedParagraphIdx = _kAllPara;
+      _expandedHeadings.add(_selectedHeadingIdx);
+      _extraLines.clear();
+    });
+  }
+
+  /// ניווט לכותרת הבאה (כל הכותרת) — מקביל ל"הפרק הבא" בכרטיסיית הטקסט.
+  void _navigateToNextHeading() {
+    final headings = _sortedHeadings;
+    if (!_isNavigationReady ||
+        headings == null ||
+        _selectedHeadingIdx + 1 >= headings.length) {
+      return;
+    }
+    setState(() {
+      _selectedHeadingIdx++;
+      _selectedParagraphIdx = _kAllPara;
+      _expandedHeadings.add(_selectedHeadingIdx);
+      _extraLines.clear();
+    });
+  }
+
+  Future<void> _loadTextContent() async {
+    final tab = widget.tab.sourceTab;
+    try {
+      final library = await DataRepository.instance.library;
+      final textBook =
+          library.getCompanionBook(tab.book, TextBook) as TextBook?;
+      if (textBook == null || !mounted) return;
+      final text = await textBook.text;
+      if (!mounted) return;
+      setState(() {
+        _textLines = text.split('\n');
+      });
+    } catch (e) {
+      debugPrint('שגיאה בטעינת תוכן טקסט: $e');
+    }
+  }
+
+  /// בשחזור מהפעלה קודמת ה-sourceTab נבנה מחדש וריק — אין מסך PDF חי שמילא
+  /// אותו. כאן נטענים ה-headings וה-links בעצמנו אם הם חסרים, כדי שהכרטיסייה
+  /// תהיה עצמאית לחלוטין (כמו כרטיסיית הטקסט). בפתיחה רגילה הנתונים כבר קיימים
+  /// ולכן זה no-op.
+  Future<void> _ensureDataLoaded() async {
+    final tab = widget.tab.sourceTab;
+
+    if (tab.pdfHeadings == null) {
+      final headings = await PdfHeadings.loadFromDatabase(
+        tab.book.title,
+        categoryId: tab.book.categoryId,
+        filePath: tab.book.filePath,
+        preferSource: tab.book.source,
+      );
+      if (!mounted) return;
+      if (headings != null) {
+        tab.pdfHeadings = headings;
+        _initHeadings();
+        setState(() {});
+      }
+    }
+
+    // הכרטיסייה זקוקה לכל קישורי הספר (ניווט חופשי + בחירת כלל המפרשים),
+    // בעוד מסך ה-PDF ממלא את tab.links בחלון סביב המיקום בלבד —
+    // לכן משדרגים לרשימה המלאה גם כשהחלון כבר מולא.
+    if (!tab.linksAreComplete) {
+      try {
+        final library = await DataRepository.instance.library;
+        final textBook =
+            library.getCompanionBook(tab.book, TextBook) as TextBook?;
+        if (textBook != null) {
+          final loaded = await textBook.links
+            ..sort((a, b) => a.index1.compareTo(b.index1));
+          if (!mounted) return;
+          tab.links = loaded;
+          tab.linksAreComplete = true;
+        }
+      } catch (e) {
+        debugPrint('שגיאה בטעינת links לכרטיסיית מפרשים: $e');
+      }
+      if (!mounted) return;
+      tab.linksLoadingNotifier.value = false;
+      _loadCommentatorGroups();
+      setState(() {});
+    }
+
+    // פתיחה מסימניה/שחזור: ה-sourceTab נבנה מחדש ללא currentTitle — נמקם את
+    // הכותרת לפי עמוד ה-PDF השמור (אחרת תמיד נפתחת הכותרת הראשונה).
+    if (tab.currentTitle.value.isEmpty && tab.pageNumber > 1) {
+      await _resolveHeadingForPage(tab.pageNumber);
+    }
+  }
+
+  /// ממקם את הכותרת הנבחרת לפי עמוד PDF נתון (פתיחה מסימניה/שחזור): ממיר את
+  /// שורת כל כותרת לעמוד ומבצע חיפוש בינארי לכותרת בעלת העמוד הגבוה ביותר
+  /// שאינו עולה על עמוד היעד (הכותרות ממוינות לפי שורה → העמודים מונוטוניים).
+  Future<void> _resolveHeadingForPage(int targetPage) async {
+    final headings = _sortedHeadings;
+    if (headings == null || headings.isEmpty) return;
+    try {
+      final library = await DataRepository.instance.library;
+      final textBook =
+          library.getCompanionBook(
+                widget.tab.sourceTab.book,
+                TextBook,
+              )
+              as TextBook?;
+      if (textBook == null) return;
+
+      int lo = 0;
+      int hi = headings.length - 1;
+      int best = 0;
+      while (lo <= hi) {
+        final mid = (lo + hi) ~/ 2;
+        final page = await textToPdfPage(
+          textBook,
+          headings[mid].value,
+          pdfBook: widget.tab.sourceTab.book,
+        );
+        if (page == null) return; // אין מיפוי אמין — נשארים בברירת המחדל
+        if (page <= targetPage) {
+          best = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _selectedHeadingIdx = best;
+        _selectedParagraphIdx = _kAllPara;
+      });
+    } catch (e) {
+      debugPrint('שגיאה במיפוי עמוד לכותרת בכרטיסיית מפרשים: $e');
+    }
+  }
+
+  /// טוען את קבוצות המפרשים (לפי תקופות) מתוך links של ה-sourceTab — זהה
+  /// לחישוב שב-[PdfCommentaryPanel], לצורך לשונית "מפרשים".
+  Future<void> _loadCommentatorGroups() async {
+    final commentatorsSet = <String>{};
+    for (final link in widget.tab.sourceTab.links) {
+      if (LinkTypes.isDependentTextLink(link.connectionType)) {
+        final title = utils.getTitleFromPath(link.path2);
+        commentatorsSet.add(title);
+      }
+    }
+    final available = commentatorsSet.toList();
+    await _applyDefaultCommentatorsIfNeeded(available);
+    final eras = await utils.splitByEra(
+      available,
+      source: widget.tab.sourceTab.book.source,
+      sourceByTitle: {
+        for (final link in widget.tab.sourceTab.links)
+          utils.getTitleFromPath(link.path2): link.targetSource,
+      },
+    );
+    final groups = buildCommentatorGroups(eras, available);
+    if (!mounted) return;
+    setState(() {
+      _commentatorGroups = groups;
+    });
+  }
+
+  /// בוחר אוטומטית את מפרשי ברירת המחדל של הספר (כמו בכרטיסיית הטקסט), כל עוד
+  /// אין בחירה פר-ספר שמורה ואין מפרשים פעילים. [available] = המפרשים הזמינים
+  /// מתוך ה-links של הספר.
+  Future<void> _applyDefaultCommentatorsIfNeeded(List<String> available) async {
+    final sourceTab = widget.tab.sourceTab;
+    if (available.isEmpty || sourceTab.activeCommentators.isNotEmpty) return;
+
+    final saved = await PdfBookPerBookSettings.load(sourceTab.book);
+    final selection = await DefaultCommentators.resolveAutoSelection(
+      sourceTab.book,
+      availableCommentators: available,
+      savedSelection: saved?.activeCommentators,
+    );
+    if (!mounted ||
+        selection == null ||
+        sourceTab.activeCommentators.isNotEmpty) {
+      return;
+    }
+    setState(() => sourceTab.activeCommentators.addAll(selection));
+  }
+
+  @override
+  void dispose() {
+    FocusRepository().unregisterTabContentFocusRequester(widget.tab);
+    widget.tab.sourceTab.currentTitle.removeListener(_syncWithSourceTab);
+    _navTabController.removeListener(_handleTabChanged);
+    _navTabController.dispose();
+    _searchHost.dispose();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    _navSearchController.dispose();
+    _totalResultsNotifier.dispose();
+    _currentIdxNotifier.dispose();
+    _searchSnippetsNotifier.dispose();
+    _typeSelection.dispose();
+    _displayOverride.dispose();
+    _allExpandedInChild.dispose();
+    super.dispose();
+  }
+
+  /// פסקאות (שורות טקסט לא-ריקות) בתוך heading נבחר
+  List<({int lineIdx, String text})> _getParagraphs(int headingIdx) {
+    final lines = _textLines;
+    if (lines == null) return const [];
+    final headings = _sortedHeadings;
+    if (headings == null || headingIdx >= headings.length) return const [];
+    final start = headings[headingIdx].value;
+    final headingText = headings[headingIdx].key.trim();
+    final end = headingIdx + 1 < headings.length
+        ? headings[headingIdx + 1].value - 1
+        : lines.length - 1;
+    final result = <({int lineIdx, String text})>[];
+    for (int i = start; i <= end && i < lines.length; i++) {
+      final clean = utils.stripHtmlIfNeeded(lines[i]).trim();
+      if (i == start && clean == headingText) {
+        continue;
+      }
+      if (clean.isNotEmpty) result.add((lineIdx: i, text: clean));
+    }
+    return result;
+  }
+
+  /// טווח שורות לחלונית המפרשים
+  ({int start, int end}) _getLineRangeForPara(
+    int headingIdx,
+    List<({int lineIdx, String text})> paragraphs,
+    int paraIdx,
+  ) {
+    if (paraIdx != _kAllPara &&
+        paragraphs.isNotEmpty &&
+        paraIdx < paragraphs.length) {
+      final lineIdx = paragraphs[paraIdx].lineIdx;
+      final nextLineIdx = paraIdx + 1 < paragraphs.length
+          ? paragraphs[paraIdx + 1].lineIdx - 1
+          : lineIdx + 1;
+      return (start: lineIdx, end: nextLineIdx);
+    }
+    final headings = _sortedHeadings;
+    if (headings == null || headingIdx >= headings.length) {
+      final fallback = widget.tab.sourceTab.currentTextLineNumber ?? 0;
+      return (
+        start: fallback,
+        end: widget.tab.sourceTab.currentTextLineNumberEnd ?? fallback + 50,
+      );
+    }
+    final start = headings[headingIdx].value;
+    final lastLineIndex = (_textLines?.length ?? 0) - 1;
+    final end = headingIdx + 1 < headings.length
+        ? headings[headingIdx + 1].value - 1
+        : (lastLineIndex >= start ? lastLineIndex : start);
+    return (start: start, end: end);
+  }
+
+  /// Ctrl (או Cmd ב-macOS) לחוץ כרגע — לזיהוי ריבוי-בחירה בלחיצת ניווט.
+  bool _isCtrlPressed() =>
+      HardwareKeyboard.instance.isControlPressed ||
+      HardwareKeyboard.instance.isMetaPressed;
+
+  /// מספרי השורות של טווח כותרת/פסקה (מוגבל למניעת קבוצות ענק).
+  List<int> _linesForNavItem(int headingIdx, int paraIdx) {
+    final paras = _getParagraphs(headingIdx);
+    final safe = paraIdx == _kAllPara || paras.isEmpty
+        ? _kAllPara
+        : paraIdx.clamp(0, paras.length - 1);
+    final range = _getLineRangeForPara(headingIdx, paras, safe);
+    if (range.end < range.start || range.end - range.start > 3000) {
+      return [range.start];
+    }
+    return [for (int l = range.start; l <= range.end; l++) l];
+  }
+
+  /// Ctrl+לחיצה על פריט ניווט: מוסיף/מסיר את שורותיו מריבוי-הבחירה (toggle).
+  void _ctrlToggleNavItem(int headingIdx, int paraIdx) {
+    final lines = _linesForNavItem(headingIdx, paraIdx);
+    if (lines.isEmpty) return;
+    setState(() {
+      if (lines.every(_extraLines.contains)) {
+        _extraLines.removeAll(lines);
+      } else {
+        // שמירת הטווח הראשי הנוכחי כחלק מהאיחוד לפני הוספת הקטע החדש.
+        _extraLines.addAll(
+          _linesForNavItem(_selectedHeadingIdx, _selectedParagraphIdx),
+        );
+        _extraLines.addAll(lines);
+      }
+    });
+  }
+
+  /// האם שורות פריט הניווט נמצאות בריבוי-הבחירה (להדגשה).
+  bool _isNavItemInMulti(int headingIdx, int paraIdx) {
+    if (_extraLines.isEmpty) return false;
+    return _linesForNavItem(headingIdx, paraIdx).any(_extraLines.contains);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // נדרש ע"י AutomaticKeepAliveClientMixin
+    if (_sortedHeadings == null) _initHeadings();
+    final paragraphs = _getParagraphs(_selectedHeadingIdx);
+    final safeParaIdx = _selectedParagraphIdx == _kAllPara || paragraphs.isEmpty
+        ? _kAllPara
+        : _selectedParagraphIdx.clamp(0, paragraphs.length - 1);
+    final range = _getLineRangeForPara(
+      _selectedHeadingIdx,
+      paragraphs,
+      safeParaIdx,
+    );
+
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _handlePrintShortcut,
+      child: Scaffold(
+        body: Column(
+          children: [
+            _buildAppTopBar(context),
+            Expanded(
+              child: NavSidePanel(
+                isOpen: _navPaneOpen || _pinLeftPane,
+                isPinned: _pinLeftPane,
+                alignment: AlignmentDirectional.centerEnd,
+                paneWidth: _kNavPaneWidth,
+                onClose: () {
+                  if (!_pinLeftPane) setState(() => _navPaneOpen = false);
+                },
+                paneContent: NavPanelSearchScope(
+                  host: _searchHost,
+                  child: _buildSidePane(context),
+                ),
+                mainContent: LayoutBuilder(
+                  builder: (context, constraints) =>
+                      ValueListenableBuilder<bool>(
+                        valueListenable:
+                            widget.tab.sourceTab.linksLoadingNotifier,
+                        builder: (context, linksLoading, _) =>
+                            _buildCommentaryPanel(
+                              context,
+                              range: range,
+                              linksLoading: linksLoading,
+                              availableWidth: constraints.maxWidth,
+                            ),
+                      ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommentaryPanel(
+    BuildContext context, {
+    required ({int start, int end}) range,
+    required bool linksLoading,
+    required double availableWidth,
+  }) {
+    final textMaxWidth = textColumnMaxWidthOf(
+      context,
+      setting: context.watch<SettingsBloc>().state.textMaxWidth,
+      availableWidth: availableWidth,
+    );
+    // הרוחב עובר לתוך הרשימה ולא עוטף אותה מבחוץ, כדי שפס הגלילה יישאר
+    // צמוד לדופן החלון (כמו בכרטיסיית הטקסט).
+    return PdfCommentaryPanel(
+      key: _panelKey,
+      tab: widget.tab.sourceTab,
+      linksCount: widget.tab.sourceTab.links.length,
+      linksLoading: linksLoading,
+      contentMaxWidth: textMaxWidth > 0 ? textMaxWidth : null,
+      isFullScreen: true,
+      enableInternalFilter: false,
+      onSelectCommentatorsRequested: _openCommentatorsTab,
+      lineStartOverride: range.start,
+      lineEndOverride: range.end,
+      extraLineIndices: _extraLines.isEmpty ? null : _extraLines,
+      displayProfile: _profileFor(
+        context,
+        TextDisplaySlot.commentaryDisplay,
+      ),
+      copyDisplayProfile: _profileFor(
+        context,
+        TextDisplaySlot.commentaryDisplay.copyWith(channel: TextChannel.copy),
+      ),
+      openBookCallback: (tab) => openPreparedTab(context, tab),
+      fontSize: context.watch<SettingsBloc>().state.commentatorsFontSize,
+      externalSearchController: _searchController,
+      externalTotalResultsNotifier: _totalResultsNotifier,
+      externalCurrentIndexNotifier: _currentIdxNotifier,
+      externalSearchSnippetsNotifier: _searchSnippetsNotifier,
+      typeSelection: _typeSelection,
+      externalAllExpandedNotifier: _allExpandedInChild,
+    );
+  }
+
+  /// מטפל בקיצור ההדפסה המוגדר — פעיל רק בכרטיסיית המפרשים.
+  KeyEventResult _handlePrintShortcut(FocusNode node, KeyEvent event) {
+    final printShortcut =
+        Settings.getValue<String>('key-shortcut-print') ?? 'ctrl+p';
+    if (ShortcutHelper.matchesShortcut(event, printShortcut)) {
+      _panelKey.currentState?.printDisplayedCommentaries();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _navigateToPrevParagraph() {
+    if (!_isNavigationReady) return;
+    _extraLines.clear();
+    final paragraphs = _getParagraphs(_selectedHeadingIdx);
+    if (_selectedParagraphIdx > 0 && paragraphs.isNotEmpty) {
+      setState(() => _selectedParagraphIdx--);
+      return;
+    }
+    // מפסקה הראשונה → חזרה ל"כל הכותרת"
+    if (_selectedParagraphIdx == 0) {
+      setState(() => _selectedParagraphIdx = _kAllPara);
+      return;
+    }
+    // מ"כל הכותרת" → הכותרת הקודמת (כולה)
+    if (_selectedHeadingIdx <= 0) return;
+    final prevHeadingIdx = _selectedHeadingIdx - 1;
+    setState(() {
+      _selectedHeadingIdx = prevHeadingIdx;
+      _selectedParagraphIdx = _kAllPara;
+      _expandedHeadings.add(prevHeadingIdx);
+    });
+  }
+
+  void _navigateToNextParagraph() {
+    if (!_isNavigationReady) return;
+    _extraLines.clear();
+    final paragraphs = _getParagraphs(_selectedHeadingIdx);
+    // מ"כל הכותרת" (-1) → פסקה ראשונה (0); אחרת לפסקה הבאה
+    if (_selectedParagraphIdx + 1 < paragraphs.length) {
+      setState(() => _selectedParagraphIdx++);
+      return;
+    }
+    if (_sortedHeadings == null ||
+        _selectedHeadingIdx + 1 >= _sortedHeadings!.length) {
+      return;
+    }
+    final nextHeadingIdx = _selectedHeadingIdx + 1;
+    setState(() {
+      _selectedHeadingIdx = nextHeadingIdx;
+      _selectedParagraphIdx = _kAllPara;
+      _expandedHeadings.add(nextHeadingIdx);
+    });
+  }
+
+  void _showBookmarksForCurrentBook(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => BookmarksDialog(bookFilter: widget.tab.sourceTab.book),
+    );
+  }
+
+  Future<void> _addBookmark(BuildContext context) async {
+    final sourceTab = widget.tab.sourceTab;
+    final bookmarkBloc = context.read<BookmarkBloc>();
+    final headings = _sortedHeadings;
+    final hasSelectedHeading =
+        headings != null &&
+        _selectedHeadingIdx >= 0 &&
+        _selectedHeadingIdx < headings.length;
+
+    // הכותרת הנבחרת בכרטיסייה (כפי שמוצג בסרגל), ולא מצב הספר המקורי
+    final heading = hasSelectedHeading
+        ? headings[_selectedHeadingIdx].key.trim()
+        : sourceTab.currentTitle.value.trim();
+
+    // עמוד ברירת מחדל — מצב הספר המקורי אם אין כותרת נבחרת
+    int page = sourceTab.pdfViewerController.isReady
+        ? (sourceTab.pdfViewerController.pageNumber ?? sourceTab.pageNumber)
+        : sourceTab.pageNumber;
+
+    // המרת שורת הכותרת הנבחרת לעמוד PDF מדויק; אם לא ניתן — נשארים על ברירת המחדל
+    if (hasSelectedHeading) {
+      try {
+        final library = await DataRepository.instance.library;
+        final textBook =
+            library.getCompanionBook(sourceTab.book, TextBook) as TextBook?;
+        if (textBook != null) {
+          final mapped = await textToPdfPage(
+            textBook,
+            headings[_selectedHeadingIdx].value,
+            pdfBook: sourceTab.book,
+          );
+          if (mapped != null) page = mapped;
+        }
+      } catch (e) {
+        debugPrint('שגיאה במיפוי כותרת לעמוד עבור סימניה: $e');
+      }
+    }
+
+    final ref = heading.isNotEmpty
+        ? '${sourceTab.book.title} $heading'
+        : '${sourceTab.book.title} עמוד $page';
+
+    final added = bookmarkBloc.addBookmark(
+      ref: 'מפרשים | $ref',
+      book: sourceTab.book,
+      index: page,
+      commentatorsToShow: sourceTab.activeCommentators.toList(),
+      targetKind: BookmarkTargetKind.commentators,
+    );
+    UiSnack.show(
+      added ? NotesMessages.bookmarkAdded : NotesMessages.bookmarkAlreadyExists,
+    );
+  }
+
+  Widget _buildAppTopBar(BuildContext context) {
+    final isCompact = context.read<SettingsBloc>().state.compactMenuMode;
+    return AppTopBar(
+      minCenterWidth: ReaderNavCenter.minTitleWidth,
+      leadingItems: [
+        AppTopBarItem(
+          widget: NavPanelToggleButton(
+            isOpen: _navPaneOpen,
+            onToggle: () {
+              setState(() => _navPaneOpen = !_navPaneOpen);
+              if (_navPaneOpen && _navTabController.index == 0) {
+                _scrollNavToSelectedHeading();
+              }
+            },
+          ),
+        ),
+        if (_navPaneOpen || _pinLeftPane)
+          AppTopBarItem(
+            widget: NavPanelPinButton(
+              isPinned: _pinLeftPane,
+              onToggle: () => setState(() => _pinLeftPane = !_pinLeftPane),
+            ),
+          ),
+      ],
+      center: ReaderNavCenter(
+        title: Text(
+          'מפרשים על ${widget.tab.sourceTab.book.title}',
+          style: AppTopBar.titleStyle(context),
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+        prevMajorTooltip: 'הכותרת הקודמת',
+        prevMinorTooltip: 'הקטע הקודם',
+        nextMinorTooltip: 'הקטע הבא',
+        nextMajorTooltip: 'הכותרת הבאה',
+        onPrevMajor: _navigateToPrevHeading,
+        onPrevMinor: _navigateToPrevParagraph,
+        onNextMinor: _navigateToNextParagraph,
+        onNextMajor: _navigateToNextHeading,
+      ),
+      trailingItems: [
+        AppTopBarItem(
+          flexible: true,
+          widget: ResponsiveActionBar(
+            overflowMenuOffset: const Offset(0, 8),
+            actions: [
+              // תצוגת הטקסט של המפרשים: לחיצה מחליפה ניקוד, החץ פותח את הפרופיל
+              ActionButtonData(
+                widget: TextDisplayBarButton(
+                  removeNikud: _commentaryProfile.removeNikud,
+                  compact: isCompact,
+                  onToggleNikud: _toggleRemoveNikud,
+                  panelBuilder: _buildDisplayPanel,
+                ),
+                icon: textDisplayBarIcon(_commentaryProfile.removeNikud),
+                tooltip: textDisplayBarTooltip(_commentaryProfile.removeNikud),
+                actionId: ToolbarActionId.textDisplay,
+                toolbarWidth: BarSplitButton.toolbarWidth(isCompact),
+                onPressed: _toggleRemoveNikud,
+              ),
+              // הדפסת המפרשים המוצגים
+              ActionButtonData(
+                widget: BarButton.icon(
+                  tooltip: 'הדפסה',
+                  icon: FluentIcons.print_24_regular,
+                  compact: isCompact,
+                  onPressed: () =>
+                      _panelKey.currentState?.printDisplayedCommentaries(),
+                ),
+                icon: FluentIcons.print_24_regular,
+                tooltip: 'הדפסה',
+                actionId: ToolbarActionId.print,
+                onPressed: () =>
+                    _panelKey.currentState?.printDisplayedCommentaries(),
+              ),
+              // חיפוש
+              ActionButtonData(
+                widget: BarButton.icon(
+                  tooltip: 'חיפוש',
+                  icon: OtzariaIcons.search_24_regular,
+                  compact: isCompact,
+                  onPressed: _openSearchPanel,
+                ),
+                icon: OtzariaIcons.search_24_regular,
+                tooltip: 'חיפוש',
+                actionId: ToolbarActionId.search,
+                onPressed: _openSearchPanel,
+              ),
+              // כיווץ/הרחבת כל המפרשים
+              ActionButtonData(
+                widget: ValueListenableBuilder<bool>(
+                  valueListenable: _allExpandedInChild,
+                  builder: (context, allExpanded, _) {
+                    return BarButton.icon(
+                      tooltip: allExpanded
+                          ? 'כווץ את כל המפרשים'
+                          : 'הרחב את כל המפרשים',
+                      icon: allExpanded
+                          ? FluentIcons.arrow_collapse_all_24_regular
+                          : FluentIcons.arrow_expand_all_24_regular,
+                      compact: isCompact,
+                      onPressed: () =>
+                          _panelKey.currentState?.toggleAllExpanded(),
+                    );
+                  },
+                ),
+                icon: _allExpandedInChild.value
+                    ? FluentIcons.arrow_collapse_all_24_regular
+                    : FluentIcons.arrow_expand_all_24_regular,
+                tooltip: _allExpandedInChild.value
+                    ? 'כווץ את כל המפרשים'
+                    : 'הרחב את כל המפרשים',
+                actionId: ToolbarActionId.expandAll,
+                onPressed: () => _panelKey.currentState?.toggleAllExpanded(),
+              ),
+              // הוסף סימניה
+              ActionButtonData(
+                widget: BarButton.icon(
+                  tooltip: 'הוסף סימניה',
+                  icon: FluentIcons.bookmark_add_24_regular,
+                  compact: isCompact,
+                  onPressed: () => _addBookmark(context),
+                ),
+                icon: FluentIcons.bookmark_add_24_regular,
+                tooltip: 'הוסף סימניה',
+                actionId: ToolbarActionId.bookmarkAdd,
+                onPressed: () => _addBookmark(context),
+              ),
+              // הגדל גופן
+              ActionButtonData(
+                widget: BarButton.icon(
+                  tooltip: 'הגדל את גודל הטקסט',
+                  icon: FluentIcons.zoom_in_24_regular,
+                  compact: isCompact,
+                  onPressed: () => _zoomIn(context),
+                ),
+                icon: FluentIcons.zoom_in_24_regular,
+                tooltip: 'הגדל את גודל הטקסט',
+                actionId: ToolbarActionId.zoomIn,
+                onPressed: () => _zoomIn(context),
+              ),
+              // הקטן גופן
+              ActionButtonData(
+                widget: BarButton.icon(
+                  tooltip: 'הקטן את גודל הטקסט',
+                  icon: FluentIcons.zoom_out_24_regular,
+                  compact: isCompact,
+                  onPressed: () => _zoomOut(context),
+                ),
+                icon: FluentIcons.zoom_out_24_regular,
+                tooltip: 'הקטן את גודל הטקסט',
+                actionId: ToolbarActionId.zoomOut,
+                onPressed: () => _zoomOut(context),
+              ),
+            ],
+            alwaysInMenu: [
+              ActionButtonData(
+                widget: BarButton.icon(
+                  tooltip: 'סימניות בספר זה',
+                  icon: FluentIcons.bookmark_multiple_24_regular,
+                  compact: isCompact,
+                  onPressed: () => _showBookmarksForCurrentBook(context),
+                ),
+                icon: FluentIcons.bookmark_multiple_24_regular,
+                tooltip: 'סימניות בספר זה',
+                onPressed: () => _showBookmarksForCurrentBook(context),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// פאנל הצד — סרגל 3 לשוניות זהה לכרטיסיית הטקסט (ניווט / מפרשים / חיפוש)
+  /// עם כפתור נעיצה בפינה.
+  Widget _buildSidePane(BuildContext context) {
+    return Column(
+      children: [
+        NavPanelTabHeader(
+          controller: _navTabController,
+          tabs: const [
+            (
+              icon: OtzariaIcons.list_24_regular,
+              iconFilled: OtzariaIcons.list_24_filled,
+              label: 'ניווט',
+            ),
+            (
+              icon: OtzariaIcons.apps_list_24_regular,
+              iconFilled: OtzariaIcons.apps_list_24_filled,
+              label: 'מפרשים',
+            ),
+            (
+              icon: OtzariaIcons.search_24_regular,
+              iconFilled: OtzariaIcons.search_24_filled,
+              label: 'חיפוש',
+            ),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _navTabController,
+            children: [
+              NavPanelSearchSlot(index: 0, child: _buildNavPanel()),
+              NavPanelSearchSlot(
+                index: 1,
+                child: _buildCommentatorsSelectionTab(),
+              ),
+              NavPanelSearchSlot(index: 2, child: _buildSearchPanel()),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// לשונית "מפרשים" — בחירת המפרשים להצגה (זהה לכרטיסיית הטקסט).
+  Widget _buildCommentatorsSelectionTab() {
+    if (_commentatorGroups.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'טוען מפרשים...',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      );
+    }
+    // מכל הקישורים הטעונים ולא מהקטע הנבחר: צ׳יפ שנגזר מהקטע נעלם בניווט
+    // לקטע שאין בו אותו סוג. זהות הרשימה יציבה, ולכן ה-Expando של המימוש פוגע.
+    final allLinks = widget.tab.sourceTab.links;
+    final selected = widget.tab.sourceTab.activeCommentators.isEmpty
+        ? allLinks
+              .map((link) => utils.getTitleFromPath(link.path2))
+              .toList(growable: false)
+        : widget.tab.sourceTab.activeCommentators.toList(growable: false);
+    final chipKeys = CommentaryTypeFilter.chipKeysForCommentators(
+      links: allLinks,
+      selectedCommentators: selected,
+    );
+    return ValueListenableBuilder<Set<String>>(
+      valueListenable: _typeSelection,
+      builder: (context, selectedTypes, _) {
+        final effectiveTypes = CommentaryTypeFilter.effectiveTypes(
+          selectedTypes: selectedTypes,
+          availableKeys: chipKeys,
+        );
+        return CommentatorsSelectionPanel(
+          groups: _commentatorGroups,
+          selectedCommentators: widget.tab.sourceTab.activeCommentators
+              .toList(),
+          bookTitle: widget.tab.sourceTab.book.title,
+          typeChipKeys: CommentaryTypeFilter.visibleChipKeys(
+            chipKeys: chipKeys,
+            effectiveTypes: effectiveTypes,
+          ),
+          selectedTypeChips: effectiveTypes,
+          typeChipLabelBuilder: LinkTypes.hebrewLabel,
+          commentatorsByType: CommentaryTypeFilter.commentatorsByType(allLinks),
+          onTypeChipsChanged: (types) => _typeSelection.value = types,
+          onSelectionChanged: (list) async {
+            setState(() {
+              widget.tab.sourceTab.activeCommentators
+                ..clear()
+                ..addAll(list);
+            });
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() {});
+            });
+            // שמירה פר-ספר תמיד (לא תלוי ב-enablePerBookSettings) כדי שהבחירה
+            // תיטען בכל פתיחה.
+            final settings = PdfBookPerBookSettings(
+              activeCommentators: List.from(
+                widget.tab.sourceTab.activeCommentators,
+              ),
+            );
+            await settings.save(widget.tab.sourceTab.book);
+          },
+          heCategories: bookCategoriesSource(widget.tab.sourceTab.book),
+          onCategoryDefaultsSaved: () =>
+              PdfBookPerBookSettings.clearActiveCommentators(
+                widget.tab.sourceTab.book,
+              ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNavPanel() {
+    final headings = _sortedHeadings;
+    if (headings == null || headings.isEmpty) {
+      return const Center(child: Text('אין ניווט'));
+    }
+
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _navSearchController,
+      builder: (context, val, _) {
+        final filteredIdx = _navFilteredIndices(val.text);
+
+        final delegate = NavPanelSearchDelegate(
+          controller: _navSearchController,
+          hintText: 'איתור כותרת...',
+          onClear: () {},
+        );
+
+        return NavPanelCollapsibleSearch(
+          delegate: delegate,
+          child: NavTreeFocusGroup(
+            child: ScrollablePositionedList.builder(
+              itemScrollController: _navScrollController,
+              // +1 עבור הכותרת הראשית, שנגללת עם הרשימה (פריט 0).
+              itemCount: filteredIdx.length + 1,
+              padding: kNavTreeListPadding,
+              itemBuilder: (context, listIdx) {
+                if (listIdx == 0) {
+                  return NavTreeHeader(
+                    title: widget.tab.sourceTab.book.title,
+                    trailing: const NavPanelSearchToggle(),
+                  );
+                }
+                final idx = filteredIdx[listIdx - 1];
+                final isGroupStart = listIdx == 1;
+                final isGroupEnd = listIdx == filteredIdx.length;
+                final isActiveHeading = idx == _selectedHeadingIdx;
+                final isExpanded = _expandedHeadings.contains(idx);
+                final paras = _getParagraphs(idx);
+
+                final headingRow = _buildHeadingRow(
+                  context: context,
+                  headingText: headings[idx].key,
+                  // מודגש כשנבחרה "כל הכותרת", או כשהיא בריבוי-הבחירה.
+                  isSelected:
+                      (isActiveHeading && _selectedParagraphIdx == _kAllPara) ||
+                      _isNavItemInMulti(idx, _kAllPara),
+                  isExpanded: isExpanded,
+                  hasChildren: paras.isNotEmpty,
+                  // לחיצה על גוף הכותרת = בחירת כל הכותרת (כל המפרשים) + הרחבה
+                  onTap: () {
+                    if (_isCtrlPressed()) {
+                      _ctrlToggleNavItem(idx, _kAllPara);
+                      return;
+                    }
+                    setState(() {
+                      _selectedHeadingIdx = idx;
+                      _selectedParagraphIdx = _kAllPara;
+                      if (paras.isNotEmpty) _expandedHeadings.add(idx);
+                      _searchController.clear();
+                      _extraLines.clear();
+                    });
+                  },
+                  // לחיצה על החץ = הרחבה/כיווץ בלבד, בלי לשנות את הבחירה
+                  onToggleExpand: paras.isNotEmpty
+                      ? () {
+                          setState(() {
+                            if (isExpanded) {
+                              _expandedHeadings.remove(idx);
+                            } else {
+                              _expandedHeadings.add(idx);
+                            }
+                          });
+                        }
+                      : null,
+                );
+
+                if (paras.isEmpty || !isExpanded) {
+                  return NavTreeGroupCard(
+                    isGroupStart: isGroupStart,
+                    isGroupEnd: isGroupEnd,
+                    child: headingRow,
+                  );
+                }
+
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    NavTreeGroupCard(
+                      isGroupStart: isGroupStart,
+                      isGroupEnd: false,
+                      child: headingRow,
+                    ),
+                    ...List.generate(paras.length, (pi) {
+                      final words = paras[pi].text
+                          .split(RegExp(r'\s+'))
+                          .where((w) => w.isNotEmpty)
+                          .take(4)
+                          .join(' ');
+                      final isParaSelected =
+                          (isActiveHeading && _selectedParagraphIdx == pi) ||
+                          _isNavItemInMulti(idx, pi);
+                      return NavTreeGroupCard(
+                        isGroupStart: false,
+                        isGroupEnd: isGroupEnd && pi == paras.length - 1,
+                        child: _buildParagraphRow(
+                          context: context,
+                          text: words,
+                          isSelected: isParaSelected,
+                          onTap: () {
+                            if (_isCtrlPressed()) {
+                              _ctrlToggleNavItem(idx, pi);
+                              return;
+                            }
+                            setState(() {
+                              _selectedHeadingIdx = idx;
+                              _selectedParagraphIdx = pi;
+                              _searchController.clear();
+                              _extraLines.clear();
+                            });
+                          },
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHeadingRow({
+    required BuildContext context,
+    required String headingText,
+    required bool isSelected,
+    required bool isExpanded,
+    required bool hasChildren,
+    required VoidCallback onTap,
+    VoidCallback? onToggleExpand,
+  }) {
+    return NavTreeTile.category(
+      title: headingText,
+      level: 0,
+      isSelected: isSelected,
+      isExpanded: isExpanded,
+      hasChildren: hasChildren,
+      onTap: onTap,
+      onToggleExpand: onToggleExpand,
+    );
+  }
+
+  Widget _buildParagraphRow({
+    required BuildContext context,
+    required String text,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return NavTreeTile.book(
+      title: text,
+      level: 1,
+      isSelected: isSelected,
+      icon: OtzariaIcons.text_bullet_list_24_regular,
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildSearchPanel() {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _searchController,
+      builder: (context, val, _) {
+        final hasQuery = val.text.isNotEmpty;
+        return ValueListenableBuilder<int>(
+          valueListenable: _totalResultsNotifier,
+          builder: (context, total, _) => ValueListenableBuilder<int>(
+            valueListenable: _currentIdxNotifier,
+            builder: (context, currentIdx, _) => SearchPaneBase(
+              searchController: _searchController,
+              focusNode: _searchFocusNode,
+              hintText: 'חיפוש במפרשים...',
+              isNoResults: hasQuery && total == 0,
+              resetSearchCallback: _searchController.clear,
+              resultCountString: hasQuery && total > 0
+                  ? 'תוצאה ${currentIdx + 1} מתוך $total'
+                  : null,
+              resultToolbar: hasQuery && total > 0
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        OtzariaSearchAction.prevResult(
+                          onPressed: currentIdx > 0
+                              ? () =>
+                                    _panelKey.currentState?.navigateSearchPrev()
+                              : null,
+                        ),
+                        OtzariaSearchAction.nextResult(
+                          onPressed: currentIdx < total - 1
+                              ? () =>
+                                    _panelKey.currentState?.navigateSearchNext()
+                              : null,
+                        ),
+                      ],
+                    )
+                  : null,
+              resultsWidget:
+                  ValueListenableBuilder<List<CommentarySearchSnippet>>(
+                    valueListenable: _searchSnippetsNotifier,
+                    builder: (context, snippets, _) =>
+                        CommentarySearchResultsList(
+                          query: val.text,
+                          snippets: snippets,
+                          currentIdx: currentIdx,
+                          onSnippetTap: (globalIndex) => _panelKey.currentState
+                              ?.navigateToGlobalIndex(globalIndex),
+                        ),
+                  ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}

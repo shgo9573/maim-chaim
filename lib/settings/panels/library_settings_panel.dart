@@ -1,0 +1,301 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_settings_screens/flutter_settings_screens.dart'
+    hide SwitchSettingsTile;
+import 'package:fluentui_system_icons/fluentui_system_icons.dart';
+import 'package:otzaria_icons/otzaria_icons.dart';
+import 'package:otzaria/external_catalog/repository/external_catalog_repository.dart';
+import 'package:otzaria/external_catalog/view/external_catalog_settings_helper.dart';
+import 'package:otzaria/settings/engine/settings_engine_exports.dart';
+import 'package:otzaria/settings/l10n/settings_text.dart';
+import 'package:otzaria/settings/search/settings_search_models.dart';
+import 'package:otzaria/settings/view/settings_screen.dart';
+import 'package:otzaria/settings/widgets/settings_widgets_exports.dart';
+import 'package:otzaria/widgets/misc/app_menu_exports.dart';
+import 'package:otzaria/widgets/widgets_exports.dart';
+
+/// פאנל הגדרות תצוגת ספרייה
+class LibrarySettingsPanel extends StatefulWidget {
+  /// ווידג'ט להצגת מיקום ספרי היברובוקס (מועבר מהטאב הראשי כדי לתמוך בבחירת תיקייה)
+  final Widget? hebrewBooksPathWidget;
+
+  /// בודק אם מסד הקטלוגים קיים. ניתן להזרקה לבדיקות; כברירת מחדל בודק את הקובץ.
+  final Future<bool> Function()? catalogExistsChecker;
+
+  const LibrarySettingsPanel({
+    super.key,
+    this.hebrewBooksPathWidget,
+    this.catalogExistsChecker,
+  });
+
+  /// פריטי חיפוש בהגדרות. נסרק על-ידי tool/generate_search_index.dart.
+  static const List<SettingsSearchEntry> searchEntries = [
+    SettingsSearchEntry(
+      id: 'library.display.view_type',
+      title: 'סוג תצוגה',
+      subtitle: 'תצוגת רשת או רשימה לספרי הקטגוריה',
+      tab: SettingsTab.library,
+      cardId: 'library.display',
+      keywords: ['רשת', 'רשימה', 'תצוגה', 'גריד'],
+    ),
+    SettingsSearchEntry(
+      id: 'library.display.preview',
+      title: 'הצג תצוגה מקדימה',
+      subtitle: 'תצוגה מקדימה של תוכן ספרים',
+      tab: SettingsTab.library,
+      cardId: 'library.display',
+      keywords: ['תצוגה מקדימה', 'preview', 'מופעל', 'לא מופעל'],
+    ),
+    SettingsSearchEntry(
+      id: 'library.external.local_hebrewbooks',
+      title: 'הצג ספרי היברובוקס שברשותך',
+      subtitle: 'ספרים מתיקיית היברובוקס יופיעו באיתור הספר',
+      tab: SettingsTab.library,
+      cardId: 'library.external',
+      keywords: [
+        'היברובוקס',
+        'hebrewbooks',
+        'מקומי',
+        'תיקייה',
+        'מופעל',
+        'לא מופעל',
+      ],
+    ),
+    SettingsSearchEntry(
+      id: 'library.external.source_mode',
+      title: 'מקורות אחרים לספרים',
+      subtitle: 'הצגת ספרים מאוצר החכמה ו/או מהיברובוקס בספרייה',
+      tab: SettingsTab.library,
+      cardId: 'library.external',
+      keywords: [
+        'חיצוניים',
+        'קטלוגים',
+        'אוצר החכמה',
+        'otzar',
+        'hebrewbooks',
+        'היברובוקס',
+        'מופעל',
+        'לא מופעל',
+      ],
+    ),
+  ];
+
+  @override
+  State<LibrarySettingsPanel> createState() => _LibrarySettingsPanelState();
+}
+
+class _LibrarySettingsPanelState extends State<LibrarySettingsPanel> {
+  /// null בזמן הבדיקה הראשונית; אחרת האם מסד הקטלוגים קיים במערכת.
+  bool? _catalogExists;
+  bool _isDownloadingCatalog = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshCatalogExists();
+  }
+
+  Future<bool> _checkCatalogExists() =>
+      (widget.catalogExistsChecker ??
+      ExternalCatalogRepository.instance.databaseExists)();
+
+  Future<void> _refreshCatalogExists() async {
+    final exists = await _checkCatalogExists();
+    if (mounted) setState(() => _catalogExists = exists);
+  }
+
+  Future<void> _downloadCatalog() async {
+    setState(() => _isDownloadingCatalog = true);
+    await ExternalCatalogSettingsHelper.ensureCatalogDatabaseAvailable(context);
+    if (!mounted) return;
+    setState(() => _isDownloadingCatalog = false);
+    await _refreshCatalogExists();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<SettingsBloc, SettingsState>(
+      builder: (context, state) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // הגדרות תצוגה
+            SettingsCard(
+              cardId: 'library.display',
+              title: context.settingsText('תצוגת ספרייה'),
+              children: [
+                SettingsActionTile.segmentedTile<String>(
+                  title: context.settingsText('סוג תצוגה'),
+                  options: [
+                    SegmentOption(
+                      value: 'grid',
+                      label: context.settingsText('רשת'),
+                      icon: FluentIcons.grid_24_regular,
+                      subtitle: context.settingsText(
+                        'התיקיות והספרים יוצגו בתוך כרטיסים ברשת',
+                      ),
+                    ),
+                    SegmentOption(
+                      value: 'list',
+                      label: context.settingsText('רשימה'),
+                      rtlIcon: OtzariaIcons.list_24_regular,
+                      subtitle: context.settingsText(
+                        'התיקיות והספרים יוצגו ברשימה נפתחת (עץ מתרחב)',
+                      ),
+                    ),
+                  ],
+                  currentValue: state.libraryViewMode,
+                  onChanged: (value) {
+                    context.read<SettingsBloc>().add(
+                      UpdateLibraryViewMode(value),
+                    );
+                  },
+                ),
+                SettingsActionTile.switchTile(
+                  icon: FluentIcons.eye_24_regular,
+                  title: context.settingsText('הצג תצוגה מקדימה'),
+                  subtitle: context.settingsText(
+                    state.libraryShowPreview
+                        ? 'תצוגה מקדימה מוצגת'
+                        : 'תצוגה מקדימה מוסתרת',
+                  ),
+                  value: state.libraryShowPreview,
+                  onChanged: (value) {
+                    context.read<SettingsBloc>().add(
+                      UpdateLibraryShowPreview(value),
+                    );
+                  },
+                ),
+              ],
+            ),
+
+            kSettingsCardSpacing,
+
+            // ספרים נוספים (משלב מיקום היברובוקס וספרים חיצוניים)
+            SettingsCard(
+              cardId: 'library.external',
+              title: context.settingsText('ספריות חיצוניות'),
+              subtitle: context.settingsText(
+                'ניתן לחפש ספר במסך ספרייה או להציג ספרים מתיקיית ספרים של אוצר החכמה והיברובוקס',
+              ),
+              children: [
+                // מיקום היברובוקס (יוצג ראשון במידה והועבר לו ווידג'ט - דסקטופ בלבד)
+                ?widget.hebrewBooksPathWidget,
+
+                // כשהקטלוג חסר מוצג כפתור הורדה במקום תפריט המקורות.
+                if (_catalogExists == false)
+                  _buildMissingCatalogTile(context)
+                else if (_catalogExists == true) ...[
+                  _buildSourceModeTile(context, state),
+                  // כשהקטלוג עצמו מוצג הספרים המקומיים כלולים בו ממילא.
+                  if (_hasHebrewBooksPath &&
+                      !(state.showExternalBooks && state.showHebrewBooks))
+                    _buildLocalHebrewBooksTile(context, state),
+                ],
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMissingCatalogTile(BuildContext context) {
+    return SettingsActionTile.text(
+      icon: FluentIcons.cloud_arrow_down_24_regular,
+      title: context.settingsText('מקורות אחרים לספרים'),
+      subtitle: context.settingsText(
+        'הקטלוג של אוצר החכמה והיברובוקס חסר במערכת. יש להוריד אותו כדי להציג ולחפש ספרים ממקורות אלו.',
+      ),
+      actions: [
+        ActionButton.recommended(
+          text: context.settingsText('הורד קטלוג'),
+          isLoading: _isDownloadingCatalog,
+          onPressed: _downloadCatalog,
+        ),
+      ],
+    );
+  }
+
+  /// האם הוגדרה תיקיית ספרי היברובוקס מקומיים.
+  bool get _hasHebrewBooksPath {
+    if (!Settings.isInitialized) return false;
+    final path = Settings.getValue<String>(
+      SettingsRepository.keyHebrewBooksPath,
+    );
+    return path != null && path.isNotEmpty;
+  }
+
+  /// מתג הצגת ספרי היברובוקס שכבר ירדו למחשב (issue #1143) — מיועד למי
+  /// שהגדיר את התיקייה עבור תוסף ואינו רוצה אותם באיתור הספר.
+  Widget _buildLocalHebrewBooksTile(BuildContext context, SettingsState state) {
+    return SettingsActionTile.switchTile(
+      icon: FluentIcons.document_folder_24_regular,
+      title: context.settingsText('הצג ספרי היברובוקס שברשותך'),
+      subtitle: context.settingsText(
+        state.showLocalHebrewBooks
+            ? 'ספרים מתיקיית היברובוקס יוצגו בתוצאות איתור הספר'
+            : 'ספרים מתיקיית היברובוקס לא יוצגו בתוצאות איתור הספר',
+      ),
+      value: state.showLocalHebrewBooks,
+      onChanged: (value) {
+        context.read<SettingsBloc>().add(UpdateShowLocalHebrewBooks(value));
+      },
+    );
+  }
+
+  Widget _buildSourceModeTile(BuildContext context, SettingsState state) {
+    return SettingsActionTile.dropdownTile<String>(
+      icon: FluentIcons.globe_24_regular,
+      title: context.settingsText('מקורות אחרים לספרים'),
+      value: _externalSourceMode(state),
+      entries: [
+        AppMenuEntry(
+          value: 'none',
+          label: context.settingsText('אל תציג'),
+          subtitle: context.settingsText(
+            'ספרים חיצוניים לא יוצגו בתוצאות החיפוש במסך הספרייה',
+          ),
+        ),
+        AppMenuEntry(
+          value: 'all',
+          label: context.settingsText('הצג הכל'),
+          subtitle: context.settingsText(
+            'יוצגו ספרים מאוצר החכמה ומהיברובוקס בתוצאות החיפוש במסך הספרייה',
+          ),
+        ),
+        AppMenuEntry(
+          value: 'otzar',
+          label: context.settingsText('אוצר החכמה בלבד'),
+          subtitle: context.settingsText(
+            'יוצגו ספרים מאוצר החכמה בתוצאות החיפוש במסך הספרייה',
+          ),
+        ),
+        AppMenuEntry(
+          value: 'hebrewbooks',
+          label: context.settingsText('היברובוקס בלבד'),
+          subtitle: context.settingsText(
+            'יוצגו ספרים מהיברובוקס בתוצאות החיפוש במסך הספרייה',
+          ),
+        ),
+      ],
+      onSelected: (value) async {
+        if (value != null) {
+          await ExternalCatalogSettingsHelper.updateExternalSourceMode(
+            context,
+            value,
+          );
+        }
+      },
+    );
+  }
+
+  /// ערך התפריט הנוכחי לפי מצב הספרים החיצוניים.
+  static String _externalSourceMode(SettingsState state) {
+    if (!state.showExternalBooks) return 'none';
+    if (state.showOtzarHachochma && state.showHebrewBooks) return 'all';
+    if (state.showOtzarHachochma) return 'otzar';
+    if (state.showHebrewBooks) return 'hebrewbooks';
+    return 'none';
+  }
+}

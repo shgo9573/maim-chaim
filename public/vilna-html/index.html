@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>צורת הדף — HTML מתוך ה־PDF (גרסה עצמאית)</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Heebo,Arial,sans-serif;background:#fff;color:#111827;font-size:14px}
+header{background:var(--html-toolbar-bg,#fff);border-bottom:1px solid #e5e7eb;padding:8px 10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;position:sticky;top:0;z-index:20}
+header h1{font-size:14px;font-weight:500;margin:0 8px 0 0;color:#374151}
+select,input,button{font:inherit;font-size:12px}
+select,input[type=number],input[type=url]{height:30px;border:1px solid #dfe5dd;border-radius:6px;background:#fff;padding:0 6px}
+input[type=number]{width:74px}
+button{height:30px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#374151;padding:0 10px;cursor:pointer}
+button:hover:not(:disabled){background:#f3f4f6}
+button.primary{background:#f3f4f6;color:#374151;border-color:#d1d5db;font-weight:500}
+button:disabled{opacity:.5;cursor:default}
+.spacer{flex:1}
+#status{font-size:12px;color:#6b7280;padding:7px 12px;border-bottom:1px solid #f3f4f6}
+#status.err{color:#a33}
+main{display:grid;grid-template-columns:1fr 1fr 330px;gap:14px;padding:0 14px 20px}
+main.no-panel{grid-template-columns:1fr 1fr}
+.panel{background:#fff;border:1px solid #e3e7df;border-radius:10px;overflow:hidden;min-width:0}
+.panel h2{font-size:13px;margin:0;padding:10px 14px;border-bottom:1px solid #eef0ea}
+.stage{height:78vh;overflow:auto;background:#eceee9;padding:16px;direction:ltr}
+.paper{margin:0 auto;width:100%;max-width:900px}
+.sheet{position:relative;width:100%;background:#fff;box-shadow:0 2px 10px #0002;overflow:hidden}
+#src canvas{display:block;width:100%;height:auto}
+.html-sheet{container-type:inline-size;white-space:pre;font-size:0;direction:ltr}
+.html-sheet span{position:absolute;display:block;white-space:pre;line-height:1;transform-origin:top left;cursor:pointer}
+.html-sheet span:hover{outline:1px solid #6fae8e}
+.html-sheet span.sel{outline:2px solid #c77b21;background:#f6ead277}
+.html-sheet span.match{outline:1px dashed #c77b21}
+.html-sheet span.remote{outline:2px solid #7a4b12;background:#f6ead277;z-index:9}
+.html-sheet img{position:absolute}
+aside{background:#fff;border:1px solid #e3e7df;border-radius:10px;padding:12px;height:calc(78vh + 42px);overflow:auto}
+aside h3{font-size:12px;margin:14px 0 6px;color:#3f5a4a}
+.card{border:1px solid #edf0e9;border-radius:8px;padding:8px;margin-bottom:8px;background:#fcfdfb}
+.card b{font-size:12px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;font-size:11px}
+.preview{font-size:17px;border:1px dashed #dfe7e0;border-radius:6px;padding:4px 8px;margin-top:6px;background:#fff}
+.note{font-size:11px;color:#8a978d;line-height:1.6}
+#selbox{display:none}
+#selbox.on{display:block}
+code{direction:ltr;display:block;font-size:10px;background:#f4f6f2;padding:6px;border-radius:5px;overflow-wrap:anywhere}
+body.embed{overflow:hidden;background:#fff}
+body.embed header,body.embed #aside,body.embed #main>.panel:not(#htmlPanel),body.embed #htmlPanel h2,body.embed #embedTools:not(.external-source-tools){display:none!important}
+#embedTools{display:none}
+body.embed #embedTools.external-source-tools{display:flex;align-items:center;justify-content:flex-end;padding:3px 6px;background:#f9fafb;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:110;height:32px}
+body.embed #embedTools button{height:25px;font-size:11px}
+body.embed #status{display:block!important;margin:0;padding:3px 6px;font-size:10px;line-height:1.3}
+body.embed #status:empty{display:none!important}
+body.embed #main{display:block!important;padding:0!important;margin:0!important}
+body.embed #htmlPanel{border:0!important;border-radius:0!important;overflow:visible!important}
+body.embed #htmlStage{height:calc(100dvh - 50px)!important;overflow:auto!important;padding:4px!important;background:#fff!important}
+body.embed .paper{width:100%!important;max-width:none!important}
+body.embed .sheet{box-shadow:none!important}
+/* Standalone use is intentionally simple: no font editor, source editor,
+   presets, ZIP controls or PDF comparison panel. */
+body:not(.embed) #aside,
+body:not(.embed) #main>.panel:not(#htmlPanel),
+body:not(.embed) header #togglePanel,
+body:not(.embed) header #dlHtml,
+body:not(.embed) header #printHtml,
+body:not(.embed) header #dlZip{display:none!important}
+body:not(.embed) #main{display:block!important;padding:0!important;margin:0!important}
+body:not(.embed) #htmlPanel{border:0!important;border-radius:0!important;overflow:visible!important}
+body:not(.embed) #htmlStage{height:calc(100dvh - 100px)!important;overflow:auto!important;padding:8px!important;background:#fff!important}
+body:not(.embed) .paper{width:100%!important;max-width:none!important}
+body:not(.embed) .sheet{box-shadow:none!important}
+.otzaria-bubble-layer{position:absolute;inset:0;z-index:50;pointer-events:none;direction:ltr}
+.otzaria-bubble-hit{position:absolute;display:block;margin:0;padding:0;border:0;border-radius:3px;background:transparent;box-shadow:none;outline:none;pointer-events:auto;cursor:pointer}
+.otzaria-bubble-hit:hover{background:rgba(231,183,98,.22)!important;outline:1px solid rgba(160,106,24,.35)}
+.otzaria-bubble-hit.is-selected{background:rgba(217,155,43,.35)!important;outline:1px solid rgba(160,106,24,.4)}
+@media(max-width:1100px){main{grid-template-columns:1fr}aside{height:auto}}
+@page{size:A4 portrait;margin:8mm}
+@media print{
+  body{background:#fff}
+  header,#status,aside,.panel:not(#htmlPanel){display:none!important}
+  main{display:block!important;padding:0!important}
+  #htmlPanel{border:none!important;border-radius:0!important;overflow:visible!important}
+  #htmlPanel h2{display:none!important}
+  .stage{height:auto!important;overflow:visible!important;padding:0!important;background:#fff!important}
+  .paper{max-width:none!important;width:100%!important}
+  .sheet{box-shadow:none!important}
+  .html-sheet span{outline:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head>
+<body>
+<div id="embedTools"><button type="button" id="embedDownloadHtml" class="primary">הורדת HTML ניסיוני</button></div>
+<header>
+  <h1>צורת הדף ← HTML</h1>
+  <select id="tractate" aria-label="מסכת"></select>
+  <select id="daf" aria-label="דף"></select>
+  <select id="amud" aria-label="עמוד"><option value="a">ע״א</option><option value="b">ע״ב</option></select>
+  <button id="prev" title="העמוד הקודם">→</button>
+  <button id="next" title="העמוד הבא">←</button>
+  <span class="spacer"></span>
+  <button id="togglePanel">עיצוב</button>
+  <button id="dlHtml" class="primary">הורדת HTML</button>
+  <button id="printHtml">הדפסת HTML</button>
+  <button id="dlZip">ZIP של המסכת</button>
+</header>
+<div id="status">טוען…</div>
+<main id="main">
+  <section class="panel" id="htmlPanel"><h2>שחזור HTML (טקסט חי)</h2><div class="stage" id="htmlStage"><div class="paper"><div class="sheet html-sheet" id="html"></div></div></div></section>
+  <section class="panel"><h2>הדף המקורי (PDF)</h2><div class="stage" id="srcStage"><div class="paper"><div class="sheet" id="src"></div></div></div></section>
+  <aside id="aside">
+    <h3>מקור הקבצים</h3>
+    <div class="row"><input id="source" type="url" dir="ltr" style="flex:1"><button id="saveSource">שמירה</button></div>
+    <p class="note">כל ה־PDF והטקסטים נטענים רק מכתובת זו. גופני הדף המקוריים נשלפים מתוך ה־PDF עצמו.</p>
+    <code id="srcUrls"></code>
+
+    <h3>מקור חלופי להורדת PDF</h3>
+    <p class="note">ברירת המחדל נשארת ה־PDF מאוצריא. אפשר לבחור קובץ מלא מ־HebrewBooks או להזין כתובת PDF אחרת; הבחירה משפיעה על קישורי ההורדה בלבד ואינה משנה את מקור הטקסט וה־HTML.</p>
+    <div class="row">
+      <select id="pdfDownloadSource" aria-label="מקור הורדת PDF">
+        <option value="otzaria">אוצריא — ברירת מחדל</option>
+        <option value="hebrewbooks">HebrewBooks — מסכת מלאה</option>
+        <option value="custom">כתובת PDF אישית</option>
+      </select>
+    </div>
+    <div class="row"><input id="pdfDownloadCustomUrl" type="url" dir="ltr" placeholder="https://.../file.pdf" style="flex:1"><button id="openPdfDownload">פתח / הורד PDF</button></div>
+    <div class="row"><button id="openHebrewBooksPage">פתח עמוד זה ב־HebrewBooks</button></div>
+
+    <h3>תבניות עיצוב אישיות</h3>
+    <div class="row"><input id="presetName" type="text" placeholder="שם העיצוב" style="flex:1"><button id="savePreset" class="primary">שמור עיצוב</button></div>
+    <div class="row"><button id="downloadPresets">הורדת כל התבניות</button><label>טעינת תבניות <input id="importPresets" type="file" accept="application/json,.json"></label></div>
+    <div id="savedPresets" class="note">אין עדיין תבניות אישיות.</div>
+
+    <div id="selbox" class="card">
+      <b>מילה נבחרה: <span id="selText"></span></b>
+      <div class="note" id="selInfo"></div>
+      <div class="row">
+        <label><input type="checkbox" id="fFont" checked> אותו גופן מקור</label>
+        <label><input type="checkbox" id="fSize" checked> אותו גודל</label>
+        <label>± <input type="number" id="fTol" value="0.001" step="0.001" min="0"></label>
+        <label><input type="checkbox" id="fLayer"> אותה שכבה</label>
+        <label><input type="checkbox" id="fOpener"> דיבור המתחיל</label>
+        <label><input type="checkbox" id="fBold"> מודגש</label>
+        <label><input type="checkbox" id="fText"> אותה מילה</label>
+      </div>
+      <div class="row">נמצאו <b id="matchCount">0</b> מילים</div>
+      <div class="row">
+        <select id="rFont"></select>
+        ×<input type="number" id="rScale" value="1.000" step="0.001" min="0.4" max="2">
+        משקל<input type="number" id="rWeight" value="400" step="1" min="100" max="900">
+        <input type="color" id="rColor" value="#111111"><label><input type="checkbox" id="rUseColor"> צבע</label>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="rUseHl"> הדגשת רקע</label><input type="color" id="rHl" value="#f2c873">
+        עוצמה<input type="number" id="rHlS" value="0.350" step="0.001" min="0" max="1">
+      </div>
+      <div class="row"><button class="primary" id="addRule">החלת שינוי על כל המילים התואמות</button></div>
+    </div>
+
+    <h3>שכבות</h3>
+    <div id="layers"></div>
+    <h3>דיבור המתחיל</h3>
+    <div id="openers"></div>
+    <h3>כללים</h3>
+    <div id="rules" class="note">אין עדיין. לחצו על מילה בשחזור כדי ליצור.</div>
+    <div class="row"><button id="reset">חזרה למקור</button></div>
+  </aside>
+</main>
+
+<script>
+/* Apply embed layout before module dependencies load. If PDF.js fails to import,
+   the editing tools must not spill into the embedded reader. */
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("embed") !== "1") return;
+  document.body.classList.add("embed");
+  window.setTimeout(() => {
+    const status = document.getElementById("status");
+    if (status && status.textContent.trim() === "טוען…") {
+      status.textContent = "תצוגת HTML לא נטענה. אפשר לרענן או לעבור לתצוגת PDF.";
+      status.classList.add("err");
+    }
+  }, 12000);
+})();
+</script>
+<script type="module">
+import * as pdfjs from "/vilna-html/vendor/pdf.mjs";
+pdfjs.GlobalWorkerOptions.workerSrc = "/vilna-html/vendor/pdf.worker.mjs";
+
+const TRACTATES = [{"name":"ברכות","seder":"זרעים","bookId":103,"rashiBookId":2182,"tosafotBookId":1927,"start":2,"end":64,"single":{"64":"a"}},{"name":"שבת","seder":"מועד","bookId":104,"rashiBookId":2156,"tosafotBookId":1907,"start":2,"end":157,"single":{}},{"name":"עירובין","seder":"מועד","bookId":105,"rashiBookId":2166,"tosafotBookId":1911,"start":2,"end":105,"single":{"105":"a"}},{"name":"פסחים","seder":"מועד","bookId":106,"rashiBookId":2162,"tosafotBookId":1905,"start":2,"end":121,"single":{}},{"name":"שקלים","seder":"מועד","bookId":154,"rashiBookId":null,"tosafotBookId":null,"start":2,"end":22,"single":{}},{"name":"ראש השנה","seder":"מועד","bookId":110,"rashiBookId":2158,"tosafotBookId":1904,"start":2,"end":35,"single":{"35":"a"}},{"name":"יומא","seder":"מועד","bookId":107,"rashiBookId":2157,"tosafotBookId":1908,"start":2,"end":88,"single":{"88":"a"}},{"name":"סוכה","seder":"מועד","bookId":108,"rashiBookId":2163,"tosafotBookId":1903,"start":2,"end":56,"single":{}},{"name":"ביצה","seder":"מועד","bookId":109,"rashiBookId":2160,"tosafotBookId":1910,"start":2,"end":40,"single":{}},{"name":"תענית","seder":"מועד","bookId":111,"rashiBookId":2165,"tosafotBookId":1909,"start":2,"end":31,"single":{"31":"a"}},{"name":"מגילה","seder":"מועד","bookId":112,"rashiBookId":2159,"tosafotBookId":1902,"start":2,"end":32,"single":{"32":"a"}},{"name":"מועד קטן","seder":"מועד","bookId":113,"rashiBookId":2164,"tosafotBookId":1901,"start":2,"end":29,"single":{"29":"a"}},{"name":"חגיגה","seder":"מועד","bookId":114,"rashiBookId":2161,"tosafotBookId":1906,"start":2,"end":27,"single":{"27":"a"}},{"name":"יבמות","seder":"נשים","bookId":115,"rashiBookId":2167,"tosafotBookId":1918,"start":2,"end":122,"single":{}},{"name":"כתובות","seder":"נשים","bookId":116,"rashiBookId":2168,"tosafotBookId":1914,"start":2,"end":112,"single":{}},{"name":"נדרים","seder":"נשים","bookId":117,"rashiBookId":2170,"tosafotBookId":1915,"start":2,"end":91,"single":{}},{"name":"נזיר","seder":"נשים","bookId":118,"rashiBookId":2171,"tosafotBookId":1913,"start":2,"end":66,"single":{}},{"name":"סוטה","seder":"נשים","bookId":119,"rashiBookId":2172,"tosafotBookId":1912,"start":2,"end":49,"single":{}},{"name":"גיטין","seder":"נשים","bookId":120,"rashiBookId":2169,"tosafotBookId":1917,"start":2,"end":90,"single":{}},{"name":"קידושין","seder":"נשים","bookId":121,"rashiBookId":2173,"tosafotBookId":1916,"start":2,"end":82,"single":{}},{"name":"בבא קמא","seder":"נזיקין","bookId":122,"rashiBookId":2177,"tosafotBookId":1925,"start":2,"end":119,"single":{}},{"name":"בבא מציעא","seder":"נזיקין","bookId":123,"rashiBookId":2181,"tosafotBookId":1920,"start":2,"end":119,"single":{"119":"a"}},{"name":"בבא בתרא","seder":"נזיקין","bookId":124,"rashiBookId":2178,"tosafotBookId":1923,"start":2,"end":176,"single":{}},{"name":"סנהדרין","seder":"נזיקין","bookId":125,"rashiBookId":2180,"tosafotBookId":1921,"start":2,"end":113,"single":{}},{"name":"מכות","seder":"נזיקין","bookId":126,"rashiBookId":2176,"tosafotBookId":1922,"start":2,"end":24,"single":{}},{"name":"שבועות","seder":"נזיקין","bookId":127,"rashiBookId":2174,"tosafotBookId":1926,"start":2,"end":49,"single":{}},{"name":"עבודה זרה","seder":"נזיקין","bookId":128,"rashiBookId":2175,"tosafotBookId":1919,"start":2,"end":76,"single":{}},{"name":"הוריות","seder":"נזיקין","bookId":129,"rashiBookId":2179,"tosafotBookId":1924,"start":2,"end":14,"single":{"14":"a"}},{"name":"זבחים","seder":"קדשים","bookId":130,"rashiBookId":2191,"tosafotBookId":1936,"start":2,"end":120,"single":{}},{"name":"מנחות","seder":"קדשים","bookId":131,"rashiBookId":2186,"tosafotBookId":1933,"start":2,"end":110,"single":{"110":"a"}},{"name":"חולין","seder":"קדשים","bookId":132,"rashiBookId":2184,"tosafotBookId":1935,"start":2,"end":142,"single":{"142":"a"}},{"name":"בכורות","seder":"קדשים","bookId":133,"rashiBookId":2188,"tosafotBookId":1929,"start":2,"end":61,"single":{"61":"a"}},{"name":"ערכין","seder":"קדשים","bookId":134,"rashiBookId":2190,"tosafotBookId":1930,"start":2,"end":34,"single":{"34":"a"}},{"name":"תמורה","seder":"קדשים","bookId":135,"rashiBookId":2185,"tosafotBookId":1932,"start":2,"end":34,"single":{"34":"a"}},{"name":"כריתות","seder":"קדשים","bookId":136,"rashiBookId":2189,"tosafotBookId":1934,"start":2,"end":28,"single":{}},{"name":"מעילה","seder":"קדשים","bookId":137,"rashiBookId":2187,"tosafotBookId":1931,"start":2,"end":22,"single":{}},{"name":"תמיד","seder":"קדשים","bookId":138,"rashiBookId":null,"tosafotBookId":null,"start":25,"end":33,"single":{"25":"b"}},{"name":"נדה","seder":"טהרות","bookId":139,"rashiBookId":2183,"tosafotBookId":1928,"start":2,"end":73,"single":{"73":"a"}}];
+const DEFAULT_SOURCE = window.location.origin;
+const EMBED_PARAMS = new URLSearchParams(location.search);
+const EMBED = EMBED_PARAMS.get("embed") === "1";
+const EMBED_SOURCE = ["shas", "hebrewbooks"].includes(EMBED_PARAMS.get("source") || "") ? EMBED_PARAMS.get("source") : "local";
+const storageGet = (key) => {
+  try { return window.localStorage.getItem(key); } catch { return null; }
+};
+const storageSet = (key, value) => {
+  try { window.localStorage.setItem(key, value); return true; } catch { return false; }
+};
+const $ = (id) => document.getElementById(id);
+if (EMBED) {
+  document.body.classList.add("embed");
+  if (EMBED_SOURCE !== "local") $("embedTools")?.classList.add("external-source-tools");
+}
+
+/* ---------- Hebrew decoding (same rules as the server app) ---------- */
+const MAC_GLYPHS = "‡·‚„‰ÂÊÁËÈÍÎÏÌÓÔÒÚÛÙıˆ˜¯˘˙";
+const HEB = "אבגדהוזחטיךכלםמןנסעףפץצקרשת";
+const MAC = new Map([...MAC_GLYPHS].map((c, i) => [c, HEB[i]]));
+const ASCII_MAP = { A:"ב",B:"ג",C:"ד",E:"ו",F:"ו",I:"י",K:"ך",L:"ך",M:"כ",N:"ל",O:"מ",P:"נ",T:"ק",U:"ש",W:"ש",X:"ש",Y:"ת","÷":"ל","ô":"א","õ":"א" };
+const ASCII_LETTERS = "ABCDEFIKLMNOPTUWXY÷ôõ";
+function decodeGlyph(ch, enc) {
+  const c = ch.codePointAt(0) ?? 0;
+  if (enc === "mac") { if (MAC.has(ch)) return MAC.get(ch); if (c > 0 && c < 32) return "נ"; }
+  if (enc === "latin" && c >= 0xe0 && c <= 0xfa) return String.fromCharCode(0x5d0 + c - 0xe0);
+  if (enc === "ascii") { if (c >= 0x60 && c <= 0x7a) return String.fromCharCode(0x5d0 + c - 0x60); if (ASCII_MAP[ch]) return ASCII_MAP[ch]; }
+  return ch;
+}
+// Brackets are not swapped: the browser's bidi algorithm mirrors them for RTL.
+function decodeText(raw, enc) {
+  return (enc === "mac" || enc === "latin" || enc === "ascii") ? [...raw].reverse().map((c) => decodeGlyph(c, enc)).join("") : raw;
+}
+function detectEncoding(chars) {
+  const s = { unicode:0, mac:0, latin:0, ascii:0, symbol:0 };
+  for (const ch of chars) {
+    const c = ch.codePointAt(0) ?? 0;
+    if (c >= 0x5d0 && c <= 0x5ea) s.unicode++; else if (MAC_GLYPHS.includes(ch)) s.mac++;
+    else if (c >= 0xe0 && c <= 0xfa) s.latin++; else if ((c >= 0x60 && c <= 0x7a) || ASCII_LETTERS.includes(ch)) s.ascii++;
+  }
+  let best = "symbol"; for (const k in s) if (s[k] > s[best]) best = k;
+  return s[best] >= 2 ? best : "symbol";
+}
+function restoreControls(raw, seq, cur) {
+  let out = "";
+  for (const ch of raw) {
+    const exp = seq[cur.at];
+    if (/\s/.test(ch)) { const c = exp?.charCodeAt(0) ?? 32; if (c > 0 && c < 32) { out += exp; cur.at++; } else out += ch; continue; }
+    out += ch;
+    if (exp === ch) cur.at++; else { const f = seq.indexOf(ch, cur.at); if (f >= 0 && f - cur.at <= 8) cur.at = f + 1; }
+  }
+  const last = seq[cur.at]; if (last && last.charCodeAt(0) > 0 && last.charCodeAt(0) < 32) { out += last; cur.at++; }
+  return out;
+}
+const letters = (t) => [...t].filter((c) => /[א-ת]/.test(c)).length;
+const norm = (t) => [...t.replace(/[\u0591-\u05c7]/g, "")].filter((c) => /[א-ת]/.test(c)).map((c) => ({ ך:"כ",ם:"מ",ן:"נ",ף:"פ",ץ:"צ" })[c] || c).join("");
+const median = (a) => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; };
+const round = (v, d = 2) => Number(v.toFixed(d));
+
+/* ---------- Font cmap remapping (port of src/lib/font-remap.ts) ---------- */
+function tables(buf) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength), map = new Map();
+  const n = dv.getUint16(4);
+  for (let i = 0; i < n; i++) {
+    const r = 12 + i * 16, tag = String.fromCharCode(...buf.subarray(r, r + 4));
+    const off = dv.getUint32(r + 8), len = dv.getUint32(r + 12);
+    if (off + len <= buf.length) map.set(tag, buf.subarray(off, off + len));
+  }
+  return { version: dv.getUint32(0), map };
+}
+function readCmap(buf) {
+  const cmap = tables(buf).map.get("cmap"), out = new Map();
+  if (!cmap) return out;
+  const dv = new DataView(cmap.buffer, cmap.byteOffset, cmap.byteLength), u16 = (o) => dv.getUint16(o), u32 = (o) => dv.getUint32(o);
+  for (let i = 0; i < u16(2); i++) {
+    const off = u32(4 + i * 8 + 4); if (off + 2 > cmap.length) continue;
+    const fmt = u16(off);
+    if (fmt === 0) { for (let c = 0; c < 256; c++) { const g = cmap[off + 6 + c]; if (g) out.set(c, g); } }
+    else if (fmt === 4) {
+      const seg = u16(off + 6) / 2, ends = off + 14, starts = ends + seg * 2 + 2, deltas = starts + seg * 2, ranges = deltas + seg * 2;
+      for (let s = 0; s < seg; s++) {
+        const end = u16(ends + s * 2), start = u16(starts + s * 2); if (start === 0xffff) continue;
+        const delta = u16(deltas + s * 2), ro = u16(ranges + s * 2);
+        for (let c = start; c <= end && c !== 0xffff; c++) {
+          let g;
+          if (ro === 0) g = (c + delta) & 0xffff;
+          else { const a = ranges + s * 2 + ro + (c - start) * 2; if (a + 2 > cmap.length) continue; g = u16(a); if (g) g = (g + delta) & 0xffff; }
+          if (g) out.set(c, g);
+        }
+      }
+    } else if (fmt === 6) { const f = u16(off + 6), n = u16(off + 8); for (let k = 0; k < n; k++) { const g = u16(off + 10 + k * 2); if (g) out.set(f + k, g); } }
+    else if (fmt === 12) { const n = u32(off + 12); for (let k = 0; k < n; k++) { const r = off + 16 + k * 12, s = u32(r), e = u32(r + 4), g = u32(r + 8); for (let c = s; c <= e; c++) out.set(c, g + c - s); } }
+  }
+  return out;
+}
+const pad4 = (b) => b.length % 4 ? (() => { const n = new Uint8Array(b.length + 4 - b.length % 4); n.set(b); return n; })() : b;
+function checksum(b) { const p = pad4(b), dv = new DataView(p.buffer, p.byteOffset, p.byteLength); let s = 0; for (let o = 0; o < p.length; o += 4) s = (s + dv.getUint32(o)) >>> 0; return s; }
+function buildCmap(mapping) {
+  const codes = [...mapping.keys()].filter((c) => c > 0).sort((a, b) => a - b), groups = [];
+  for (const c of codes) { const g = mapping.get(c), l = groups[groups.length - 1]; if (l && c === l.end + 1 && g === l.glyph + (c - l.start)) l.end = c; else groups.push({ start: c, end: c, glyph: g }); }
+  const len = 16 + groups.length * 12, sub = new Uint8Array(len), sd = new DataView(sub.buffer);
+  sd.setUint16(0, 12); sd.setUint32(4, len); sd.setUint32(12, groups.length);
+  groups.forEach((g, i) => { const r = 16 + i * 12; sd.setUint32(r, g.start); sd.setUint32(r + 4, g.end); sd.setUint32(r + 8, g.glyph); });
+  const head = new Uint8Array(20), hd = new DataView(head.buffer);
+  hd.setUint16(2, 2); hd.setUint16(6, 4); hd.setUint32(8, 20); hd.setUint16(12, 3); hd.setUint16(14, 10); hd.setUint32(16, 20 + len);
+  const out = new Uint8Array(20 + len * 2); out.set(head); out.set(sub, 20); out.set(sub, 20 + len); return out;
+}
+function remapFont(buf, mapping) {
+  const { version, map } = tables(buf); map.set("cmap", buildCmap(mapping));
+  const tags = [...map.keys()].sort(), n = tags.length, sr = 16 * 2 ** Math.floor(Math.log2(n));
+  const records = []; let off = 12 + 16 * n; const bodies = [];
+  for (const tag of tags) { let d = map.get(tag); if (tag === "head") { d = new Uint8Array(d); new DataView(d.buffer).setUint32(8, 0); } const b = pad4(d); records.push({ tag, sum: checksum(d), off, len: d.length }); bodies.push(b); off += b.length; }
+  const file = new Uint8Array(off), dv = new DataView(file.buffer);
+  dv.setUint32(0, version); dv.setUint16(4, n); dv.setUint16(6, sr); dv.setUint16(8, Math.floor(Math.log2(n))); dv.setUint16(10, n * 16 - sr);
+  records.forEach((r, i) => { const a = 12 + i * 16; for (let k = 0; k < 4; k++) file[a + k] = r.tag.charCodeAt(k); dv.setUint32(a + 4, r.sum); dv.setUint32(a + 8, r.off); dv.setUint32(a + 12, r.len); });
+  let p = 12 + 16 * n; for (const b of bodies) { file.set(b, p); p += b.length; }
+  const hi = records.findIndex((r) => r.tag === "head"); if (hi >= 0) dv.setUint32(records[hi].off + 8, (0xb1b0afba - checksum(file)) >>> 0);
+  return file;
+}
+function baselineFactor(buf) {
+  const { map } = tables(buf), head = map.get("head"), hhea = map.get("hhea"); if (!head || !hhea) return 0.72;
+  const h = new DataView(head.buffer, head.byteOffset), hh = new DataView(hhea.buffer, hhea.byteOffset);
+  const upm = h.getUint16(18) || 1000; return Math.max(0.45, Math.min(1.05, (upm + hh.getInt16(4) + hh.getInt16(6)) / (2 * upm)));
+}
+const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(s); };
+
+/* ---------- Otzaria fetches (single configurable source) ---------- */
+let SOURCE = window.location.origin;
+const pdfUrl = (t, d, a) => EMBED && EMBED_SOURCE !== "local"
+  ? `/api/tzurat-hadaf/html-pdf?source=${encodeURIComponent(EMBED_SOURCE)}&masechta=${encodeURIComponent(t)}&daf=${d}&amud=${a}`
+  : `${SOURCE}/api/tzurat-hadaf/page?masechta=${encodeURIComponent(t)}&daf=${d}&amud=${a}`;
+const HEBREWBOOKS = {
+  "ברכות":{req:21111,start:2},"שבת":{req:21112,start:2},"עירובין":{req:21113,start:2},"פסחים":{req:21114,start:2},
+  "שקלים":{req:21115,start:2},"יומא":{req:21116,start:2},"סוכה":{req:21117,start:2},"ביצה":{req:21118,start:2},
+  "ראש השנה":{req:21119,start:2},"תענית":{req:21120,start:2},"מגילה":{req:21121,start:2},"מועד קטן":{req:21122,start:2},
+  "חגיגה":{req:21123,start:2},"יבמות":{req:21124,start:2},"כתובות":{req:21125,start:2},"נדרים":{req:21126,start:2},
+  "נזיר":{req:21127,start:2},"סוטה":{req:21128,start:2},"גיטין":{req:21129,start:2},"קידושין":{req:21130,start:2},
+  "בבא קמא":{req:21131,start:2},"בבא מציעא":{req:21132,start:2},"בבא בתרא":{req:21133,start:2},"סנהדרין":{req:21134,start:2},
+  "מכות":{req:21135,start:2},"שבועות":{req:21136,start:2},"עבודה זרה":{req:21137,start:2},"הוריות":{req:21138,start:2},
+  "זבחים":{req:21139,start:2},"מנחות":{req:21140,start:2},"חולין":{req:21141,start:2},"בכורות":{req:21142,start:2},
+  "ערכין":{req:21143,start:2},"תמורה":{req:21144,start:2},"כריתות":{req:21145,start:2},"מעילה":{req:21146,start:2},
+  "תמיד":{req:21147,start:26},"מדות":{req:21148,start:34},"מידות":{req:21148,start:34},"נדה":{req:21149,start:2},"נידה":{req:21149,start:2}
+};
+function hebrewBooksPageUrl(t,d,a) {
+  const entry = HEBREWBOOKS[t]; if (!entry) return "";
+  const pg = Math.max(1, (d - entry.start) * 2 + (a === "a" ? 2 : 3));
+  return `https://hebrewbooks.org/pdfpager.aspx?req=${entry.req}&pgnum=${pg}`;
+}
+function pdfDownloadUrl(t,d,a) {
+  const choice = storageGet("tz-pdf-download-source") || "otzaria";
+  const custom = (storageGet("tz-pdf-download-custom-url") || "").trim();
+  if (choice === "hebrewbooks") {
+    const entry = HEBREWBOOKS[t];
+    return entry ? `https://download.hebrewbooks.org/downloadhandler.ashx?req=${entry.req}` : hebrewBooksPageUrl(t,d,a);
+  }
+  if (choice === "custom") {
+    try { const u = new URL(custom); if (u.protocol === "https:" && /\.pdf(?:$|[?#])/i.test(u.href)) return u.href; } catch {}
+    return "";
+  }
+  return pdfUrl(t,d,a);
+}
+const NUM = { א:1,ב:2,ג:3,ד:4,ה:5,ו:6,ז:7,ח:8,ט:9,י:10,כ:20,ך:20,ל:30,מ:40,ם:40,נ:50,ן:50,ס:60,ע:70,פ:80,ף:80,צ:90,ץ:90,ק:100,ר:200,ש:300,ת:400 };
+function parseDaf(title) { const m = title.match(/דף\s+([א-ת]{1,4})\s*([.:]|ע[״"']?[אב])?/); if (!m) return null; let n = 0; for (const c of m[1]) { if (!NUM[c]) return null; n += NUM[c]; } const k = m[2] || "."; return { daf: n, amud: k.includes(":") || k.includes("ב") ? "b" : "a" }; }
+const tocCache = new Map();
+async function segments(bookId, daf, amud) {
+  if (!bookId) return [];
+  try {
+    if (!tocCache.has(bookId)) tocCache.set(bookId, fetch(`${SOURCE}/api/books/${bookId}/toc`).then((r) => r.json()));
+    const toc = (await tocCache.get(bookId)).toc || [];
+    const located = toc.map((e) => ({ ...e, p: parseDaf(e.title) })).filter((e) => e.p);
+    const cur = located.find((e) => e.p.daf === daf && e.p.amud === amud); if (!cur) return [];
+    const nxt = located.find((e) => e.index > cur.index), end = nxt ? nxt.index - 1 : cur.index + 48;
+    const data = await (await fetch(`${SOURCE}/api/books/${bookId}/content?start=${cur.index}&end=${end + 5}`)).json();
+    return (data.lines || []).filter((l) => l.lineIndex >= cur.index && l.lineIndex <= end && !/^<h\d/i.test(l.content.trim())).map((l) => l.content.replace(/<[^>]*>/g, " "));
+  } catch { return []; }
+}
+
+/* ---------- Page analysis (client-side port of src/lib/pdf-layout.ts) ---------- */
+const fontRegistry = new Map(); // family -> base64 bytes for export
+async function analyze(t, daf, amud) {
+  const resp = await fetch(pdfUrl(t, daf, amud));
+  if (!resp.ok || !(resp.headers.get("content-type") || "").includes("pdf")) throw new Error(`לא נמצא PDF (${resp.status})`);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  const task = pdfjs.getDocument({ data: bytes.slice(), fontExtraProperties: true });
+  const doc = await task.promise;
+  const page = await doc.getPage(1), vp = page.getViewport({ scale: 1 });
+  const [text, ops] = await Promise.all([page.getTextContent({ disableNormalization: true }), page.getOperatorList()]);
+  const fonts = new Map(); let active = "";
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const op = ops.fnArray[i], args = ops.argsArray[i];
+    if (op === pdfjs.OPS.setFont && args) active = String(args[0]);
+    if ((op !== pdfjs.OPS.showText && op !== pdfjs.OPS.showSpacedText) || !active || !args) continue;
+    const id = active.match(/_f(\d+)$/)?.[1]; if (!id) continue;
+    const info = fonts.get(id) || { id, resource: active, seq: [], pairs: new Map() };
+    for (const g of args[0] || []) {
+      if (!g || typeof g === "number" || typeof g.unicode !== "string" || !g.fontChar) continue;
+      info.seq.push(...g.unicode);
+      const e = info.pairs.get(g.unicode); if (e) e.count++; else info.pairs.set(g.unicode, { fontChar: g.fontChar, count: 1 });
+    }
+    fonts.set(id, info);
+  }
+  const slug = "d" + Math.abs([...t].reduce((h, c) => (h * 31 + c.codePointAt(0)) | 0, 0)).toString(36) + daf + amud;
+  const ctx = document.createElement("canvas").getContext("2d");
+  for (const info of fonts.values()) {
+    info.enc = detectEncoding(info.seq);
+    const rebuilt = new Map();
+    for (const [o, e] of info.pairs) { const d = decodeGlyph(o, info.enc), ex = rebuilt.get(d); if (!ex || e.count > ex.count) rebuilt.set(d, e); }
+    let obj = null; try { obj = page.commonObjs.get(info.resource); } catch {}
+    const name = String(obj?.name || obj?.loadedName || "");
+    info.bold = Boolean(obj?.bold || obj?.black) || /bold|demi|heavy|black/i.test(name);
+    if (!obj?.data) continue;
+    const buf = new Uint8Array(obj.data), cmap = readCmap(buf), mapping = new Map();
+    for (const [d, p] of rebuilt) { const g = cmap.get(p.fontChar.codePointAt(0)); if (g) mapping.set(d.codePointAt(0), g); }
+    if (!mapping.size) continue;
+    const remapped = remapFont(buf, mapping);
+    info.family = `Daf-${slug}-${info.id}`;
+    info.baseline = baselineFactor(buf);
+    if (!fontRegistry.has(info.family)) {
+      try { const ff = new FontFace(info.family, remapped.buffer.slice(0)); await ff.load(); document.fonts.add(ff); fontRegistry.set(info.family, b64(remapped)); }
+      catch { continue; }
+    }
+  }
+  const words = []; const cursors = new Map(); let item = 0;
+  for (const it of text.items) {
+    if (!("str" in it) || !it.str.trim() || it.width <= 0.3 || it.height <= 0.3) continue;
+    const id = it.fontName.match(/_f(\d+)$/)?.[1], info = id && fonts.get(id); if (!info || !info.family) continue;
+    const cur = cursors.get(id) || { at: 0 }; cursors.set(id, cur);
+    let raw = it.str;
+    if (info.enc === "mac") raw = restoreControls(raw, info.seq, cur);
+    else for (const ch of raw) { if (/\s/.test(ch)) continue; const f = info.seq.indexOf(ch, cur.at); if (f >= 0 && f - cur.at <= 8) cur.at = f + 1; }
+    const str = decodeText(raw, info.enc).replace(/\u00a0/g, " ").trim(); if (!str) continue;
+    item++;
+    const size = Math.hypot(it.transform[2] || 0, it.transform[3] || 0) || Math.abs(it.transform[3] || 0); if (!size) continue;
+    const [x0, base] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+    const tokens = str.split(/\s+/).filter(Boolean);
+    ctx.font = `${size}px "${info.family}"`;
+    const meas = tokens.map((tk) => Math.max(0.2, ctx.measureText(tk).width)), natural = meas.reduce((a, b) => a + b, 0);
+    let scale = 1, gap = 0;
+    if (tokens.length === 1) scale = it.width / natural;
+    else { gap = (it.width - natural) / (tokens.length - 1); if (gap < size * 0.05 || gap > size * 1.5) { const sp = size * 0.28; scale = it.width / (natural + sp * (tokens.length - 1)); gap = sp * scale; } }
+    scale = Math.max(0.18, Math.min(4, scale));
+    const rtl = info.enc !== "symbol" || it.dir === "rtl" || /[א-ת]/.test(str);
+    let cx = rtl ? x0 + it.width : x0;
+    tokens.forEach((tk, k) => {
+      const w = meas[k] * scale, x = rtl ? cx - w : cx;
+      words.push({ id: `${item}-${k}`, text: tk, x: round(x), y: round(base - size * info.baseline), width: round(w), height: round(size), fontSize: round(size, 3), fontId: id, family: info.family, scaleX: round(scale, 4), bold: info.bold, layer: "other", opener: false, openerFor: null });
+      cx += (rtl ? -1 : 1) * (w + gap);
+    });
+  }
+  // Layers by font size (never hard-coded).
+  const buckets = new Map();
+  for (const w of words) { if (w.fontSize < 8.8 || w.fontSize > 18) continue; const l = letters(w.text); if (l < 2) continue; const k = Math.round(w.fontSize * 10); const b = buckets.get(k) || { mass: 0, sizes: [] }; b.mass += l; b.sizes.push(w.fontSize); buckets.set(k, b); }
+  const clusters = []; let pk = -Infinity;
+  for (const k of [...buckets.keys()].sort((a, b) => a - b)) { const b = buckets.get(k), l = clusters[clusters.length - 1]; if (l && k - pk <= 3) { l.mass += b.mass; l.sizes.push(...b.sizes); } else clusters.push({ mass: b.mass, sizes: [...b.sizes] }); pk = k; }
+  const top = Math.max(0, ...clusters.map((c) => c.mass)), sizes = clusters.map((c) => ({ size: median(c.sizes), mass: c.mass })).sort((a, b) => b.size - a.size);
+  const gemara = sizes.find((c) => c.mass >= Math.max(70, top * 0.03))?.size || 0;
+  for (const w of words) {
+    if (w.y + w.height <= vp.height * 0.03 || w.y >= vp.height * 0.97 || w.fontSize >= 17) w.layer = "title";
+    else if (w.fontSize < 9) w.layer = "note";
+    else if (gemara && Math.abs(w.fontSize - gemara) <= 0.5) w.layer = "gemara";
+    else w.layer = "other";
+  }
+  // Rashi vs Tosafot from trigrams unique to each Otzaria book for this page.
+  const tr = TRACTATES.find((x) => x.name === t);
+  const [rs, ts] = await Promise.all([segments(tr?.rashiBookId, daf, amud), segments(tr?.tosafotBookId, daf, amud)]);
+  const grams = (arr) => { const s = new Set(), v = norm(arr.join("")); for (let i = 0; i + 3 <= v.length; i++) s.add(v.slice(i, i + 3)); return s; };
+  const gR = grams(rs), gT = grams(ts), onlyR = new Set([...gR].filter((g) => !gT.has(g))), onlyT = new Set([...gT].filter((g) => !gR.has(g)));
+  const vote = (txt) => { const v = norm(txt); let r = 0, q = 0; for (let i = 0; i + 3 <= v.length; i++) { const g = v.slice(i, i + 3); if (onlyR.has(g)) r++; else if (onlyT.has(g)) q++; } return { r, t: q }; };
+  const body = words.filter((w) => w.layer === "other"), cf = median(body.map((w) => w.fontSize)) || 11;
+  const rows = new Map();
+  for (const w of body) { const b = w.y + w.height; let key = null; for (const k of rows.keys()) if (Math.abs(k - b) <= Math.max(2.2, cf * 0.28)) { key = k; break; } if (key === null) rows.set(b, [w]); else rows.get(key).push(w); }
+  const frags = [];
+  for (const [baseline, list] of rows) {
+    const items = [...list].sort((a, b) => a.x - b.x); let cur = [], edge = -Infinity;
+    const flush = () => { if (!cur.length) return; const v = cur.map((w) => vote(w.text)), R = v.reduce((a, b) => a + b.r, 0), T = v.reduce((a, b) => a + b.t, 0); frags.push({ baseline, words: cur, minX: Math.min(...cur.map((w) => w.x)), maxX: Math.max(...cur.map((w) => w.x + w.width)), label: R + T >= 3 && Math.abs(R - T) >= Math.max(2, (R + T) * 0.4) ? (R > T ? "rashi" : "tosafot") : null }); cur = []; edge = -Infinity; };
+    for (const w of items) { if (cur.length && w.x - edge > cf * 1.6) flush(); cur.push(w); edge = Math.max(edge, w.x + w.width); }
+    flush();
+  }
+  const overlap = (a, b) => Math.min(a.maxX, b.maxX) - Math.max(a.minX, b.minX);
+  for (let pass = 0; pass < 6; pass++) {
+    let changed = false;
+    for (const f of frags) {
+      if (f.label) continue;
+      const near = frags.filter((o) => o.label && Math.abs(o.baseline - f.baseline) <= cf * 3 && overlap(o, f) > Math.min(20, (f.maxX - f.minX) * 0.4));
+      const labels = new Set(near.map((o) => o.label)); if (labels.size === 1) { f.label = near[0].label; changed = true; }
+    }
+    if (!changed) break;
+  }
+  for (const f of frags) if (f.label) for (const w of f.words) w.layer = f.label;
+  // Openers: large-type run or distinct bold face at the right edge of a commentary column.
+  for (const f of frags) {
+    if (!f.label || f.words.length < 2) continue;
+    const rtlw = [...f.words].sort((a, b) => (b.x + b.width) - (a.x + a.width));
+    const run = []; for (const w of rtlw) { if (gemara && w.fontSize > gemara + 0.6 && letters(w.text)) run.push(w); else break; }
+    if (run.length) { for (const w of run) { w.opener = true; w.openerFor = f.label; } continue; }
+    const counts = new Map(); for (const w of f.words) counts.set(w.fontId, (counts.get(w.fontId) || 0) + 1);
+    const modal = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0], first = rtlw[0];
+    if (letters(first.text) >= 2 && (first.bold || (first.fontId !== modal && counts.get(first.fontId) <= Math.max(2, f.words.length * 0.34)))) { first.opener = true; first.openerFor = f.label; }
+  }
+  // Original page as an image, for comparison only.
+  const view = page.getViewport({ scale: 2 }), canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(view.width); canvas.height = Math.ceil(view.height);
+  await page.render({ canvasContext: canvas.getContext("2d"), viewport: view, canvas }).promise;
+  task.destroy();
+  return { tractate: t, daf, amud, width: vp.width, height: vp.height, words, canvas };
+}
+
+/* ---------- Style model ---------- */
+const FONTS = [["original","גופן המקור",""],["Noto Rashi Hebrew","נוטו רש״י (כתב רש״י)",'"Noto Rashi Hebrew",serif'],["Frank Ruhl Libre","פרנק רוהל",'"Frank Ruhl Libre",serif'],["Noto Serif Hebrew","נוטו סריף",'"Noto Serif Hebrew",serif'],["David Libre","דוד ליבר",'"David Libre",serif'],["Noto Sans Hebrew","נוטו סאנס",'"Noto Sans Hebrew",sans-serif'],["Heebo","היבו",'"Heebo",sans-serif'],["Rubik","רוביק",'"Rubik",sans-serif'],["Assistant","אסיסטנט",'"Assistant",sans-serif'],["Alef","אלף",'"Alef",sans-serif'],["Secular One","סקולר וואן",'"Secular One",sans-serif'],["Varela Round","וארלה ראונד",'"Varela Round",sans-serif']];
+const LAYERS = { gemara:"גמרא", rashi:"רש״י", tosafot:"תוספות", other:"ראשונים ואחרים", note:"הערות שוליים", title:"כותרות" };
+const blankLayer = () => ({ font: "original", scale: 1, weight: 0, color: "", hl: "", hlS: 0.35 });
+const blankOpener = () => ({ on: false, font: "original", scale: 1, weight: 700, color: "#7a4b12", hl: "", hlS: 0.35 });
+const defaultStyle = () => ({ layers: Object.fromEntries(Object.keys(LAYERS).map((k) => [k, blankLayer()])), openers: { rashi: blankOpener(), tosafot: blankOpener() }, rules: [] });
+let STYLE = (() => { try { const s = JSON.parse(storageGet("tz-style-sa") || "null"); return s && s.layers ? s : defaultStyle(); } catch { return defaultStyle(); } })();
+const saveStyle = () => storageSet("tz-style-sa", JSON.stringify(STYLE));
+const PRESET_KEY = "tz-style-presets-v1";
+function readPresets() { try { const a = JSON.parse(storageGet(PRESET_KEY) || "[]"); return Array.isArray(a) ? a.filter(p => p && typeof p.name === "string" && p.style && p.style.layers) : []; } catch { return []; } }
+let SAVED_PRESETS = readPresets();
+function savePresets() { if (!storageSet(PRESET_KEY, JSON.stringify(SAVED_PRESETS))) status("אין אפשרות לשמור תבניות בדפדפן הזה.", true); }
+function exportJson(value, name) { save(new Blob([JSON.stringify(value, null, 2)], {type:"application/json"}), name); }
+function renderPresets() {
+  const root = $("savedPresets");
+  if (!SAVED_PRESETS.length) { root.textContent = "אין עדיין תבניות אישיות. שמור עיצוב אחרי שהגדרת שכבות או כללי מילים."; return; }
+  root.innerHTML = SAVED_PRESETS.map(p => `<div class="card"><b>${esc(p.name)}</b><div class="row"><button data-apply-preset="${esc(String(p.id))}" class="primary">החלה</button><button data-download-preset="${esc(String(p.id))}">הורדת JSON</button><button data-delete-preset="${esc(String(p.id))}">מחיקה</button></div></div>`).join("");
+}
+$("savePreset").addEventListener("click", () => {
+  const name = $("presetName").value.trim();
+  if (!name) { status("כתוב שם לעיצוב לפני השמירה.", true); return; }
+  SAVED_PRESETS.unshift({id: `preset-${Date.now()}`, name, style: JSON.parse(JSON.stringify(STYLE))});
+  SAVED_PRESETS = SAVED_PRESETS.slice(0,100); savePresets(); renderPresets(); status(`העיצוב ״${name}״ נשמר.`);
+  $("presetName").value = "";
+});
+$("savedPresets").addEventListener("click", (event) => {
+  const button = event.target.closest("button"); if (!button) return;
+  const applyId = button.dataset.applyPreset, downloadId = button.dataset.downloadPreset, deleteId = button.dataset.deletePreset;
+  if (applyId) { const p = SAVED_PRESETS.find(p => String(p.id) === applyId); if (!p) return; STYLE = JSON.parse(JSON.stringify(p.style)); saveStyle(); buildPanel(); renderHtml(); renderPresets(); status(`העיצוב ״${p.name}״ הוחל.`); }
+  if (downloadId) { const p = SAVED_PRESETS.find(p => String(p.id) === downloadId); if (p) exportJson(p, `vilna-style-${p.name.replace(/[^a-zA-Z0-9\u0590-\u05FF_-]+/g,"-")}.json`); }
+  if (deleteId) { SAVED_PRESETS = SAVED_PRESETS.filter(p => String(p.id) !== deleteId); savePresets(); renderPresets(); }
+});
+$("downloadPresets").addEventListener("click", () => exportJson(SAVED_PRESETS, "vilna-style-presets.json"));
+$("importPresets").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0]; if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const incoming = (Array.isArray(parsed) ? parsed : [parsed]).filter(p => p && typeof p.name === "string" && p.style?.layers)
+      .map((p,i) => ({id: `import-${Date.now()}-${i}`, name: p.name.slice(0,100), style: p.style}));
+    if (!incoming.length) throw new Error("לא נמצאו תבניות תקינות בקובץ.");
+    SAVED_PRESETS = [...incoming, ...SAVED_PRESETS].slice(0,100); savePresets(); renderPresets(); status(`נטענו ${incoming.length} תבניות.`);
+  } catch (e) { status(e instanceof Error ? e.message : "טעינת התבניות נכשלה.", true); }
+  event.target.value = "";
+});
+// Single quotes only: the stack is written into style="..." attributes.
+const stackOf = (id) => (FONTS.find((f) => f[0] === id)?.[2] || "").replace(/"/g, "'");
+const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+function matches(w, m) {
+  if (m.fontId && w.fontId !== m.fontId) return false;
+  if (m.size != null && Math.abs(w.fontSize - m.size) > m.tol) return false;
+  if (m.layer && w.layer !== m.layer) return false;
+  if (m.opener != null && w.opener !== m.opener) return false;
+  if (m.bold != null && w.bold !== m.bold) return false;
+  if (m.text && w.text !== m.text) return false;
+  return true;
+}
+// Default style returns exactly the extracted geometry and original fonts.
+function css(w, page) {
+  const L = STYLE.layers[w.layer], O = w.opener && w.openerFor ? STYLE.openers[w.openerFor] : null, op = O && O.on ? O : null;
+  const R = STYLE.rules.find((r) => matches(w, r.match))?.style;
+  const font = (R && R.font !== "original" && R.font) || (op && op.font !== "original" && op.font) || (L.font !== "original" && L.font) || null;
+  const scale = L.scale * (op ? op.scale : 1) * (R ? R.scale : 1);
+  const p = [`left:${w.x / page.width * 100}%`, `top:${w.y / page.height * 100}%`, `font-size:${w.fontSize * scale / page.width * 100}cqw`];
+  p.push(`font-family:${font ? stackOf(font) : `'${w.family}',serif`}`);
+  if (!font) p.push(`transform:scaleX(${w.scaleX})`);
+  const color = (R && R.color) || (op && op.color) || L.color; if (color) p.push(`color:${color}`);
+  const weight = (R && R.weight) || (op && op.weight) || L.weight; if (weight) p.push(`font-weight:${weight}`);
+  const hl = (R && R.hl) ? rgba(R.hl, R.hlS) : (op && op.hl) ? rgba(op.hl, op.hlS) : L.hl ? rgba(L.hl, L.hlS) : ""; if (hl) p.push(`background:${hl}`);
+  return p.join(";");
+}
+
+/* ---------- Rendering ---------- */
+let PAGE = null, SELECTED = null, REMOTE_SELECTED_ID = null;
+let OTZARIA_BUBBLES = [];
+let OTZARIA_SELECTED_BUBBLE = null;
+let OTZARIA_HOVERED_BUBBLE = null;
+function renderOtzariaBubbles() {
+  const sheet = $("html");
+  if (!sheet || !PAGE) return;
+  let overlay = $("otzariaBubblesOverlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "otzariaBubblesOverlay";
+    overlay.className = "otzaria-bubble-layer";
+    sheet.appendChild(overlay);
+  }
+  overlay.innerHTML = OTZARIA_BUBBLES.map((bubble) => (bubble.rects || []).map((rect) => {
+    const isSelected = OTZARIA_SELECTED_BUBBLE === bubble.id;
+    const isHovered = OTZARIA_HOVERED_BUBBLE === bubble.id && !isSelected;
+    const bg = isSelected ? "rgba(217,155,43,.35)" : isHovered ? "rgba(231,183,98,.22)" : "transparent";
+    return `<button type="button" class="otzaria-bubble-hit ${isSelected ? "is-selected" : ""}" data-bubble-id="${esc(String(bubble.id))}" title="${esc(bubble.preview || "גמרא")}" aria-label="${esc(bubble.preview || "בחירת שורת גמרא")}" style="left:${rect.x / PAGE.width * 100}%;top:${rect.y / PAGE.height * 100}%;width:${rect.w / PAGE.width * 100}%;height:${rect.h / PAGE.height * 100}%;background:${bg}"></button>`;
+  }).join("")).join("");
+}
+$("html").addEventListener("click", (event) => {
+  const hit = event.target?.closest?.("[data-bubble-id]");
+  if (!hit) return;
+  event.preventDefault(); event.stopPropagation();
+  window.parent.postMessage({source:"vilna-html",type:"select-bubble",bubbleId:hit.dataset.bubbleId},"*");
+});
+$("html").addEventListener("pointerover", (event) => {
+  const hit = event.target?.closest?.("[data-bubble-id]");
+  if (!hit || OTZARIA_HOVERED_BUBBLE === hit.dataset.bubbleId) return;
+  OTZARIA_HOVERED_BUBBLE = hit.dataset.bubbleId;
+  window.parent.postMessage({source:"vilna-html",type:"hover-bubble",bubbleId:hit.dataset.bubbleId},"*");
+});
+$("html").addEventListener("pointerout", (event) => {
+  const hit = event.target?.closest?.("[data-bubble-id]");
+  if (!hit) return;
+  OTZARIA_HOVERED_BUBBLE = null;
+  window.parent.postMessage({source:"vilna-html",type:"hover-bubble",bubbleId:null},"*");
+});
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" })[c]);
+function renderHtml() {
+  if (!PAGE) return;
+  const el = $("html"); el.style.aspectRatio = `${PAGE.width}/${PAGE.height}`;
+  const ids = SELECTED ? new Set(similar().map((w) => w.id)) : null;
+  el.innerHTML = PAGE.words.map((w) => `<span dir="rtl" data-id="${w.id}" class="${SELECTED?.id === w.id ? "sel" : REMOTE_SELECTED_ID === w.id ? "remote" : ids?.has(w.id) ? "match" : ""}" style="${css(w, PAGE)}">${esc(w.text)}</span>`).join(" ");
+  if (OTZARIA_BUBBLES.length) renderOtzariaBubbles();
+}
+function selectedLineWords(word) {
+  if (!PAGE || !word) return [word].filter(Boolean);
+  const candidates = PAGE.words.filter(w => w.layer === word.layer && Math.abs(w.y - word.y) <= Math.max(2.2, word.height * 0.32)).sort((a,b) => a.x - b.x);
+  const at = candidates.findIndex(w => w.id === word.id); if (at < 0) return [word];
+  let lo = at, hi = at, gap = Math.max(3, word.fontSize * 1.6);
+  while (lo > 0 && candidates[lo].x - (candidates[lo-1].x + candidates[lo-1].width) <= gap) lo--;
+  while (hi + 1 < candidates.length && candidates[hi+1].x - (candidates[hi].x + candidates[hi].width) <= gap) hi++;
+  return candidates.slice(lo, hi + 1);
+}
+function notifyParentSelection(word) {
+  if (!word || !PAGE) return;
+  const lineWords = selectedLineWords(word);
+  const lineText = [...lineWords].sort((a,b) => (b.x + b.width) - (a.x + a.width)).map(w => w.text).join(" ");
+  window.parent.postMessage({
+    source:"vilna-html", type:"select-word", tractate:PAGE.tractate, daf:PAGE.daf, amud:PAGE.amud,
+    text:word.text, lineText, layer:word.layer,
+    rect:{x:word.x,y:word.y,width:word.width,height:word.height},
+    pageWidth:PAGE.width,pageHeight:PAGE.height,
+    xNorm:(word.x + word.width/2)/PAGE.width,yNorm:(word.y + word.height/2)/PAGE.height
+  }, "*");
+}
+$("html").addEventListener("click", (e) => {
+  const id = e.target?.dataset?.id; if (!id || !PAGE) return;
+  SELECTED = PAGE.words.find((w) => w.id === id); REMOTE_SELECTED_ID = null;
+  showSelection(); renderHtml(); notifyParentSelection(SELECTED);
+});
+function downloadEmbeddedHtml() {
+  if (!PAGE || EMBED_SOURCE === "local") return;
+  const page = $("html");
+  const embeddedFonts = [...fontRegistry.entries()].map(([family, bytes]) =>
+    `@font-face{font-family:"${family.replace(/["\\\\]/g, "")}";src:url(data:font/otf;base64,${bytes}) format("opentype");font-weight:100 900;font-style:normal}`
+  ).join("\n");
+  const style = `
+    *{box-sizing:border-box}
+    body{margin:0;background:#fff;direction:rtl}
+    .paper{width:100%;margin:0 auto}
+    .html-sheet{position:relative;width:100%;container-type:inline-size;white-space:pre;font-size:0;direction:ltr;overflow:hidden;background:white}
+    .html-sheet span{position:absolute;display:block;white-space:pre;line-height:1;transform-origin:top left}
+    .otzaria-bubble-layer{position:absolute;inset:0;z-index:50;pointer-events:none;direction:ltr}
+    .otzaria-bubble-hit{position:absolute;display:block;margin:0;padding:0;border:0;border-radius:3px;background:transparent;box-shadow:none;outline:none;pointer-events:auto;cursor:pointer}
+    .otzaria-bubble-hit:hover{background:rgba(231,183,98,.22)!important;outline:1px solid rgba(160,106,24,.35)}
+    .otzaria-bubble-hit.is-selected{background:rgba(217,155,43,.35)!important;outline:1px solid rgba(160,106,24,.4)}
+    ${embeddedFonts}
+  `;
+  const clone = page.cloneNode(true);
+  clone.querySelectorAll("[data-id]").forEach((word) => { word.removeAttribute("data-id"); word.removeAttribute("title"); });
+  const bubbleScript = `document.addEventListener("click",function(event){var hit=event.target.closest("[data-bubble-id]");if(!hit)return;event.preventDefault();var selected=hit.classList.contains("is-selected");document.querySelectorAll(".otzaria-bubble-hit.is-selected").forEach(function(item){item.classList.remove("is-selected")});if(!selected)hit.classList.add("is-selected")});`;
+  const html = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>צורת הדף HTML — ${esc(PAGE.tractate)} ${PAGE.daf}</title><style>${style}</style></head><body><div class="paper">${clone.outerHTML}</div><script>${bubbleScript}<\/script></body></html>`;
+  const blob = new Blob([html], {type:"text/html;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = `tzurat-hadaf-${PAGE.tractate.replace(/[^a-zA-Z0-9\u0590-\u05FF_-]+/g,"-")}-${PAGE.daf}${PAGE.amud}.html`;
+  document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+$("embedDownloadHtml").addEventListener("click", downloadEmbeddedHtml);
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent || event.data?.source !== "otzaria-tzurat-hadaf") return;
+  if (event.data?.type === "set-bubbles") {
+    const payload = event.data;
+    if (PAGE && (Number(payload.daf) !== PAGE.daf || payload.tractate !== PAGE.tractate || payload.amud !== PAGE.amud)) return;
+    OTZARIA_BUBBLES = Array.isArray(payload.bubbles) ? payload.bubbles : [];
+    OTZARIA_SELECTED_BUBBLE = payload.selectedId || null;
+    OTZARIA_HOVERED_BUBBLE = payload.hoveredId || null;
+    if (PAGE) renderOtzariaBubbles();
+    return;
+  }
+  if (event.data?.type === "set-selected-bubble") {
+    OTZARIA_SELECTED_BUBBLE = event.data.bubbleId || null;
+    OTZARIA_HOVERED_BUBBLE = event.data.hoveredId || null;
+    renderOtzariaBubbles();
+    return;
+  }
+  if (event.data?.type !== "highlight-word" || !PAGE) return;
+  const d = event.data, nx = Number(d.xNorm), ny = Number(d.yNorm);
+  if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
+  const candidates = PAGE.words.filter(w => w.layer === "gemara");
+  let best = null, score = Infinity;
+  for (const w of candidates) {
+    const x = (w.x + w.width/2)/PAGE.width, y = (w.y + w.height/2)/PAGE.height;
+    const dist = Math.hypot((x - nx) * 1.5, y - ny);
+    const textBonus = d.text && norm(w.text) === norm(String(d.text)) ? 0.35 : 0;
+    const s = dist - textBonus;
+    if (s < score) { best = w; score = s; }
+  }
+  REMOTE_SELECTED_ID = best && score < 0.16 ? best.id : null;
+  renderHtml();
+});
+function similar() {
+  if (!SELECTED || !PAGE) return [];
+  const s = SELECTED, tol = Math.max(0, Number($("fTol").value) || 0);
+  return PAGE.words.filter((w) => w.id !== s.id && (!$("fFont").checked || w.fontId === s.fontId) && (!$("fSize").checked || Math.abs(w.fontSize - s.fontSize) <= tol) && (!$("fLayer").checked || w.layer === s.layer) && (!$("fOpener").checked || w.opener === s.opener) && (!$("fBold").checked || w.bold === s.bold) && (!$("fText").checked || w.text === s.text));
+}
+function showSelection() {
+  $("selbox").classList.toggle("on", Boolean(SELECTED)); if (!SELECTED) return;
+  $("selText").textContent = SELECTED.text;
+  $("selInfo").textContent = `${LAYERS[SELECTED.layer]}${SELECTED.opener ? ` · דיבור המתחיל (${SELECTED.openerFor === "rashi" ? "רש״י" : "תוספות"})` : ""} · ${SELECTED.fontSize}pt · גופן f${SELECTED.fontId}${SELECTED.bold ? " · מודגש" : ""}`;
+  $("matchCount").textContent = similar().length;
+  if (!$("aside").offsetParent) { $("main").classList.remove("no-panel"); $("aside").hidden = false; }
+}
+for (const id of ["fFont","fSize","fTol","fLayer","fOpener","fBold","fText"]) $(id).addEventListener("input", () => { showSelection(); renderHtml(); });
+$("addRule").addEventListener("click", () => {
+  if (!SELECTED) return;
+  const s = SELECTED, m = {};
+  if ($("fFont").checked) m.fontId = s.fontId;
+  if ($("fSize").checked) { m.size = s.fontSize; m.tol = Math.max(0, Number($("fTol").value) || 0); }
+  if ($("fLayer").checked) m.layer = s.layer;
+  if ($("fOpener").checked) m.opener = s.opener;
+  if ($("fBold").checked) m.bold = s.bold;
+  if ($("fText").checked) m.text = s.text;
+  const count = similar().length + 1;
+  STYLE.rules.unshift({ id: Date.now(), name: `${s.text} (${count} מילים)`, match: m, style: { font: $("rFont").value, scale: Number($("rScale").value) || 1, weight: Number($("rWeight").value) || 0, color: $("rUseColor").checked ? $("rColor").value : "", hl: $("rUseHl").checked ? $("rHl").value : "", hlS: Number($("rHlS").value) || 0 } });
+  saveStyle(); buildPanel(); renderHtml();
+});
+const fontSelect = (value) => FONTS.map((f) => `<option value="${f[0]}" ${f[0] === value ? "selected" : ""}>${f[1]}</option>`).join("");
+$("rFont").innerHTML = fontSelect("original");
+function controls(prefix, o, withOn) {
+  return `${withOn ? `<label><input type="checkbox" data-k="${prefix}.on" ${o.on ? "checked" : ""}> הפעלה</label>` : ""}
+  <div class="preview" style="font-family:${stackOf(o.font) || "inherit"}">מאימתי קורין את שמע</div>
+  <div class="row"><select data-k="${prefix}.font">${fontSelect(o.font)}</select> ×<input type="number" step="0.001" min="0.4" max="2" data-k="${prefix}.scale" value="${Number(o.scale).toFixed(3)}"> משקל<input type="number" step="1" min="0" max="900" data-k="${prefix}.weight" value="${o.weight}"></div>
+  <div class="row">צבע<input type="color" data-k="${prefix}.color" value="${o.color || "#111111"}"> <button data-clear="${prefix}.color">מקור</button> רקע<input type="color" data-k="${prefix}.hl" value="${o.hl || "#f2c873"}"> <label><input type="checkbox" data-hl="${prefix}" ${o.hl ? "checked" : ""}> הדגשה</label> עוצמה<input type="number" step="0.001" min="0" max="1" data-k="${prefix}.hlS" value="${Number(o.hlS).toFixed(3)}"></div>`;
+}
+function buildPanel() {
+  $("layers").innerHTML = Object.entries(LAYERS).map(([k, n]) => `<div class="card"><b>${n}</b>${controls(`layers.${k}`, STYLE.layers[k], false)}</div>`).join("");
+  $("openers").innerHTML = `<div class="card"><b>רש״י</b>${controls("openers.rashi", STYLE.openers.rashi, true)}</div><div class="card"><b>תוספות</b>${controls("openers.tosafot", STYLE.openers.tosafot, true)}</div>`;
+  $("rules").innerHTML = STYLE.rules.length ? STYLE.rules.map((r, i) => `<div class="card"><b>${esc(r.name)}</b>${controls(`rules.${i}.style`, r.style, false)}<div class="row"><button data-del="${i}">מחיקה</button></div></div>`).join("") : "אין עדיין. לחצו על מילה בשחזור כדי ליצור.";
+}
+const target = (path) => { const parts = path.split("."), key = parts.pop(); let o = STYLE; for (const p of parts) o = o[p]; return [o, key]; };
+$("aside").addEventListener("input", (e) => {
+  const el = e.target;
+  if (el.dataset.k) { const [o, k] = target(el.dataset.k); o[k] = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value; if (k === "hl" && !document.querySelector(`[data-hl="${el.dataset.k.replace(/\.hl$/, "")}"]`)?.checked) o.hl = ""; }
+  else if (el.dataset.hl) { const [o] = target(el.dataset.hl + ".x"); o.hl = el.checked ? (el.closest(".row").querySelector('input[type=color][data-k$=".hl"]').value) : ""; }
+  else return;
+  saveStyle(); if (el.tagName === "SELECT") buildPanel(); renderHtml();
+});
+$("aside").addEventListener("click", (e) => {
+  const c = e.target.dataset?.clear, d = e.target.dataset?.del;
+  if (c) { const [o, k] = target(c); o[k] = ""; saveStyle(); buildPanel(); renderHtml(); }
+  if (d != null) { STYLE.rules.splice(Number(d), 1); saveStyle(); buildPanel(); renderHtml(); }
+});
+$("reset").addEventListener("click", () => { STYLE = defaultStyle(); saveStyle(); buildPanel(); renderHtml(); });
+$("togglePanel").addEventListener("click", () => { const hide = !$("aside").hidden; $("aside").hidden = hide; $("main").classList.toggle("no-panel", hide); });
+const pdfSourceChoice = $("pdfDownloadSource"), pdfCustom = $("pdfDownloadCustomUrl");
+pdfSourceChoice.value = storageGet("tz-pdf-download-source") || "otzaria";
+pdfCustom.value = storageGet("tz-pdf-download-custom-url") || "";
+pdfSourceChoice.addEventListener("change", () => { storageSet("tz-pdf-download-source", pdfSourceChoice.value); });
+pdfCustom.addEventListener("change", () => { storageSet("tz-pdf-download-custom-url", pdfCustom.value.trim()); });
+$("openPdfDownload").addEventListener("click", () => {
+  storageSet("tz-pdf-download-source", pdfSourceChoice.value);
+  storageSet("tz-pdf-download-custom-url", pdfCustom.value.trim());
+  const url = pdfDownloadUrl($("tractate").value, Number($("daf").value), $("amud").value);
+  if (!url) { status("כתובת PDF אישית אינה תקינה. הזן כתובת HTTPS שמסתיימת ב־PDF.", true); return; }
+  window.open(url, "_blank", "noopener,noreferrer");
+});
+$("openHebrewBooksPage").addEventListener("click", () => {
+  const url = hebrewBooksPageUrl($("tractate").value, Number($("daf").value), $("amud").value);
+  if (url) window.open(url, "_blank", "noopener,noreferrer");
+  else status("לא נמצאה התאמה למסכת הזאת ב־HebrewBooks.", true);
+});
+
+/* ---------- Export (self-contained HTML, fonts embedded) ---------- */
+function exportHtml(page) {
+  const fams = new Set(page.words.map((w) => w.family));
+  const faces = [...fams].map((f) => `@font-face{font-family:'${f}';src:url(data:font/otf;base64,${fontRegistry.get(f)}) format('opentype')}`).join("\n");
+  const google = ""; // The exported page embeds the PDF's original fonts; no external font link is required.
+  const body = page.words.map((w) => `<span dir="rtl" style="${css(w, page)}">${esc(w.text)}</span>`).join(" ");
+  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${page.tractate} ${page.daf}${page.amud}</title>${google}<style>${faces}body{margin:0;background:#efede8}.sheet{position:relative;container-type:inline-size;white-space:pre;font-size:0;width:min(100%,${page.width}px);aspect-ratio:${page.width}/${page.height};background:#fff;margin:24px auto;overflow:hidden;direction:ltr}.sheet span{position:absolute;display:block;white-space:pre;line-height:1;transform-origin:top left}footer{text-align:center;font:13px Arial;color:#555}@page{size:A4 portrait;margin:8mm}@media print{body{background:#fff}.sheet{margin:0;width:100%;box-shadow:none}.sheet span{-webkit-print-color-adjust:exact;print-color-adjust:exact}footer{display:none}}</style></head><body><main class="sheet">${body}</main><footer>מקור: HebrewBooks.org באמצעות אוצריא — לשימוש לא מסחרי</footer></body></html>`;
+}
+function save(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 20000);
+}
+$("dlHtml").addEventListener("click", () => { if (PAGE) save(new Blob([exportHtml(PAGE)], { type: "text/html" }), `${PAGE.tractate}-${PAGE.daf}${PAGE.amud}.html`); });
+$("printHtml").addEventListener("click", () => { if (PAGE) window.print(); });
+$("dlZip").addEventListener("click", async () => {
+  const tr = TRACTATES.find((x) => x.name === $("tractate").value); if (!tr || !window.JSZip) return;
+  const zip = new JSZip(), pages = [];
+  for (let d = tr.start; d <= tr.end; d++) for (const a of sides(tr, d)) pages.push([d, a]);
+  $("dlZip").disabled = true;
+  for (let i = 0; i < pages.length; i++) {
+    status(`מכין ZIP: ${i + 1} / ${pages.length}…`);
+    try { const p = await analyze(tr.name, pages[i][0], pages[i][1]); zip.file(`${tr.name}-${p.daf}${p.amud}.html`, exportHtml(p)); } catch {}
+  }
+  save(await zip.generateAsync({ type: "blob", compression: "DEFLATE" }), `${tr.name}.zip`);
+  $("dlZip").disabled = false; status(`ה־ZIP של מסכת ${tr.name} מוכן.`);
+});
+
+/* ---------- Navigation ---------- */
+const HN = (n) => { if (n === 15) return "טו"; if (n === 16) return "טז"; let s = ""; const h = Math.floor(n / 100), t = Math.floor(n % 100 / 10), o = n % 10; if (h) s += "קרשת"[h - 1]; if (t === 1 && o === 5) return s + "טו"; if (t === 1 && o === 6) return s + "טז"; if (t) s += "יכלמנסעפצ"[t - 1]; if (o) s += "אבגדהוזחט"[o - 1]; return s; };
+const sides = (tr, d) => tr.single[String(d)] ? [tr.single[String(d)]] : ["a", "b"];
+function status(msg, err) { $("status").textContent = msg; $("status").classList.toggle("err", Boolean(err)); }
+$("tractate").innerHTML = TRACTATES.map((t) => `<option>${t.name}</option>`).join("");
+function fillDafim() { const tr = TRACTATES.find((x) => x.name === $("tractate").value); $("daf").innerHTML = Array.from({ length: tr.end - tr.start + 1 }, (_, i) => tr.start + i).map((d) => `<option value="${d}">דף ${HN(d)}</option>`).join(""); fillAmud(); }
+function fillAmud() { const tr = TRACTATES.find((x) => x.name === $("tractate").value), s = sides(tr, Number($("daf").value)); const cur = $("amud").value; $("amud").innerHTML = s.map((a) => `<option value="${a}">${a === "a" ? "ע״א" : "ע״ב"}</option>`).join(""); if (s.includes(cur)) $("amud").value = cur; }
+let token = 0;
+const withTimeout = (promise, milliseconds, message) => {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), milliseconds); })
+  ]).finally(() => clearTimeout(timer));
+};
+async function load() {
+  const t = $("tractate").value, d = Number($("daf").value), a = $("amud").value, my = ++token;
+  history.replaceState(null, "", `#${encodeURIComponent(t)}/${d}${a}`);
+  $("srcUrls").textContent = `PDF לשחזור: ${pdfUrl(t, d, a)}\nPDF להורדה: ${pdfDownloadUrl(t,d,a) || "כתובת אישית חסרה"}\nטקסט: ${SOURCE}/api/books/<id>/toc , /content`;
+  if (EMBED) { $("html").replaceChildren(); $("src").replaceChildren(); }
+  status(`מוריד ומנתח את ${t} דף ${HN(d)} ${a === "a" ? "ע״א" : "ע״ב"}…`);
+  try {
+    const p = await withTimeout(analyze(t, d, a), 45000, "טעינת הדף נמשכה יותר מדי זמן");
+    if (my !== token) return;
+    PAGE = p; SELECTED = null; showSelection();
+    $("src").innerHTML = ""; $("src").appendChild(p.canvas);
+    renderHtml();
+    const op = p.words.filter((w) => w.opener);
+    status(EMBED ? "" : `${p.words.length} מילים · דיבור המתחיל: רש״י ${op.filter((w) => w.openerFor === "rashi").length}, תוספות ${op.filter((w) => w.openerFor === "tosafot").length} · מקור: ${SOURCE}`);
+  } catch (e) {
+    if (my === token) {
+      const message = e && e.message ? e.message : String(e);
+      status(EMBED ? `תצוגת HTML לא נטענה: ${message}` : `שגיאה: ${message}`, true);
+    }
+  }
+}
+function step(dir) {
+  const i = TRACTATES.findIndex((x) => x.name === $("tractate").value); let tr = TRACTATES[i], d = Number($("daf").value), a = $("amud").value;
+  const list = []; for (let k = tr.start; k <= tr.end; k++) for (const s of sides(tr, k)) list.push([k, s]);
+  let j = list.findIndex(([k, s]) => k === d && s === a) + dir;
+  if (j < 0 || j >= list.length) { const nt = TRACTATES[i + dir]; if (!nt) return; tr = nt; const nl = []; for (let k = tr.start; k <= tr.end; k++) for (const s of sides(tr, k)) nl.push([k, s]); [d, a] = dir > 0 ? nl[0] : nl[nl.length - 1]; $("tractate").value = tr.name; fillDafim(); }
+  else [d, a] = list[j];
+  $("daf").value = d; fillAmud(); $("amud").value = a; load();
+}
+$("tractate").addEventListener("change", () => { fillDafim(); load(); });
+$("daf").addEventListener("change", () => { fillAmud(); load(); });
+$("amud").addEventListener("change", load);
+$("prev").addEventListener("click", () => step(-1));
+$("next").addEventListener("click", () => step(1));
+$("source").value = SOURCE;
+$("saveSource").addEventListener("click", () => { try { const u = new URL($("source").value.trim()); if (u.protocol !== "https:") throw 0; SOURCE = u.origin; } catch { SOURCE = DEFAULT_SOURCE; } $("source").value = SOURCE; storageSet("tz-source", SOURCE); tocCache.clear(); load(); });
+const params = new URLSearchParams(location.search);
+const queryTractate = params.get("masechta") || params.get("tractate");
+const queryDaf = Number(params.get("daf"));
+const queryAmud = params.get("amud") === "b" ? "b" : "a";
+const h = decodeURIComponent(location.hash.slice(1)).match(/^(.+)\/(\d+)([ab])$/);
+if (queryTractate && TRACTATES.some((x) => x.name === queryTractate)) $("tractate").value = queryTractate;
+else if (h && TRACTATES.some((x) => x.name === h[1])) $("tractate").value = h[1];
+fillDafim();
+if (Number.isFinite(queryDaf) && queryDaf >= 2) { $("daf").value = String(queryDaf); fillAmud(); $("amud").value = queryAmud; }
+else if (h) { $("daf").value = h[2]; fillAmud(); $("amud").value = h[3]; }
+buildPanel();
+renderPresets();
+load();
+</script>
+</body>
+</html>

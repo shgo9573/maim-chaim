@@ -1,0 +1,152 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:otzaria/data/sqlite/sqlite3_api.dart' as sqlite3;
+import '../db_capabilities.dart';
+import '../sqlite3_utils.dart';
+import '../../models/category.dart';
+import '../query_loader.dart';
+import 'database.dart';
+
+class CategoryDao {
+  final MyDatabase _db;
+  late final Map<String, String> _queries;
+
+  CategoryDao(this._db) {
+    _queries = QueryLoader.loadQueries('CategoryQueries.sq');
+  }
+
+  Future<sqlite3.Database> get database => _db.database;
+
+  Future<bool> get _hasCategories async =>
+      (await _db.capabilities).hasCategories;
+
+  Future<List<Category>> getAllCategories() async {
+    if (!await _hasCategories) return const [];
+    final db = await database;
+    final categories = db
+        .select(_queries['selectAll']!)
+        .toMapList()
+        .map((row) => Category.fromJson(row))
+        .toList();
+
+    // Filter out special categories (except in debug mode)
+    if (!kDebugMode) {
+      return categories
+          .where((cat) => cat.title != 'ספרים מספריות חיצוניות')
+          .toList();
+    }
+    return categories;
+  }
+
+  /// Gets all category rows, optionally within an ongoing transaction.
+  /// Used by [DatabaseLibraryProvider] to load books and categories atomically.
+  /// Must be called synchronously inside a [withTransaction] block.
+  List<Map<String, dynamic>> getAllCategoryRows(sqlite3.Database db) =>
+      selectCategoryRows(db, DbCapabilities.forDatabase(_db.path, db));
+
+  /// גוף [getAllCategoryRows] בלי תלות במופע — לקריאה ב-isolate.
+  static List<Map<String, dynamic>> selectCategoryRows(
+    sqlite3.Database db,
+    DbCapabilities capabilities,
+  ) {
+    // בלי book.categoryId הספרים אינם משויכים לאף קטגוריה, והעץ נבנה משורש יחיד.
+    if (!capabilities.hasBookCategories) return const [];
+    final order = capabilities.hasColumn('category', 'orderIndex')
+        ? 'orderIndex, title'
+        : 'title';
+    return db.select('SELECT * FROM category ORDER BY $order').toMapList();
+  }
+
+  Future<Category?> getCategoryById(int id) async {
+    if (!await _hasCategories) return null;
+    final db = await database;
+    final result = db.select(_queries['selectById']!, [id]).toMapList();
+    if (result.isEmpty) return null;
+    return Category.fromJson(result.first);
+  }
+
+  Future<List<Category>> getRootCategories() async {
+    if (!await _hasCategories) return const [];
+    final db = await database;
+    final categories = db
+        .select(_queries['selectRoot']!)
+        .toMapList()
+        .map((row) => Category.fromJson(row))
+        .toList();
+
+    // Filter out special categories (except in debug mode)
+    if (!kDebugMode) {
+      return categories
+          .where((cat) => cat.title != 'ספרים מספריות חיצוניות')
+          .toList();
+    }
+    return categories;
+  }
+
+  Future<List<Category>> getCategoriesByParentId(int parentId) async {
+    if (!await _hasCategories) return const [];
+    final db = await database;
+    return db
+        .select(_queries['selectByParentId']!, [parentId])
+        .toMapList()
+        .map((row) => Category.fromJson(row))
+        .toList();
+  }
+
+  Future<int> insertCategory(
+    int? parentId,
+    String title,
+    int level, {
+    int orderIndex = 999,
+  }) async {
+    final db = await database;
+    db.execute(_queries['insert']!, [parentId, title, level, orderIndex]);
+    return db.lastInsertRowId;
+  }
+
+  Future<int> updateCategory(int id, String title, {int? orderIndex}) async {
+    final db = await database;
+    db.execute(_queries['update']!, [title, orderIndex ?? 999, id]);
+    return db.updatedRows;
+  }
+
+  Future<int> updateCategoryOrderIndex(int id, int orderIndex) async {
+    final db = await database;
+    db.execute(_queries['updateOrderIndex']!, [orderIndex, id]);
+    return db.updatedRows;
+  }
+
+  Future<int> deleteCategory(int id) async {
+    final db = await database;
+    db.execute(_queries['delete']!, [id]);
+    return db.updatedRows;
+  }
+
+  Future<int> countAllCategories() async {
+    final db = await database;
+    return firstIntValue(db.select(_queries['countAll']!)) ?? 0;
+  }
+
+  /// Gets a category by its title.
+  Future<Category?> getCategoryByTitle(String title) async {
+    if (!await _hasCategories) return null;
+    final db = await database;
+    final result = db.select(_queries['selectByTitle']!, [title]).toMapList();
+    if (result.isEmpty) return null;
+    return Category.fromJson(result.first);
+  }
+
+  /// Gets a category by its title and parent ID.
+  Future<Category?> getCategoryByTitleAndParent(
+    String title,
+    int? parentId,
+  ) async {
+    if (!await _hasCategories) return null;
+    final db = await database;
+    final result = db.select(
+      _queries['selectByTitleAndParent']!,
+      [title, parentId, parentId],
+    ).toMapList();
+    if (result.isEmpty) return null;
+    return Category.fromJson(result.first);
+  }
+}

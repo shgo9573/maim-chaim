@@ -1,0 +1,681 @@
+import 'dart:isolate';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:fuzzywuzzy/fuzzywuzzy.dart';
+import 'package:otzaria/data/cache/acronyms_cache.dart';
+import 'package:otzaria/data/cache/generation_cache.dart';
+import 'package:otzaria/data/data_providers/file_system_data_provider.dart';
+import 'package:otzaria/indexing/bloc/indexing_bloc.dart';
+import 'package:otzaria/indexing/bloc/indexing_event.dart';
+import 'package:otzaria/models/book_source.dart';
+import 'package:otzaria/models/books.dart';
+import 'package:otzaria/library/models/library.dart';
+
+/// DataRepository acts as a centralized data access layer that coordinates between different
+/// data providers (file system, Hive storage, and Tantivy search engine).
+///
+/// This repository implements the Repository pattern to abstract the data source
+/// implementation details from the business logic. It provides a clean API for
+/// accessing and manipulating application data from various sources.
+class DataRepository {
+  /// Handles file system operations like reading book texts and metadata
+  final FileSystemData _fileSystemData = FileSystemData.instance;
+
+  /// Singleton instance of the DataRepository
+  static final DataRepository _singleton = DataRepository();
+
+  /// Provides access to the singleton instance
+  static DataRepository get instance => _singleton;
+
+  /// כמה חיפוש בספרייה ממתין לכינויי המסדים המצורפים לפני שהוא ממשיך בלעדיהם.
+  @visibleForTesting
+  static Duration attachedAcronymsWait = const Duration(milliseconds: 300);
+
+  Future<Library>? _libraryFuture;
+  Future<Library> get library => _libraryFuture ??= _getLibrary();
+  set library(Future<Library> value) => _libraryFuture = value;
+
+  // Lazy-loaded: only fetched when user actually searches for external books.
+  // Previously these ran getAllBooksWithRelations() eagerly at startup,
+  // competing with library loading for DB I/O.
+  Future<List<Book>>? _hebrewBooksFuture;
+  Future<List<Book>>? _localHebrewBooksFuture;
+  Future<List<ExternalLibraryBook>>? _otzarBooksFuture;
+  Future<List<Book>> get hebrewBooks => _hebrewBooksFuture ??= getHebrewBooks();
+
+  /// ספרי היברובוקס שקיים להם PDF מקומי (כ-[PdfBook]). נחשבים מקומיים
+  /// ומוצגים בחיפוש גם כשהצגת ספרים חיצוניים כבויה.
+  Future<List<Book>> get localHebrewBooks =>
+      _localHebrewBooksFuture ??= FileSystemData.getLocalHebrewBooks();
+
+  @visibleForTesting
+  set localHebrewBooks(Future<List<Book>> value) =>
+      _localHebrewBooksFuture = value;
+  Future<List<ExternalLibraryBook>> get otzarBooks =>
+      _otzarBooksFuture ??= getOtzarBooks();
+
+  /// Invalidates cached external books so they are re-fetched on next access.
+  /// Call this when the library is refreshed.
+  void invalidateExternalBooksCache() {
+    _hebrewBooksFuture = null;
+    _localHebrewBooksFuture = null;
+    _otzarBooksFuture = null;
+  }
+
+  DataRepository();
+
+  /// Retrieves the complete library metadata including all available books
+  ///
+  /// Returns a [Future] that completes with a [Library] object containing
+  /// the full library structure and metadata
+  Future<Library> _getLibrary() async {
+    return _fileSystemData.getLibrary();
+  }
+
+  /// Retrieves the list of books from the Otzar HaHochma project
+  ///
+  /// Returns a [Future] that completes with a list of [ExternalLibraryBook] objects
+  /// representing books from the Otzar HaHochma collection
+  Future<List<ExternalLibraryBook>> getOtzarBooks() {
+    return FileSystemData.getOtzarBooks();
+  }
+
+  /// Retrieves the list of books from the Hebrew Books project
+  ///
+  /// Returns a [Future] that completes with a list of [Book] objects
+  /// representing books from the Hebrew Books collection
+  Future<List<Book>> getHebrewBooks() {
+    return FileSystemData.getHebrewBooks();
+  }
+
+  /// Retrieves the full text content of a specific book
+  ///
+  /// Parameters:
+  ///   - [title]: The title of the book to retrieve
+  ///
+  /// Returns a [Future] that completes with the book's text content as a [String]
+  Future<String> getBookText(
+    String title, {
+    int? categoryId,
+    String? fileType,
+  }) async {
+    return _fileSystemData.getBookText(
+      title,
+      categoryId: categoryId,
+      fileType: fileType,
+    );
+  }
+
+  /// Retrieves the table of contents for a specific book
+  ///
+  /// Parameters:
+  ///   - [title]: The title of the book whose TOC should be retrieved
+  ///
+  /// Returns a [Future] that completes with a list of [TocEntry] objects
+  /// representing the book's table of contents structure
+  Future<List<TocEntry>> getBookToc(
+    String title, {
+    int? categoryId,
+    String? fileType,
+  }) async {
+    return _fileSystemData.getBookToc(
+      title,
+      categoryId: categoryId,
+      fileType: fileType,
+    );
+  }
+
+  /// Searches for references by relevance to a given reference string
+  ///
+  /// Parameters:
+  ///   - [ref]: The reference string to search for
+  ///   - [limit]: Maximum number of results to return (defaults to 10)
+  ///
+  /// Returns a [Future] that completes with a list of [Ref] objects sorted by relevance
+
+  /// Adds text content from the library to the Tantivy search index
+  ///
+  /// Parameters:
+  ///   - [library]: The library containing books to index
+  ///
+  /// This method now uses the IndexingBloc to handle the indexing process
+  Future<void> addAllTextsToTantivy(
+    Library library,
+  ) async {
+    // Create an instance of IndexingBloc
+    final indexingBloc = IndexingBloc.create();
+
+    // Start the indexing process
+    indexingBloc.add(StartIndexing(library));
+  }
+
+  /// Searches for books based on query text and optional filters
+  ///
+  /// Parameters:
+  ///   - [query]: The search text to match against book titles
+  ///   - [category]: Optional category to filter results
+  ///   - [topics]: Optional list of topics to filter results
+  ///   - [includeOtzar]: Whether to include Otzar HaChochma books
+  ///   - [includeHebrewBooks]: Whether to include HebrewBooks.org books
+  ///   - [includeLocalHebrewBooks]: Whether to include HebrewBooks titles that
+  ///     have a local PDF, when the external catalog itself is excluded
+  ///
+  /// Returns a [Future] that completes with a list of [Book] objects matching the criteria
+  Future<List<Book>> findBooks(
+    String query,
+    Category? category, {
+    List<String>? topics,
+    bool includeOtzar = false,
+    bool includeHebrewBooks = false,
+    bool includeLocalHebrewBooks = true,
+    bool sortByRatio = true,
+  }) async => (await findBooksAndCategories(
+    query,
+    category,
+    topics: topics,
+    includeOtzar: includeOtzar,
+    includeHebrewBooks: includeHebrewBooks,
+    includeLocalHebrewBooks: includeLocalHebrewBooks,
+    sortByRatio: sortByRatio,
+  )).books;
+
+  /// כמו [findBooks], ובנוסף מחזיר את הקטגוריות שכותרתן תואמת לשאילתה —
+  /// לתצוגת קבוצת "תיקיות" אחרי הספרים בתוצאות האיתור (issue #956).
+  Future<({List<Book> books, List<Category> categories})>
+  findBooksAndCategories(
+    String query,
+    Category? category, {
+    List<String>? topics,
+    bool includeOtzar = false,
+    bool includeHebrewBooks = false,
+    bool includeLocalHebrewBooks = true,
+    bool sortByRatio = true,
+  }) async {
+    const empty = (books: <Book>[], categories: <Category>[]);
+    final normalizedQuery = _normalizeForSearch(query);
+    final queryWords = normalizedQuery
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (queryWords.isEmpty) {
+      return empty;
+    }
+
+    final allBooks = <Book>[
+      ...(category?.getAllBooks() ?? (await library).getAllBooks()),
+    ];
+
+    if (includeOtzar) {
+      allBooks.addAll(await otzarBooks);
+    }
+    if (includeHebrewBooks) {
+      allBooks.addAll(await hebrewBooks);
+    } else if (includeLocalHebrewBooks) {
+      // ספרי היברובוקס שיש להם PDF מקומי הם ספרים שכבר נמצאים במחשב, ולכן
+      // מוצגים גם כשהצגת הקטלוג החיצוני כבויה — עד שהמשתמש מכבה זאת.
+      allBooks.addAll(await localHebrewBooks);
+    }
+
+    // no-op אם הקאשים כבר חוממו בעליית האפליקציה
+    await AcronymsCache.instance.warmUp();
+    // מסד מצורף איטי (כונן רשת) אינו מעכב את החיפוש — הקריאה נמשכת ב-isolate.
+    await AcronymsCache.instance.warmUpAttached().timeout(
+      attachedAcronymsWait,
+      onTimeout: () {},
+    );
+    await GenerationCache.instance.warmUp();
+
+    final searchEntries = <BookSearchEntry>[
+      for (var i = 0; i < allBooks.length; i++)
+        buildBookSearchEntry(
+          i,
+          allBooks[i],
+          acronymsFor: AcronymsCache.instance.acronymsFor,
+          eraOrderForId: GenerationCache.instance.getOrderForBook,
+        ),
+    ];
+
+    // הקטגוריות מצטרפות לאותה ריצת isolate; מזוהות באינדקסים שמעל הספרים.
+    final allCategories =
+        category?.getAllCategories() ?? (await library).getAllCategories();
+    for (var i = 0; i < allCategories.length; i++) {
+      searchEntries.add(
+        BookSearchEntry(
+          index: allBooks.length + i,
+          title: allCategories[i].title,
+          author: '',
+          topics: '',
+        ),
+      );
+    }
+
+    final matchingIndices = await Isolate.run(
+      () => filterBookSearchEntries(
+        entries: searchEntries,
+        queryWords: queryWords,
+        topics: topics ?? const <String>[],
+        sortByRatio: sortByRatio,
+        normalizedQuery: normalizedQuery,
+      ),
+    );
+
+    final books = <Book>[];
+    final categories = <Category>[];
+    for (final index in matchingIndices) {
+      if (index < allBooks.length) {
+        books.add(allBooks[index]);
+      } else {
+        categories.add(allCategories[index - allBooks.length]);
+      }
+    }
+    // סינון נושאים פעיל מסתיר את קבוצת התיקיות — לקטגוריה אין נושאים.
+    return (
+      books: books,
+      categories: (topics?.isNotEmpty ?? false)
+          ? const <Category>[]
+          : categories,
+    );
+  }
+
+  String _normalizeForSearch(String input) => _normalizeBookSearchText(input);
+}
+
+/// בונה [BookSearchEntry] לספר בודד. ה-lookups מוזרקים כדי לאפשר בדיקה
+/// בלי DB. הכינויים והדור נלקחים לפי [Book.source] — ל-id אין משמעות מחוץ
+/// למסד של הספר.
+@visibleForTesting
+BookSearchEntry buildBookSearchEntry(
+  int index,
+  Book book, {
+  required List<String>? Function(BookSource source, int bookId) acronymsFor,
+  required int Function(int? bookId, BookSource source) eraOrderForId,
+}) {
+  final id = book.id;
+  return BookSearchEntry(
+    index: index,
+    title: book.title,
+    author: book.author ?? '',
+    topics: book.topics,
+    acronyms: id == null ? const [] : acronymsFor(book.source, id) ?? const [],
+    eraOrder: eraOrderForId(id, book.source),
+    source: book.source,
+    categoryPath: book.categoryPath ?? '',
+  );
+}
+
+@visibleForTesting
+class BookSearchEntry {
+  final int index;
+  final String title;
+  final String author;
+  final String topics;
+
+  /// כינויים מנורמלים מראש מטבלת book_acronym (ראה [AcronymsCache]).
+  final List<String> acronyms;
+
+  /// סדר הדור של הספר (נמוך = מוקדם). ראה [GenerationCache]; ברירת מחדל = סוף.
+  final int eraOrder;
+
+  /// מקור הספר — בתוך תת-המיון של הדורות, רשמי לפני אישי לפני מצורף.
+  final BookSource source;
+
+  /// נתיב הקטגוריות של הספר. בספרים אישיים שם הספר מופיע לעיתים רק על
+  /// התיקייה ('חלק א' בתוך תיקייה בשם הספר), ולכן הוא חלק ממרחב החיפוש.
+  final String categoryPath;
+
+  const BookSearchEntry({
+    required this.index,
+    required this.title,
+    required this.author,
+    required this.topics,
+    this.acronyms = const [],
+    this.eraOrder = 5,
+    this.source = BookSource.official,
+    this.categoryPath = '',
+  });
+}
+
+@visibleForTesting
+List<int> filterBookSearchEntries({
+  required List<BookSearchEntry> entries,
+  required List<String> queryWords,
+  required List<String> topics,
+  required bool sortByRatio,
+  required String normalizedQuery,
+}) {
+  // סינון הנושאים כמעט תמיד כבוי, ואז אף אחד לא קורא את קבוצת הנושאים של
+  // הרשומה — פיצול ובניית Set לכל ספר בכל הקלדה יהיו עבודה לאשפה.
+  final filtersByTopic = topics.isNotEmpty;
+
+  // כל הספרים בקטגוריה חולקים נתיב — נרמול פר-ספר הוסיף ~25ms לחיפוש.
+  final categoryWordsByPath = <String, Set<String>>{};
+
+  final preparedEntries = entries.map((entry) {
+    final normalizedTitle = _normalizeBookSearchText(entry.title);
+    final normalizedAuthor = _normalizeBookSearchText(entry.author);
+    final entryTopics = filtersByTopic
+        ? entry.topics
+              .split(',')
+              .map((topic) => topic.trim())
+              .where((topic) => topic.isNotEmpty)
+              .toSet()
+        : const <String>{};
+
+    // כל המילים שמולן נבדקת השאילתה — כותרת, מחבר וכינויים יחד
+    final searchWords = <String>{
+      ...normalizedTitle.split(' '),
+      if (normalizedAuthor.isNotEmpty) ...normalizedAuthor.split(' '),
+      for (final acronym in entry.acronyms) ...acronym.split(' '),
+    }..remove('');
+
+    final categoryWords = entry.categoryPath.isEmpty
+        ? const <String>{}
+        : categoryWordsByPath.putIfAbsent(
+            entry.categoryPath,
+            () => <String>{
+              ..._normalizeBookSearchText(entry.categoryPath).split(' '),
+            }..remove(''),
+          );
+
+    return _PreparedBookSearchEntry(
+      index: entry.index,
+      normalizedTitle: normalizedTitle,
+      searchWords: searchWords,
+      categoryWords: categoryWords,
+      topics: entryTopics,
+      acronyms: entry.acronyms,
+      eraOrder: entry.eraOrder,
+      source: entry.source,
+    );
+  });
+
+  // מטמון לזוגות (מילת שאילתה, מילת טקסט) — מילים נפוצות ('מסכת', 'על')
+  // חוזרות באלפי ספרים ומחושבות פעם אחת בלבד.
+  final pairMemo = {
+    for (final word in queryWords) word: <String, bool>{},
+  };
+  bool wordMatchesEntry(String queryWord, Set<String> searchWords) {
+    final memo = pairMemo[queryWord]!;
+    for (final textWord in searchWords) {
+      if (memo[textWord] ??= _wordPairMatches(queryWord, textWord)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // התאמה שהושגה רק דרך נתיב התיקיות מסומנת — היא מדורגת מתחת לכל התאמה
+  // בכותרת/מחבר/כינוי, כדי ששאילתת 'הלכה' לא תקבור ספר בשם הזה תחת כל
+  // הספרים שיושבים בתיקייה בשם הזה.
+  final filtered = <({_PreparedBookSearchEntry entry, bool viaCategoryOnly})>[];
+  for (final entry in preparedEntries) {
+    if (topics.isNotEmpty &&
+        !topics.every((topic) => entry.topics.contains(topic))) {
+      continue;
+    }
+    // מעבר יחיד: מילות הספר קודם, ומילות הנתיב רק למילה שנכשלה בהן. בדיקה
+    // בשני מעברים נפרדים הכפילה את זמן החיפוש (~+30%).
+    var matches = true;
+    var viaCategoryOnly = false;
+    for (final word in queryWords) {
+      if (wordMatchesEntry(word, entry.searchWords)) {
+        continue;
+      }
+      if (entry.categoryWords.isNotEmpty &&
+          wordMatchesEntry(word, entry.categoryWords)) {
+        viaCategoryOnly = true;
+        continue;
+      }
+      matches = false;
+      break;
+    }
+    if (matches) {
+      filtered.add((entry: entry, viaCategoryOnly: viaCategoryOnly));
+    }
+  }
+
+  if (sortByRatio) {
+    final scored =
+        [
+          for (final (entry: entry, viaCategoryOnly: viaCategoryOnly)
+              in filtered)
+            _ScoredBookSearchEntry(
+              index: entry.index,
+              // שכבות עדיפות (כותרת מדויקת > מכילה ברצף > מילותיה לפי הסדר > כינוי
+              // > fuzzy > נתיב התיקיות); בתוך כל שכבה: דור ואז ratio, כך ספר יסוד
+              // לא נקבר תחת פירושים.
+              tier: viaCategoryOnly
+                  ? -1
+                  : entry.normalizedTitle == normalizedQuery
+                  ? 4
+                  : entry.normalizedTitle.contains(normalizedQuery)
+                  ? 3
+                  : _titleHasQueryWordsInOrder(
+                      entry.normalizedTitle,
+                      queryWords,
+                    )
+                  ? 2
+                  : entry.acronyms.any((a) => a.contains(normalizedQuery))
+                  ? 1
+                  : 0,
+              eraOrder: entry.eraOrder,
+              source: entry.source,
+              ratio: ratio(normalizedQuery, entry.normalizedTitle),
+            ),
+        ]..sort((a, b) {
+          if (a.tier != b.tier) return b.tier.compareTo(a.tier);
+          if (a.eraOrder != b.eraOrder) return a.eraOrder.compareTo(b.eraOrder);
+          // בתוך אותו דור — רשמי, אחריו אישי, ואחריו מסד מצורף.
+          if (a.source.rank != b.source.rank) {
+            return a.source.rank.compareTo(b.source.rank);
+          }
+          if (a.ratio != b.ratio) return b.ratio.compareTo(a.ratio);
+          return a.index.compareTo(b.index);
+        });
+
+    return [
+      for (final entry in scored) entry.index,
+    ];
+  }
+
+  return [
+    for (final match in filtered) match.entry.index,
+  ];
+}
+
+/// האם כל מילות השאילתה מופיעות כמילים שלמות בכותרת, לפי סדרן.
+/// שוויון מדויק בכוונה — התאמה סלחנית מקדמת 'הרמבם' עבור שאילתת 'רמבם'.
+bool _titleHasQueryWordsInOrder(
+  String normalizedTitle,
+  List<String> queryWords,
+) {
+  if (queryWords.isEmpty) return false;
+  var i = 0;
+  for (final titleWord in normalizedTitle.split(' ')) {
+    if (titleWord == queryWords[i] && ++i == queryWords.length) return true;
+  }
+  return false;
+}
+
+class _PreparedBookSearchEntry {
+  final int index;
+  final String normalizedTitle;
+
+  /// כל המילים המנורמלות של הכותרת, המחבר והכינויים — מאוחדות לבדיקה אחת.
+  final Set<String> searchWords;
+
+  /// מילות נתיב התיקיות שאינן מופיעות כבר ב-[searchWords].
+  final Set<String> categoryWords;
+  final Set<String> topics;
+  final List<String> acronyms;
+  final int eraOrder;
+  final BookSource source;
+
+  const _PreparedBookSearchEntry({
+    required this.index,
+    required this.normalizedTitle,
+    required this.searchWords,
+    required this.categoryWords,
+    required this.topics,
+    required this.acronyms,
+    required this.eraOrder,
+    required this.source,
+  });
+}
+
+class _ScoredBookSearchEntry {
+  final int index;
+  final int tier;
+  final int eraOrder;
+  final BookSource source;
+  final int ratio;
+
+  const _ScoredBookSearchEntry({
+    required this.index,
+    required this.tier,
+    required this.eraOrder,
+    required this.source,
+    required this.ratio,
+  });
+}
+
+// Damerau-Levenshtein (OSA) הבודק רק האם המרחק ≤ k, עם שורות מתגלגלות
+// ויציאה מוקדמת. הנרמול משאיר תווי BMP בלבד, לכן codeUnit == תו.
+bool _editDistanceAtMost(String a, String b, int k) {
+  final la = a.length;
+  final lb = b.length;
+  var prev2 = List<int>.filled(lb + 1, 0);
+  var prev = List<int>.generate(lb + 1, (j) => j);
+  var curr = List<int>.filled(lb + 1, 0);
+  var prevMin = 0;
+  for (var i = 1; i <= la; i++) {
+    curr[0] = i;
+    var rowMin = i;
+    final ca = a.codeUnitAt(i - 1);
+    for (var j = 1; j <= lb; j++) {
+      final cost = ca == b.codeUnitAt(j - 1) ? 0 : 1;
+      var best = prev[j - 1] + cost; // substitution
+      final deletion = prev[j] + 1;
+      if (deletion < best) best = deletion;
+      final insertion = curr[j - 1] + 1;
+      if (insertion < best) best = insertion;
+      // transposition of two adjacent characters
+      // e.g. אבועלפיה → אבולעפיה counts as 1 edit, not 2
+      if (i > 1 &&
+          j > 1 &&
+          ca == b.codeUnitAt(j - 2) &&
+          a.codeUnitAt(i - 2) == b.codeUnitAt(j - 1)) {
+        final transposition = prev2[j - 2] + cost;
+        if (transposition < best) best = transposition;
+      }
+      curr[j] = best;
+      if (best < rowMin) rowMin = best;
+    }
+    // ערכים עתידיים נגזרים משתי השורות האחרונות בתוספת עלות לא-שלילית,
+    // ולכן כשהמינימום בשתיהן חצה את k המרחק כבר לא ירד חזרה
+    if (rowMin > k && prevMin > k) return false;
+    final recycled = prev2;
+    prev2 = prev;
+    prev = curr;
+    curr = recycled;
+    prevMin = rowMin;
+  }
+  return prev[lb] <= k;
+}
+
+// Allowed edit distance by word length:
+// 1-4  chars → 0 (exact)
+// 4-8  chars → 1 typo
+// 8-12 chars → 2 typos
+// 12-16 chars → 3 typos
+// 16+  chars → 4 typos
+int _maxAllowedEdits(int len) {
+  if (len <= 4) return 0;
+  if (len <= 8) return 1;
+  if (len <= 12) return 2;
+  if (len <= 16) return 3;
+  return 4;
+}
+
+/// התאמת זוג מילים בודדות: הכלה, או מרחק עריכה שסיפו נגזר מהארוכה
+/// מבין השתיים — כך ההתאמה הדדית (מדות↔מידות).
+bool _wordPairMatches(String queryWord, String textWord) {
+  if (textWord.contains(queryWord)) return true;
+  if (queryWord.length < 3) return false;
+
+  final allowed = _maxAllowedEdits(
+    queryWord.length > textWord.length ? queryWord.length : textWord.length,
+  );
+  // שוויון מלא כבר כוסה ע"י contains
+  if (allowed == 0) return false;
+  // הפרש האורכים הוא חסם תחתון למרחק העריכה
+  if ((textWord.length - queryWord.length).abs() > allowed) return false;
+  return _editDistanceAtMost(queryWord, textWord, allowed);
+}
+
+/// [bookSearchWordMatchesFuzzy] על מילה בודדת. מסננת אוצר-המילים של איתור
+/// מקורות היא קבוצת-על רק כל עוד ההתאמה כאן נשארת בין מילה למילה.
+bool bookSearchWordPairMatches(String queryWord, String textWord) =>
+    _wordPairMatches(queryWord, textWord);
+
+/// התאמת מילת שאילתה לטקסט שלם (כותרת/מחבר מנורמלים) עם סלחנות לשגיאות כתיב.
+/// משמשת גם את תחביר `@` בחיפוש (ראה `parseCategoryQuery`).
+bool bookSearchWordMatchesFuzzy(String queryWord, String text) {
+  for (final textWord in text.split(' ')) {
+    if (textWord.isEmpty) continue;
+    if (_wordPairMatches(queryWord, textWord)) return true;
+  }
+  return false;
+}
+
+/// חשיפה לבדיקת השקילות בלבד — ראה
+/// test/data/repository/book_search_normalization_test.dart
+@visibleForTesting
+String normalizeBookSearchTextForTesting(String input) =>
+    _normalizeBookSearchText(input);
+
+/// מסיר ניקוד, טעמים וגרשיים, ומחליף כל תו שאינו אות או ספרה ברווח.
+/// מעבר יחיד ולא שרשרת replaceAll — רץ על כל ספר בספרייה בכל הקלדה.
+/// שינוי כאן חייב לעבור את בדיקת השקילות למימוש הקודם ב-
+/// test/data/repository/book_search_normalization_test.dart
+String _normalizeBookSearchText(String input) {
+  if (input.isEmpty) return '';
+
+  final out = StringBuffer();
+  var pendingSpace = false;
+
+  for (var i = 0; i < input.length; i++) {
+    final c = input.codeUnitAt(i);
+
+    // ניקוד וטעמים נמחקים; מקף-חיבור ופסק הופכים לרווח
+    if (c >= 0x0591 && c <= 0x05C7) {
+      if (c == 0x05BE || c == 0x05C0) pendingSpace = true;
+      continue;
+    }
+
+    // גרשיים נמחקים בלי להשאיר רווח, כדי שרמב"ם ייקרא רמבם
+    if (c == 0x22 || c == 0x27 || c == 0x05F3 || c == 0x05F4) continue;
+
+    final int kept;
+    if (c >= 0x61 && c <= 0x7A) {
+      kept = c;
+    } else if (c >= 0x41 && c <= 0x5A) {
+      kept = c + 0x20;
+    } else if (c >= 0x30 && c <= 0x39) {
+      kept = c;
+    } else if (c >= 0x0590 && c <= 0x05FF) {
+      kept = c;
+    } else {
+      pendingSpace = true;
+      continue;
+    }
+
+    if (pendingSpace) {
+      pendingSpace = false;
+      if (out.isNotEmpty) out.writeCharCode(0x20);
+    }
+    out.writeCharCode(kept);
+  }
+
+  return out.toString();
+}

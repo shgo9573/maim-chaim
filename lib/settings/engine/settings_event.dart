@@ -1,0 +1,490 @@
+import 'package:equatable/equatable.dart';
+import 'package:flutter/material.dart';
+import 'package:otzaria/text_display/text_display_exports.dart';
+
+abstract class SettingsEvent extends Equatable {
+  const SettingsEvent();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class LoadSettings extends SettingsEvent {}
+
+class UpdateDarkMode extends SettingsEvent {
+  final bool isDarkMode;
+
+  const UpdateDarkMode(this.isDarkMode);
+
+  @override
+  List<Object?> get props => [isDarkMode];
+}
+
+class UpdateFollowSystemTheme extends SettingsEvent {
+  final bool followSystemTheme;
+
+  const UpdateFollowSystemTheme(this.followSystemTheme);
+
+  @override
+  List<Object?> get props => [followSystemTheme];
+}
+
+class UpdateSeedColor extends SettingsEvent {
+  final Color seedColor;
+
+  const UpdateSeedColor(this.seedColor);
+
+  @override
+  List<Object?> get props => [seedColor];
+}
+
+class UpdateDarkSeedColor extends SettingsEvent {
+  final Color darkSeedColor;
+
+  const UpdateDarkSeedColor(this.darkSeedColor);
+
+  @override
+  List<Object?> get props => [darkSeedColor];
+}
+
+class UpdateTextMaxWidth extends SettingsEvent {
+  final double textMaxWidth;
+
+  const UpdateTextMaxWidth(this.textMaxWidth);
+
+  @override
+  List<Object?> get props => [textMaxWidth];
+}
+
+class UpdateFontSize extends SettingsEvent {
+  final double fontSize;
+
+  const UpdateFontSize(this.fontSize);
+
+  @override
+  List<Object?> get props => [fontSize];
+}
+
+class UpdateFontFamily extends SettingsEvent {
+  final String fontFamily;
+
+  const UpdateFontFamily(this.fontFamily);
+
+  @override
+  List<Object?> get props => [fontFamily];
+}
+
+class UpdateCommentatorsFontFamily extends SettingsEvent {
+  final String commentatorsFontFamily;
+
+  const UpdateCommentatorsFontFamily(this.commentatorsFontFamily);
+
+  @override
+  List<Object?> get props => [commentatorsFontFamily];
+}
+
+class UpdateFontBold extends SettingsEvent {
+  final bool fontBold;
+
+  const UpdateFontBold(this.fontBold);
+
+  @override
+  List<Object?> get props => [fontBold];
+}
+
+class UpdateCommentatorsFontBold extends SettingsEvent {
+  final bool commentatorsFontBold;
+
+  const UpdateCommentatorsFontBold(this.commentatorsFontBold);
+
+  @override
+  List<Object?> get props => [commentatorsFontBold];
+}
+
+class UpdateCommentatorsFontSize extends SettingsEvent {
+  final double commentatorsFontSize;
+
+  const UpdateCommentatorsFontSize(this.commentatorsFontSize);
+
+  @override
+  List<Object?> get props => [commentatorsFontSize];
+}
+
+class UpdateLineHeight extends SettingsEvent {
+  final double lineHeight;
+
+  const UpdateLineHeight(this.lineHeight);
+
+  @override
+  List<Object?> get props => [lineHeight];
+}
+
+class UpdateShowOtzarHachochma extends SettingsEvent {
+  final bool showOtzarHachochma;
+
+  const UpdateShowOtzarHachochma(this.showOtzarHachochma);
+
+  @override
+  List<Object?> get props => [showOtzarHachochma];
+}
+
+class UpdateShowHebrewBooks extends SettingsEvent {
+  final bool showHebrewBooks;
+
+  const UpdateShowHebrewBooks(this.showHebrewBooks);
+
+  @override
+  List<Object?> get props => [showHebrewBooks];
+}
+
+class UpdateShowLocalHebrewBooks extends SettingsEvent {
+  final bool showLocalHebrewBooks;
+
+  const UpdateShowLocalHebrewBooks(this.showLocalHebrewBooks);
+
+  @override
+  List<Object?> get props => [showLocalHebrewBooks];
+}
+
+class UpdateShowExternalBooks extends SettingsEvent {
+  final bool showExternalBooks;
+
+  const UpdateShowExternalBooks(this.showExternalBooks);
+
+  @override
+  List<Object?> get props => [showExternalBooks];
+}
+
+class UpdateAutoUpdateIndex extends SettingsEvent {
+  final bool autoUpdateIndex;
+
+  const UpdateAutoUpdateIndex(this.autoUpdateIndex);
+
+  @override
+  List<Object?> get props => [autoUpdateIndex];
+}
+
+/// עדכון מלא של מדיניות תצוגת הטקסט (עורך ההגדרות החדש).
+class UpdateTextDisplayPolicy extends SettingsEvent {
+  final TextDisplayPolicy textDisplayPolicy;
+
+  const UpdateTextDisplayPolicy(this.textDisplayPolicy);
+
+  @override
+  List<Object?> get props => [textDisplayPolicy];
+}
+
+class UpdateDefaultContinuousReadingMode extends SettingsEvent {
+  final bool defaultContinuousReadingMode;
+
+  const UpdateDefaultContinuousReadingMode(this.defaultContinuousReadingMode);
+
+  @override
+  List<Object?> get props => [defaultContinuousReadingMode];
+}
+
+class UpdateDefaultSidebarOpen extends SettingsEvent {
+  final bool defaultSidebarOpen;
+
+  const UpdateDefaultSidebarOpen(this.defaultSidebarOpen);
+
+  @override
+  List<Object?> get props => [defaultSidebarOpen];
+}
+
+class UpdateDefaultCommentaryOpen extends SettingsEvent {
+  final bool defaultCommentaryOpen;
+
+  const UpdateDefaultCommentaryOpen(this.defaultCommentaryOpen);
+
+  @override
+  List<Object?> get props => [defaultCommentaryOpen];
+}
+
+class UpdatePinSidebar extends SettingsEvent {
+  final bool pinSidebar;
+
+  const UpdatePinSidebar(this.pinSidebar);
+
+  @override
+  List<Object?> get props => [pinSidebar];
+}
+
+class UpdateSidebarWidth extends SettingsEvent {
+  final double sidebarWidth;
+
+  const UpdateSidebarWidth(this.sidebarWidth);
+
+  @override
+  List<Object?> get props => [sidebarWidth];
+}
+
+class UpdateFacetFilteringWidth extends SettingsEvent {
+  final double facetFilteringWidth;
+
+  const UpdateFacetFilteringWidth(this.facetFilteringWidth);
+
+  @override
+  List<Object?> get props => [facetFilteringWidth];
+}
+
+/// מיקום בלוק התוצאות ממקור חיצוני במסך החיפוש: true — קודמות, false — מאוחרות.
+class UpdateExternalResultsFirst extends SettingsEvent {
+  final bool externalResultsFirst;
+
+  const UpdateExternalResultsFirst(this.externalResultsFirst);
+
+  @override
+  List<Object?> get props => [externalResultsFirst];
+}
+
+class UpdateCommentaryPaneWidth extends SettingsEvent {
+  final double commentaryPaneWidth;
+
+  const UpdateCommentaryPaneWidth(this.commentaryPaneWidth);
+
+  @override
+  List<Object?> get props => [commentaryPaneWidth];
+}
+
+class UpdateCopyWithHeaders extends SettingsEvent {
+  final String copyWithHeaders;
+
+  const UpdateCopyWithHeaders(this.copyWithHeaders);
+
+  @override
+  List<Object?> get props => [copyWithHeaders];
+}
+
+class UpdateCopyHeaderFormat extends SettingsEvent {
+  final String copyHeaderFormat;
+
+  const UpdateCopyHeaderFormat(this.copyHeaderFormat);
+
+  @override
+  List<Object?> get props => [copyHeaderFormat];
+}
+
+class UpdateIsFullscreen extends SettingsEvent {
+  final bool isFullscreen;
+
+  const UpdateIsFullscreen(this.isFullscreen);
+
+  @override
+  List<Object?> get props => [isFullscreen];
+}
+
+class UpdateLibraryViewMode extends SettingsEvent {
+  final String libraryViewMode;
+
+  const UpdateLibraryViewMode(this.libraryViewMode);
+
+  @override
+  List<Object?> get props => [libraryViewMode];
+}
+
+class UpdateLibraryShowPreview extends SettingsEvent {
+  final bool libraryShowPreview;
+
+  const UpdateLibraryShowPreview(this.libraryShowPreview);
+
+  @override
+  List<Object?> get props => [libraryShowPreview];
+}
+
+class UpdateSearchShowPreview extends SettingsEvent {
+  final bool searchShowPreview;
+
+  const UpdateSearchShowPreview(this.searchShowPreview);
+
+  @override
+  List<Object?> get props => [searchShowPreview];
+}
+
+class RefreshShortcuts extends SettingsEvent {
+  const RefreshShortcuts();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class ResetShortcuts extends SettingsEvent {}
+
+class UpdateShortcut extends SettingsEvent {
+  final String key;
+  final String value;
+
+  const UpdateShortcut(this.key, this.value);
+
+  @override
+  List<Object?> get props => [key, value];
+}
+
+class UpdateEnablePerBookSettings extends SettingsEvent {
+  final bool enablePerBookSettings;
+
+  const UpdateEnablePerBookSettings(this.enablePerBookSettings);
+
+  @override
+  List<Object?> get props => [enablePerBookSettings];
+}
+
+class UpdatePdfBookViewByDefault extends SettingsEvent {
+  final bool pdfBookViewByDefault;
+
+  const UpdatePdfBookViewByDefault(this.pdfBookViewByDefault);
+
+  @override
+  List<Object?> get props => [pdfBookViewByDefault];
+}
+
+class UpdateTalmudBavliOpenFormat extends SettingsEvent {
+  final String talmudBavliOpenFormat;
+
+  const UpdateTalmudBavliOpenFormat(this.talmudBavliOpenFormat);
+
+  @override
+  List<Object?> get props => [talmudBavliOpenFormat];
+}
+
+class UpdateOfflineMode extends SettingsEvent {
+  final bool isOfflineMode;
+
+  const UpdateOfflineMode(this.isOfflineMode);
+
+  @override
+  List<Object?> get props => [isOfflineMode];
+}
+
+class UpdateSoftwareAndBookUpdatesEnabled extends SettingsEvent {
+  final bool enabled;
+
+  const UpdateSoftwareAndBookUpdatesEnabled(this.enabled);
+
+  @override
+  List<Object?> get props => [enabled];
+}
+
+class UpdateEnableHtmlLinks extends SettingsEvent {
+  final bool enableHtmlLinks;
+
+  const UpdateEnableHtmlLinks(this.enableHtmlLinks);
+
+  @override
+  List<Object?> get props => [enableHtmlLinks];
+}
+
+class UpdatePersonalNotesCollapsedByDefault extends SettingsEvent {
+  final bool collapsedByDefault;
+
+  const UpdatePersonalNotesCollapsedByDefault(this.collapsedByDefault);
+
+  @override
+  List<Object?> get props => [collapsedByDefault];
+}
+
+class UpdateCompactMenuMode extends SettingsEvent {
+  final bool compactMenuMode;
+
+  const UpdateCompactMenuMode(this.compactMenuMode);
+
+  @override
+  List<Object?> get props => [compactMenuMode];
+}
+
+class UpdateReadingTabsPlacement extends SettingsEvent {
+  final String placement;
+
+  const UpdateReadingTabsPlacement(this.placement);
+
+  @override
+  List<Object?> get props => [placement];
+}
+
+class UpdateReadingTabsColumnWidth extends SettingsEvent {
+  final double width;
+
+  const UpdateReadingTabsColumnWidth(this.width);
+
+  @override
+  List<Object?> get props => [width];
+}
+
+class UpdateReadingTabsColumnCollapsed extends SettingsEvent {
+  final bool collapsed;
+
+  const UpdateReadingTabsColumnCollapsed(this.collapsed);
+
+  @override
+  List<Object?> get props => [collapsed];
+}
+
+class UpdateMergeUserBooksIntoLibrary extends SettingsEvent {
+  final bool mergeUserBooksIntoLibrary;
+
+  const UpdateMergeUserBooksIntoLibrary(this.mergeUserBooksIntoLibrary);
+
+  @override
+  List<Object?> get props => [mergeUserBooksIntoLibrary];
+}
+
+class UpdateProtectedModeEnabled extends SettingsEvent {
+  final bool enabled;
+
+  const UpdateProtectedModeEnabled(this.enabled);
+
+  @override
+  List<Object?> get props => [enabled];
+}
+
+class UpdateProtectedModePassword extends SettingsEvent {
+  final String password;
+
+  const UpdateProtectedModePassword(this.password);
+
+  @override
+  List<Object?> get props => [password];
+}
+
+class ClearProtectedModePassword extends SettingsEvent {
+  const ClearProtectedModePassword();
+
+  @override
+  List<Object?> get props => [];
+}
+
+class UpdateHiddenBuiltInToolIds extends SettingsEvent {
+  final Set<String> hiddenBuiltInToolIds;
+
+  const UpdateHiddenBuiltInToolIds(this.hiddenBuiltInToolIds);
+
+  @override
+  List<Object?> get props => [hiddenBuiltInToolIds];
+}
+
+class UpdateBuiltInToolsPinnedToNavRail extends SettingsEvent {
+  final Set<String> builtInToolsPinnedToNavRail;
+
+  const UpdateBuiltInToolsPinnedToNavRail(this.builtInToolsPinnedToNavRail);
+
+  @override
+  List<Object?> get props => [builtInToolsPinnedToNavRail];
+}
+
+class UpdateBuiltInToolsOrder extends SettingsEvent {
+  final List<String> builtInToolsOrder;
+
+  const UpdateBuiltInToolsOrder(this.builtInToolsOrder);
+
+  @override
+  List<Object?> get props => [builtInToolsOrder];
+}
+
+class UpdateSettingsLanguageCode extends SettingsEvent {
+  final String settingsLanguageCode;
+
+  const UpdateSettingsLanguageCode(this.settingsLanguageCode);
+
+  @override
+  List<Object?> get props => [settingsLanguageCode];
+}
