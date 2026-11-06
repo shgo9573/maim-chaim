@@ -72,7 +72,18 @@ export default function TzuratHaDafPage() {
         <div className="flex min-w-0 items-center gap-3">
           <div className="rounded-lg bg-primary p-1.5 text-on-primary"><BookOpen size={17} /></div>
           <div className="min-w-0">
-            <h1 className="truncate font-serif text-sm font-bold">מיים חיים · צורת הדף</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="truncate font-serif text-sm font-bold">מיים חיים · צורת הדף</h1>
+              {import.meta.env.BASE_URL.startsWith('/beta/') && (
+                <span
+                  title="גרסת בטא — סביבת בדיקה"
+                  aria-label="גרסת בטא — סביבת בדיקה"
+                  className="shrink-0 rounded-full border border-amber-500/50 bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                >
+                  BETA
+                </span>
+              )}
+            </div>
             <p className="hidden text-[11px] text-on-variant sm:block">מסכת {tractate}</p>
           </div>
         </div>
