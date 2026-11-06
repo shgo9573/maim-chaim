@@ -1076,7 +1076,7 @@ export const TzuratHaDafView: React.FC<TzuratHaDafViewProps> = ({
                       key={`vilna-html-${activePageSource}-${tractateHebrew}-${dafNum}-${amud}-${htmlBracketMode}-${htmlWordRecognition}`}
                       ref={htmlFrameRef}
                       title={`HTML ניסיוני של מסכת ${tractateHebrew} ${currentDafLabel}`}
-                      src={`/vilna-html/index.html?embed=1&v=20261105-html-reader4&source=${activePageSource}&masechta=${encodeURIComponent(tractateHebrew)}&daf=${dafNum}&amud=${amud}&brackets=${htmlBracketMode}&wordRecognition=${htmlWordRecognition}`}
+                      src={`${import.meta.env.BASE_URL}vilna-html/index.html?embed=1&v=20261105-html-reader4&source=${activePageSource}&masechta=${encodeURIComponent(tractateHebrew)}&daf=${dafNum}&amud=${amud}&brackets=${htmlBracketMode}&wordRecognition=${htmlWordRecognition}`}
                       className="h-full w-full flex-1 border-0 bg-white"
                       loading="eager"
                       onLoad={() => {
