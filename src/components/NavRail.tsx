@@ -15,6 +15,7 @@ interface Item {
 export default function NavRail() {
   const { screen, setScreen, tabs, activeTabId, openSearch, setDialog, settings, updateSettings } = useApp();
   const lang = settings.interfaceLanguage || 'he';
+  const isBetaDeployment = import.meta.env.BASE_URL.startsWith('/beta/');
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const searchActive = screen === 'reading' && activeTab?.kind === 'search';
 
@@ -58,7 +59,25 @@ export default function NavRail() {
       >
         <img src="./icon.svg?v=20261012-goldbook" alt="" className="h-10 w-10 rounded-xl object-contain" />
         <span>{lang === 'en' ? 'Mayim Chaim' : 'מיים חיים'}</span>
+        {isBetaDeployment && (
+          <span
+            title="גרסת בטא — סביבת בדיקה"
+            aria-label="גרסת בטא — סביבת בדיקה"
+            className="rounded-full border border-amber-500/50 bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          >
+            BETA
+          </span>
+        )}
       </button>
+      {isBetaDeployment && (
+        <span
+          title="גרסת בטא — סביבת בדיקה"
+          aria-label="גרסת בטא — סביבת בדיקה"
+          className="fixed left-3 top-3 z-[70] rounded-full border border-amber-500/50 bg-amber-100 px-2.5 py-1 text-[10px] font-extrabold tracking-wider text-amber-900 shadow-sm md:hidden dark:bg-amber-950 dark:text-amber-200"
+        >
+          BETA
+        </span>
+      )}
       <div className="flex flex-row md:flex-col md:items-center">{top.map(render)}</div>
       <div className="hidden md:block md:flex-1" />
       <button
