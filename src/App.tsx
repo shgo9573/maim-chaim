@@ -100,8 +100,14 @@ function Shell() {
 }
 
 export default function App() {
-  const isTzuratHaDaf = typeof window !== 'undefined'
-    && window.location.pathname.replace(/\/+$/, '') === '/tzuratadaf';
+  const isTzuratHaDaf = typeof window !== 'undefined' && (() => {
+    const basePath = import.meta.env.BASE_URL.replace(/\/+$/, '');
+    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+    const appPath = basePath && currentPath.startsWith(`${basePath}/`)
+      ? currentPath.slice(basePath.length)
+      : currentPath === basePath ? '/' : currentPath;
+    return appPath === '/tzuratadaf';
+  })();
   return (
     <AppProvider>
       {isTzuratHaDaf ? <TzuratHaDafPage /> : <Shell />}
