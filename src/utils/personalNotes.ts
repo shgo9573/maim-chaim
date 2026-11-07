@@ -52,7 +52,10 @@ export function filterAndSortPersonalNotes(
       const searchable = `${note.text} ${note.heRef || ''} ${title} ${note.line + 1}`.toLowerCase();
       if (!searchable.includes(query)) return [];
     }
-    const updatedDate = typeof note.updatedAt === 'string' ? note.updatedAt.slice(0, 10) : '';
+    const parsedUpdatedAt = new Date(note.updatedAt);
+    const updatedDate = Number.isNaN(parsedUpdatedAt.getTime())
+      ? ''
+      : `${parsedUpdatedAt.getFullYear()}-${String(parsedUpdatedAt.getMonth() + 1).padStart(2, '0')}-${String(parsedUpdatedAt.getDate()).padStart(2, '0')}`;
     if (dateFrom && (!updatedDate || updatedDate < dateFrom)) return [];
     if (dateTo && (!updatedDate || updatedDate > dateTo)) return [];
 
