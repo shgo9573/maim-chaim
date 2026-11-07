@@ -157,13 +157,21 @@ function NotesView() {
   }, [notes, library]);
 
   const categoriesWithNotes = useMemo(() => {
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, { count: number; depth: number; label: string }>();
     for (const book of booksWithNotes) {
-      if (!book.categoryPath) continue;
-      grouped.set(book.categoryPath, (grouped.get(book.categoryPath) || 0) + book.count);
+      const parts = book.categoryPath.split('/').map((part) => part.trim()).filter(Boolean);
+      for (let index = 0; index < parts.length; index += 1) {
+        const path = parts.slice(0, index + 1).join('/');
+        const current = grouped.get(path);
+        if (current) {
+          current.count += book.count;
+        } else {
+          grouped.set(path, { count: book.count, depth: index, label: parts[index] });
+        }
+      }
     }
     return Array.from(grouped.entries())
-      .map(([path, count]) => ({ path, count }))
+      .map(([path, info]) => ({ path, ...info }))
       .sort((a, b) => a.path.localeCompare(b.path, 'he'));
   }, [booksWithNotes]);
 
@@ -446,9 +454,10 @@ function NotesView() {
                   key={category.path}
                   type="button"
                   onClick={() => { setCategoryFilter(category.path); setBookFilter('all'); }}
-                  className={`mb-0.5 flex w-full items-center justify-between rounded-lg px-3 py-2 text-start text-xs transition ${categoryFilter === category.path ? 'bg-sec-container font-semibold text-on-sec-container' : 'text-on-variant hover:bg-surface-3'}`}
+                  style={{ paddingRight: `${12 + category.depth * 12}px` }}
+                  className={`mb-0.5 flex w-full items-center justify-between rounded-lg py-2 pl-3 text-start text-xs transition ${categoryFilter === category.path ? 'bg-sec-container font-semibold text-on-sec-container' : 'text-on-variant hover:bg-surface-3'}`}
                 >
-                  <span className="min-w-0 truncate">{category.path}</span>
+                  <span className="min-w-0 truncate">{category.label}</span>
                   <span className="shrink-0 text-[10px]">{category.count}</span>
                 </button>
               ))}
