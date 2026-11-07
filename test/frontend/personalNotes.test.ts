@@ -41,7 +41,7 @@ test('סינון לפי ספר וקטגוריה', () => {
 test('טווח התאריכים כולל את שני ימי הגבול', () => {
   assert.deepEqual(
     filterAndSortPersonalNotes(notes, resolveBook, { dateFrom: '2026-11-06', dateTo: '2026-11-07' }).map((item) => item.note.id),
-    ['1', '2'],
+    ['2', '1'],
   );
 });
 
