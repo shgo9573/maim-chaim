@@ -104,7 +104,7 @@ function downloadNotesFile(fileName: string, content: string, mimeType: string) 
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function NotesView() {
@@ -227,14 +227,14 @@ function NotesView() {
       type: 'otzaria_web_notes_backup',
       version: 1,
       exportedAt: new Date().toISOString(),
-      notes: visibleNotes.map(({ note }) => note),
+      notes,
     };
     downloadNotesFile(
       'maim-chaim-notes-backup.json',
       JSON.stringify(payload, null, 2),
       'application/json;charset=utf-8',
     );
-    toast(`יוצאו ${visibleNotes.length} הערות`);
+    toast(`גובו ${notes.length} הערות`);
   };
 
   const exportText = () => {
@@ -406,7 +406,7 @@ function NotesView() {
         </label>
 
         <button type="button" onClick={exportJson} disabled={!visibleNotes.length} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-outline-variant px-3 text-xs font-medium text-on-variant transition hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40">
-          <Download size={15} /> גיבוי JSON
+          <Download size={15} /> גיבוי כל ההערות
         </button>
         <button type="button" onClick={exportText} disabled={!visibleNotes.length} className="inline-flex h-9 items-center gap-1.5 rounded-full border border-outline-variant px-3 text-xs font-medium text-on-variant transition hover:bg-surface-3 disabled:cursor-not-allowed disabled:opacity-40">
           <Download size={15} /> ייצוא טקסט
