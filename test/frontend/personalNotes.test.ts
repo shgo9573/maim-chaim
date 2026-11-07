@@ -34,7 +34,7 @@ test('סינון לפי ספר וקטגוריה', () => {
   );
   assert.deepEqual(
     filterAndSortPersonalNotes(notes, resolveBook, { categoryPath: 'תנ״ך' }).map((item) => item.note.id),
-    ['1', '2', '3'],
+    ['2', '1', '3'],
   );
 });
 
