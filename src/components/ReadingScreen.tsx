@@ -9,7 +9,7 @@ import { Btn, EmptyState } from './ui';
 import { t } from '../i18n';
 
 export default function ReadingScreen() {
-  const { tabs, activeTabId, setActiveTab, closeTab, closeAllTabs, setScreen, openSearch, settings } = useApp();
+  const { tabs, recentlyClosedTabs, activeTabId, setActiveTab, closeTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, setScreen, openSearch, settings } = useApp();
   const [confirmCloseAll, setConfirmCloseAll] = useState(false);
   const lang = settings.interfaceLanguage || 'he';
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -67,7 +67,7 @@ export default function ReadingScreen() {
             );
           })}
         </div>
-        <TabSearch tabs={tabs} activeTabId={active?.id ?? null} language={lang} onSelect={setActiveTab} onClose={closeTab} />
+        <TabSearch tabs={tabs} recentlyClosedTabs={recentlyClosedTabs} activeTabId={active?.id ?? null} language={lang} onSelect={setActiveTab} onClose={closeTab} onRestoreClosed={restoreClosedTab} onClearRecentlyClosed={clearRecentlyClosedTabs} />
         {/* Closing every tab only means something once there is more than one. */}
         {tabs.length > 1 && (
           <button

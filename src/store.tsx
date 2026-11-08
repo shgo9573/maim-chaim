@@ -6,6 +6,13 @@ import { applyTheme } from './utils/theme';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from './utils/bookFilter';
 import { masechtaForName } from './utils/talmud';
 import { currentAccount, logout as authLogout, type Account } from './auth';
+import {
+  insertRestoredTab,
+  listRecentlyClosedTabs,
+  rememberRecentlyClosedTab,
+  takeRecentlyClosedTab,
+  type RecentlyClosedTabEntry,
+} from './utils/recentlyClosedTabs';
 
 type BookRef = { id: ID; title: string; categoryPath?: string };
 import {
@@ -38,10 +45,13 @@ interface Ctx {
   resetSettings: () => Promise<void>;
 
   tabs: Tab[];
+  recentlyClosedTabs: Tab[];
   activeTabId: string | null;
   setActiveTab: (id: string) => void;
   closeTab: (id: string) => void;
   closeAllTabs: () => void;
+  restoreClosedTab: (id: string) => void;
+  clearRecentlyClosedTabs: () => void;
   updateTab: (id: string, patch: Partial<BookTab> | Partial<SearchTab> | Partial<TzuratHaDafTab>) => void;
   openTzuratHaDaf: (ref: BookRef, daf?: number, amud?: 'a' | 'b', mode?: 'reuse' | 'new' | 'replace') => boolean;
   openBook: (ref: BookRef, line?: number, highlight?: Highlight) => void;
@@ -162,6 +172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return [...saved.filter((t) => !(t.kind === 'book' && String(t.bookId) === String(linkedTab.bookId))), linkedTab];
   });
   const [activeTabId, setActiveTabId] = useState<string | null>(() => linkedTab?.id ?? load<string | null>('otz_active', null));
+  const [closedTabEntries, setClosedTabEntries] = useState<RecentlyClosedTabEntry[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [history, setHistory] = useState<ReadingHistoryItem[]>([]);
   const recentSearchKey = useRef(`otz_recent_searches:${getUid()}`).current;
@@ -292,6 +303,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHistory((current) => current.filter((item) =>
       !isExcludedBook({ id: item.bookId, title: item.bookTitle, categoryPath: item.category }),
     ));
+    setClosedTabEntries((current) => current.filter(({ tab }) => {
+      if (tab.kind === 'search') return true;
+      const book = library.byId.get(String(tab.bookId));
+      const candidate = book || {
+        id: tab.bookId,
+        title: tab.title,
+        categoryPath: tab.kind === 'book' ? tab.category || '' : '',
+      };
+      return !isExcludedBook(candidate);
+    }));
     const currentTabs = tabsRef.current;
     let excludedActiveTab = false;
     const visibleTabs = currentTabs
@@ -355,16 +376,75 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const closeTab = useCallback((id: string) => {
     const cur = tabsRef.current;
     const idx = cur.findIndex((t) => t.id === id);
+    if (idx < 0) return;
+    const closed = cur[idx];
     const next = cur.filter((t) => t.id !== id);
+    setClosedTabEntries((entries) => rememberRecentlyClosedTab(entries, closed, idx));
     setTabs(next);
     setActiveTabId((a) => (a === id ? next[Math.min(idx, next.length - 1)]?.id ?? null : a));
   }, []);
 
   const closeAllTabs = useCallback(() => {
+    const current = tabsRef.current;
+    if (current.length) {
+      setClosedTabEntries((entries) => {
+        let next = entries;
+        for (let index = current.length - 1; index >= 0; index -= 1) {
+          next = rememberRecentlyClosedTab(next, current[index], index);
+        }
+        return next;
+      });
+    }
     setTabs([]);
     setActiveTabId(null);
     setScreen('library');
   }, [setScreen]);
+
+  const restoreClosedTab = useCallback((id: string) => {
+    const taken = takeRecentlyClosedTab(closedTabEntries, id);
+    if (!taken.entry) return;
+    const { tab, originalIndex } = taken.entry;
+
+    if (tab.kind !== 'search') {
+      const book = libRef.current?.byId.get(String(tab.bookId));
+      const candidate = book || {
+        id: tab.bookId,
+        title: tab.title,
+        categoryPath: tab.kind === 'book' ? tab.category || '' : '',
+      };
+      if (isExcludedBook(candidate)) {
+        setClosedTabEntries(taken.entries);
+        toast(EXCLUDED_BOOK_NOTICE);
+        return;
+      }
+    }
+
+    setClosedTabEntries(taken.entries);
+    const existing = tabsRef.current.find((current) => {
+      if (tab.kind === 'book') {
+        return current.kind === 'book' && String(current.bookId) === String(tab.bookId);
+      }
+      if (tab.kind === 'search') {
+        return current.kind === 'search' && current.query.trim().toLocaleLowerCase() === tab.query.trim().toLocaleLowerCase();
+      }
+      return current.kind === 'tzurat-hadaf' &&
+        String(current.bookId) === String(tab.bookId) &&
+        current.daf === tab.daf && current.amud === tab.amud;
+    });
+
+    if (existing) {
+      setActiveTabId(existing.id);
+      setScreen('reading');
+      return;
+    }
+
+    const restored = { ...tab, id: newTabId() } as Tab;
+    setTabs((current) => insertRestoredTab(current, { tab, originalIndex }, restored));
+    setActiveTabId(restored.id);
+    setScreen('reading');
+  }, [closedTabEntries, setScreen, toast]);
+
+  const clearRecentlyClosedTabs = useCallback(() => setClosedTabEntries([]), []);
 
   const updateTab = useCallback((id: string, patch: Partial<BookTab> | Partial<SearchTab> | Partial<TzuratHaDafTab>) => {
     setTabs((ts) => ts.map((t) => (t.id === id ? ({ ...t, ...patch } as Tab) : t)));
@@ -735,6 +815,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (e.shiftKey && e.code === 'KeyT') {
+        e.preventDefault();
+        const lastClosed = closedTabEntries[closedTabEntries.length - 1];
+        if (lastClosed) restoreClosedTab(lastClosed.tab.id);
+        return;
+      }
       // Command/Ctrl+R must remain the browser's native refresh shortcut, even when the Hebrew keyboard layout makes e.key equal to 'ר'.
       if (e.code === 'KeyR') return;
       const k = e.key.toLowerCase();
@@ -759,7 +845,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setScreen, openSearch]);
+  }, [setScreen, openSearch, closedTabEntries, restoreClosedTab]);
 
   const setVisibleBookmarks = useCallback((items: BookmarkItem[]) => {
     setBookmarks(items.filter((item) =>
@@ -777,7 +863,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
       settings, updateSettings, resetSettings,
-      tabs, activeTabId, setActiveTab, closeTab, closeAllTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInActiveTab, openBookByTitle, openSearch,
+      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, closeTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
       bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory,
       setBookmarks: setVisibleBookmarks, setHistory: setVisibleHistory,
@@ -785,7 +871,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, activeTabId, setActiveTab, closeTab, closeAllTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, closeTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

@@ -2,6 +2,7 @@ import { Library, FileSearch, BookOpen, Search, LayoutGrid, Settings, Info, Lang
 import type { ReactNode } from 'react';
 import { useApp } from '../store';
 import { t } from '../i18n';
+import TabSearch from './TabSearch';
 
 interface Item {
   key: string;
@@ -13,7 +14,7 @@ interface Item {
 }
 
 export default function NavRail() {
-  const { screen, setScreen, tabs, activeTabId, openSearch, setDialog, settings, updateSettings } = useApp();
+  const { screen, setScreen, tabs, activeTabId, setActiveTab, closeTab, recentlyClosedTabs, restoreClosedTab, clearRecentlyClosedTabs, openSearch, setDialog, settings, updateSettings } = useApp();
   const lang = settings.interfaceLanguage || 'he';
   const isBetaDeployment = typeof window !== 'undefined' && (window.location.pathname === '/beta' || window.location.pathname.startsWith('/beta/'));
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -77,6 +78,20 @@ export default function NavRail() {
         >
           BETA
         </span>
+      )}
+      {screen !== 'reading' && recentlyClosedTabs.length > 0 && (
+        <div className="flex w-full justify-center md:pb-2">
+          <TabSearch
+            tabs={tabs}
+            recentlyClosedTabs={recentlyClosedTabs}
+            activeTabId={activeTabId}
+            language={lang}
+            onSelect={setActiveTab}
+            onClose={closeTab}
+            onRestoreClosed={restoreClosedTab}
+            onClearRecentlyClosed={clearRecentlyClosedTabs}
+          />
+        </div>
       )}
       <div className="flex flex-row md:flex-col md:items-center">{top.map(render)}</div>
       <div className="hidden md:block md:flex-1" />
