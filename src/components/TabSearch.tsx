@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Eraser, Search, Undo2, X } from 'lucide-react';
 import type { Language } from '../i18n';
@@ -113,7 +113,7 @@ export default function TabSearch({
     button.current?.focus();
   };
 
-  const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' && totalMatches > 0) {
       event.preventDefault();
       setHighlighted((current) => Math.min(current + 1, totalMatches - 1));
@@ -268,7 +268,7 @@ export default function TabSearch({
         ref={button}
         type="button"
         onClick={toggle}
-        aria-label={english ? 'Search open and recently closed tabs' : 'חיפוש כרטיסיות פתוחות ונסגרות'}
+        aria-label={english ? 'Search open and recently closed tabs' : 'חיפוש כרטיסיות פתוחות וכרטיסיות שנסגרו'}
         aria-expanded={open}
         aria-controls="open-tab-search"
         title={english ? 'Search tabs' : 'חיפוש כרטיסיות'}

@@ -23,7 +23,7 @@ export default function NavRail() {
   const top: Item[] = [
     { key: 'library', label: 'ספרייה', icon: <Library size={24} />, tip: 'CTRL+L', selected: screen === 'library', onClick: () => setScreen('library') },
     { key: 'find', label: 'איתור', icon: <FileSearch size={24} />, tip: 'CTRL+O', selected: screen === 'find', onClick: () => setScreen('find') },
-    { key: 'reading', label: 'עיון', icon: <BookOpen size={24} />, tip: 'CTRL+R', selected: screen === 'reading' && !searchActive, onClick: () => setScreen('reading') },
+    { key: 'reading', label: 'עיון', icon: <BookOpen size={24} />, tip: '', selected: screen === 'reading' && !searchActive, onClick: () => setScreen('reading') },
     { key: 'search', label: 'חיפוש', icon: <Search size={24} />, tip: 'CTRL+Q', selected: searchActive, onClick: () => openSearch() },
     { key: 'more', label: 'כלים', icon: <LayoutGrid size={24} />, tip: 'CTRL+M', selected: screen === 'more', onClick: () => setScreen('more') },
   ];

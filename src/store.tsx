@@ -303,16 +303,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setHistory((current) => current.filter((item) =>
       !isExcludedBook({ id: item.bookId, title: item.bookTitle, categoryPath: item.category }),
     ));
-    setClosedTabEntries((current) => current.filter(({ tab }) => {
-      if (tab.kind === 'search') return true;
-      const book = library.byId.get(String(tab.bookId));
-      const candidate = book || {
-        id: tab.bookId,
-        title: tab.title,
-        categoryPath: tab.kind === 'book' ? tab.category || '' : '',
-      };
-      return !isExcludedBook(candidate);
-    }));
+    setClosedTabEntries((current) => {
+      const visible = current.filter(({ tab }) => {
+        if (tab.kind === 'search') return true;
+        const book = library.byId.get(String(tab.bookId));
+        const candidate = book || {
+          id: tab.bookId,
+          title: tab.title,
+          categoryPath: tab.kind === 'book' ? tab.category || '' : '',
+        };
+        return !isExcludedBook(candidate);
+      });
+      return visible.length === current.length ? current : visible;
+    });
     const currentTabs = tabsRef.current;
     let excludedActiveTab = false;
     const visibleTabs = currentTabs
