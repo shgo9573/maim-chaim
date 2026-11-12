@@ -631,7 +631,7 @@ Commits חדשים ב־main שנבדקו:
 - אזור זמן: `Asia/Jerusalem`.
 - ראש מאגר היעד בתחילת הריצה: `b7cb07f7f5e74d469979b6e5bd484f126d180a67`.
 - ראש מאגר המקור `Otzaria/otzaria:dev`: `8d24d26f6b7eef04ad9eda1f30eb9ea0e53cf546`, מ־12 בנובמבר 2026, 12:24:34 UTC; הודעת commit: `perf(plugins): remove retired runtime and font experiments (#4971)`.
-- ראש `main` לא התקדם מאז ראש הריצה הקודם שתועד (`ec376796b3ae667518d2bc8065e0dce1b4549f5a)) אלא ב־commit אחד: `b7cb07f7f5e74d469979b6e5bd484f126d180a67`, תיעוד `idid.md) בלבד — `docs: expand context menu parity map [skip ci]`. לא נמצא שינוי קוד מוצר ב־main מאז אותו ראש.
+- ראש `main` לא התקדם מאז ראש הריצה הקודם שתועד (`ec376796b3ae667518d2bc8065e0dce1b4549f5a`) אלא ב־commit אחד: `b7cb07f7f5e74d469979b6e5bd484f126d180a67`, תיעוד `idid.md` בלבד — `docs: expand context menu parity map [skip ci]`. לא נמצא שינוי קוד מוצר ב־main מאז אותו ראש.
 
 ### מפת ענפים מלאה — כל עמודי pagination
 נשלפו `/branches?per_page=100&page=1` ועמוד 2; עמוד 2 ריק, ולכן הרשימה מלאה:
