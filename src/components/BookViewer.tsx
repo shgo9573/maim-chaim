@@ -743,7 +743,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     if (!lineNode) return;
     event.preventDefault();
     const selectionSnapshot = selectionSnapshotRef.current;
-    selectionSnapshotRef.current = null;
+    clearReaderTouchTimer();
     openReaderContextMenuAt(event.clientX, event.clientY, lineNode, selectionSnapshot);
   };
 
@@ -763,6 +763,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       touchTimerRef.current = null;
     }
     touchStartRef.current = null;
+    selectionSnapshotRef.current = null;
   };
 
   const handleReaderTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -770,15 +771,31 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const target = event.target instanceof Element ? event.target : null;
     const lineNode = target?.closest<HTMLElement>('[data-line]');
     const line = Number(lineNode?.dataset.line);
-    if (!touch || !lineNode || !Number.isInteger(line) || line < 1) return;
+    if (!touch || event.touches.length !== 1 || !lineNode || !Number.isInteger(line) || line < 1) return;
     clearReaderTouchTimer();
     touchStartRef.current = { x: touch.clientX, y: touch.clientY, line };
+
+    const root = scRef.current;
+    const selection = window.getSelection();
+    if (root && selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const documentWithCaret = document as Document & {
+        caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      };
+      const caret = documentWithCaret.caretRangeFromPoint?.(touch.clientX, touch.clientY) ?? null;
+      if (caret && range.isPointInRange(caret.startContainer, caret.startOffset)) {
+        selectionSnapshotRef.current = getReaderSelectionForContextMenu(root, lineNode, range);
+      }
+    }
+
     touchTimerRef.current = window.setTimeout(() => {
       const point = touchStartRef.current;
+      const selectionSnapshot = selectionSnapshotRef.current;
       touchTimerRef.current = null;
+      selectionSnapshotRef.current = null;
       if (!point) return;
       const node = scRef.current?.querySelector<HTMLElement>('[data-line="' + point.line + '"]');
-      if (node) openReaderContextMenuAt(point.x, point.y, node);
+      if (node) openReaderContextMenuAt(point.x, point.y, node, selectionSnapshot);
     }, 560);
   };
 
