@@ -761,7 +761,16 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const handleReaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
     event.preventDefault();
-    const lineIndex = selected ?? topLine;
+    const selection = window.getSelection();
+    const startElement = selection && !selection.isCollapsed && selection.rangeCount > 0
+      ? (selection.getRangeAt(0).startContainer.nodeType === 1
+        ? selection.getRangeAt(0).startContainer as Element
+        : selection.getRangeAt(0).startContainer.parentElement)
+      : null;
+    const selectionLine = Number(startElement?.closest<HTMLElement>('[data-line]')?.dataset.line);
+    const lineIndex = Number.isInteger(selectionLine) && selectionLine > 0
+      ? selectionLine
+      : selected ?? topLine;
     const lineNode = scRef.current?.querySelector<HTMLElement>('[data-line="' + lineIndex + '"]');
     if (!lineNode) return;
     const rect = lineNode.getBoundingClientRect();
