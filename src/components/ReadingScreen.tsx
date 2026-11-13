@@ -45,12 +45,17 @@ export default function ReadingScreen() {
   const menuReturnFocusRef = useRef<HTMLElement | null>(null);
   const touchTimerRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
   const longPressTriggeredRef = useRef(false);
 
   const clearLongPress = () => {
     if (touchTimerRef.current !== null) {
       window.clearTimeout(touchTimerRef.current);
       touchTimerRef.current = null;
+    }
+    if (touchMoveHandlerRef.current) {
+      window.removeEventListener('pointermove', touchMoveHandlerRef.current);
+      touchMoveHandlerRef.current = null;
     }
     touchStartRef.current = null;
   };
@@ -248,18 +253,25 @@ export default function ReadingScreen() {
                   const titleButton = event.currentTarget.querySelector('button:not([data-tab-control])') as HTMLButtonElement | null;
                   const x = event.clientX;
                   const y = event.clientY;
+                  const pointerId = event.pointerId;
+                  const moveHandler = (moveEvent: PointerEvent) => {
+                    if (moveEvent.pointerId !== pointerId) return;
+                    if (Math.hypot(moveEvent.clientX - x, moveEvent.clientY - y) > 10) clearLongPress();
+                  };
+                  touchMoveHandlerRef.current = moveHandler;
+                  window.addEventListener('pointermove', moveHandler, { passive: true });
                   touchTimerRef.current = window.setTimeout(() => {
-                    touchTimerRef.current = null;
-                    touchStartRef.current = null;
+                    clearLongPress();
                     longPressTriggeredRef.current = true;
                     openTabContextMenu(t.id, x, y, titleButton);
                   }, 550);
                 }}
-                onPointerMove={(event) => {
-                  const start = touchStartRef.current;
-                  if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) clearLongPress();
+                onPointerUp={() => {
+                  clearLongPress();
+                  if (longPressTriggeredRef.current) {
+                    window.setTimeout(() => { longPressTriggeredRef.current = false; }, 0);
+                  }
                 }}
-                onPointerUp={clearLongPress}
                 onPointerCancel={clearLongPress}
                 className={`group flex h-9 min-w-[120px] max-w-[220px] shrink-0 items-center gap-1 rounded-t-xl pr-3 pl-1 text-sm transition-colors ${
                   isActive ? 'bg-surface text-on-surface shadow-[0_-1px_0_var(--c-outline-variant)]' : 'text-on-variant hover:bg-surface-3'
@@ -278,7 +290,7 @@ export default function ReadingScreen() {
                     if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
                     event.preventDefault();
                     const rect = event.currentTarget.getBoundingClientRect();
-                    openTabContextMenu(t.id, lang === 'en' ? rect.right : rect.left, rect.bottom, event.currentTarget);
+                    openTabContextMenu(t.id, lang === 'en' ? rect.left : Math.max(8, rect.right - 240), rect.bottom, event.currentTarget);
                   }}
                   className="flex min-w-0 flex-1 items-center gap-2 text-start"
                   title={t.kind === 'search' ? t.query : t.title}
@@ -301,7 +313,7 @@ export default function ReadingScreen() {
                   onClick={(event) => {
                     event.stopPropagation();
                     const rect = event.currentTarget.getBoundingClientRect();
-                    openTabContextMenu(t.id, lang === 'en' ? rect.right : rect.left, rect.bottom, event.currentTarget);
+                    openTabContextMenu(t.id, lang === 'en' ? rect.left : Math.max(8, rect.right - 240), rect.bottom, event.currentTarget);
                   }}
                   className="rounded-full p-1 text-on-variant opacity-70 hover:bg-surface-3 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label={lang === 'en' ? 'Tab options' : 'אפשרויות לשונית'}
