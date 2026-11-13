@@ -275,7 +275,10 @@ export default function ReadingScreen() {
                     window.setTimeout(() => { longPressTriggeredRef.current = false; }, 0);
                   }
                 }}
-                onPointerCancel={clearLongPress}
+                onPointerCancel={() => {
+                  clearLongPress();
+                  longPressTriggeredRef.current = false;
+                }}
                 className={`group flex h-9 min-w-[120px] max-w-[220px] shrink-0 items-center gap-1 rounded-t-xl pr-3 pl-1 text-sm transition-colors ${
                   isActive ? 'bg-surface text-on-surface shadow-[0_-1px_0_var(--c-outline-variant)]' : 'text-on-variant hover:bg-surface-3'
                 }`}
