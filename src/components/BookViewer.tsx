@@ -89,11 +89,14 @@ interface ReaderNoteDraft {
   selectedText: string;
 }
 
-function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLElement) {
+function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLElement, rangeOverride?: Range) {
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
-
-  const range = selection.getRangeAt(0);
+  const range = rangeOverride ?? (
+    selection && !selection.isCollapsed && selection.rangeCount > 0
+      ? selection.getRangeAt(0)
+      : null
+  );
+  if (!range) return null;
   if (!root.contains(range.commonAncestorContainer)) return null;
   try {
     if (!range.intersectsNode(lineNode)) return null;
@@ -101,7 +104,7 @@ function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLEleme
     return null;
   }
 
-  const text = selection.toString().trim();
+  const text = range.toString().trim();
   const startElement = range.startContainer.nodeType === 1
     ? (range.startContainer as Element)
     : range.startContainer.parentElement;
@@ -157,6 +160,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const firstContextMenuItemRef = useRef<HTMLButtonElement>(null);
   const touchTimerRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; line: number } | null>(null);
+  const selectionSnapshotRef = useRef<ReturnType<typeof getReaderSelectionForContextMenu> | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const topSentinel = useRef<HTMLDivElement>(null);
   const botSentinel = useRef<HTMLDivElement>(null);
@@ -676,12 +680,17 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
 
   const addMark = () => addMarkAt(selected ?? topLine);
 
-  const openReaderContextMenuAt = (x: number, y: number, lineNode: HTMLElement) => {
+  const openReaderContextMenuAt = (
+    x: number,
+    y: number,
+    lineNode: HTMLElement,
+    selectionOverride?: ReturnType<typeof getReaderSelectionForContextMenu> | null,
+  ) => {
     const clickedLine = Number(lineNode.dataset.line);
     if (!Number.isInteger(clickedLine) || clickedLine < 1) return;
-    const selection = scRef.current
-      ? getReaderSelectionForContextMenu(scRef.current, lineNode)
-      : null;
+    const selection = selectionOverride === undefined
+      ? (scRef.current ? getReaderSelectionForContextMenu(scRef.current, lineNode) : null)
+      : selectionOverride;
     setSelMenu(null);
     setContextMenu({
       x,
@@ -694,12 +703,48 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     });
   };
 
+  const handleReaderMouseDownCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 2) {
+      selectionSnapshotRef.current = null;
+      return;
+    }
+    const target = event.target instanceof Element ? event.target : null;
+    const lineNode = target?.closest<HTMLElement>('[data-line]');
+    const root = scRef.current;
+    const selection = window.getSelection();
+    if (!lineNode || !root || !selection || selection.isCollapsed || selection.rangeCount === 0) {
+      selectionSnapshotRef.current = null;
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const documentWithCaret = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    };
+    const caret = documentWithCaret.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
+    let pointerIsInsideSelection = false;
+    if (caret) {
+      pointerIsInsideSelection = range.isPointInRange(caret.startContainer, caret.startOffset);
+    } else {
+      try {
+        pointerIsInsideSelection = range.intersectsNode(lineNode);
+      } catch {
+        pointerIsInsideSelection = false;
+      }
+    }
+    selectionSnapshotRef.current = pointerIsInsideSelection
+      ? getReaderSelectionForContextMenu(root, lineNode, range)
+      : null;
+  };
+
   const handleReaderContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target instanceof Element ? event.target : null;
     const lineNode = target?.closest<HTMLElement>('[data-line]');
     if (!lineNode) return;
     event.preventDefault();
-    openReaderContextMenuAt(event.clientX, event.clientY, lineNode);
+    const selectionSnapshot = selectionSnapshotRef.current;
+    selectionSnapshotRef.current = null;
+    openReaderContextMenuAt(event.clientX, event.clientY, lineNode, selectionSnapshot);
   };
 
   const handleReaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -999,6 +1044,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             aria-label="תוכן הספר"
             onScroll={() => { onScroll(); setContextMenu(null); }}
             onCopy={onCopy}
+            onMouseDownCapture={handleReaderMouseDownCapture}
             onContextMenu={handleReaderContextMenu}
             onKeyDown={handleReaderKeyDown}
             onTouchStart={handleReaderTouchStart}
