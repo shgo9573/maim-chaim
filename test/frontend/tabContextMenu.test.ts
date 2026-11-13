@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Tab } from '../../src/types';
+import { listRecentlyClosedTabs, rememberRecentlyClosedTab } from '../../src/utils/recentlyClosedTabs';
 import {
   duplicateTabWithId,
   getTabContextMenuActions,
@@ -41,6 +42,21 @@ test('close plan records the requested tabs and selects the next visible tab', (
   ]);
   assert.deepEqual(plan.remaining.map((tab) => tab.id), ['daf-1']);
   assert.equal(plan.nextActiveTabId, 'daf-1');
+});
+
+test('batch close keeps recently closed tabs in their original visible order', () => {
+  const plan = planTabClose(tabs, 'search-1', ['book-1', 'search-1']);
+  let entries = [];
+  for (const entry of [...plan.closing].reverse()) {
+    entries = rememberRecentlyClosedTab(entries, entry.tab, entry.originalIndex);
+  }
+  assert.deepEqual(listRecentlyClosedTabs(entries).map((tab) => tab.id), ['book-1', 'search-1']);
+});
+
+test('closing every tab leaves no active tab', () => {
+  const plan = planTabClose(tabs, 'daf-1', tabs.map((tab) => tab.id));
+  assert.deepEqual(plan.remaining, []);
+  assert.equal(plan.nextActiveTabId, null);
 });
 
 test('close plan preserves the active tab when it is not being closed', () => {
