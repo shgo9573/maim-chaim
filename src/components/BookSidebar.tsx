@@ -56,6 +56,7 @@ export default function BookSidebar({
   onGo,
   opts,
   searchSeed,
+  searchQuery = '',
   toc,
   tocError,
 }: {
@@ -67,6 +68,7 @@ export default function BookSidebar({
   onGo: (line: number, highlightText?: string) => void;
   opts: TextOpts;
   searchSeed: number;
+  searchQuery?: string;
   toc: TocEntry[] | null;
   tocError: string;
 }) {
@@ -87,9 +89,15 @@ export default function BookSidebar({
   useEffect(() => {
     if (searchSeed > 0) {
       setTab('search');
-      setTimeout(() => document.getElementById('book-search-input')?.focus(), 50);
+      setQ(searchQuery);
+      setResults(null);
+      setSearchError('');
+      setLastQuery('');
+      setCursor(-1);
+      const timer = window.setTimeout(() => document.getElementById('book-search-input')?.focus(), 50);
+      return () => window.clearTimeout(timer);
     }
-  }, [searchSeed, setTab]);
+  }, [searchSeed, searchQuery, setTab]);
 
   const tree = useMemo(() => buildToc(toc || []), [toc]);
   const filtered = useMemo(() => {

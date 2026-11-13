@@ -9,6 +9,7 @@ import CommentaryPanel, { fontStack } from './CommentaryPanel';
 import { EmptyState, IconBtn, Spinner } from './ui';
 import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
+import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -72,8 +73,58 @@ interface SelMenu {
   top: number;
 }
 
+interface ReaderContextMenu {
+  x: number;
+  y: number;
+  line: number;
+  text: string;
+  from: number;
+  to: number;
+}
+
+interface ReaderNoteDraft {
+  line: number;
+  heRef: string;
+  selectedText: string;
+}
+
+function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLElement) {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.commonAncestorContainer)) return null;
+  try {
+    if (!range.intersectsNode(lineNode)) return null;
+  } catch {
+    return null;
+  }
+
+  const text = selection.toString().trim();
+  const startElement = range.startContainer.nodeType === 1
+    ? (range.startContainer as Element)
+    : range.startContainer.parentElement;
+  const startLine = startElement?.closest<HTMLElement>('[data-line]');
+  if (!text || !startLine) return null;
+
+  const before = document.createRange();
+  before.selectNodeContents(startLine);
+  before.setEnd(range.startContainer, range.startOffset);
+  const prefix = before.toString();
+  const trimmedPrefix = prefix.trim();
+  let from = trimmedPrefix ? trimmedPrefix.split(/\s+/).length : 0;
+  if (trimmedPrefix && !/\s$/.test(prefix)) from -= 1;
+  const selectedWords = text.split(/\s+/).filter(Boolean).length;
+  return {
+    text,
+    line: Number(startLine.dataset.line) || Number(lineNode.dataset.line),
+    from,
+    to: from + Math.max(1, selectedWords) - 1,
+  };
+}
+
 export default function BookViewer({ tab }: { tab: BookTab }) {
-  const { settings, updateSettings, updateTab, addBookmark, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
+  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
   const [lines, setLines] = useState<ContentLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -81,6 +132,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [ready, setReady] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [selMenu, setSelMenu] = useState<SelMenu | null>(null);
+  const [contextMenu, setContextMenu] = useState<ReaderContextMenu | null>(null);
+  const [noteDraft, setNoteDraft] = useState<ReaderNoteDraft | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [topLine, setTopLine] = useState(tab.line);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
   const [sidebarTab, setSidebarTab] = useState<'toc' | 'search'>('toc');
@@ -97,9 +152,32 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [endReached, setEndReached] = useState(false);
 
   const scRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const firstContextMenuItemRef = useRef<HTMLButtonElement>(null);
+  const touchTimerRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; line: number } | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const topSentinel = useRef<HTMLDivElement>(null);
   const botSentinel = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    const position = placeReaderContextMenu(
+      { x: contextMenu.x, y: contextMenu.y },
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    if (Math.abs(position.left - contextMenu.x) > 0.5 || Math.abs(position.top - contextMenu.y) > 0.5) {
+      setContextMenu((current) => current ? { ...current, x: position.left, y: position.top } : current);
+    }
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const frame = window.requestAnimationFrame(() => firstContextMenuItemRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [contextMenu]);
   const pending = useRef<null | { type: 'jump'; line: number } | { type: 'prepend'; h: number; t: number }>(null);
   const busyDown = useRef(false);
   const busyUp = useRef(false);
@@ -436,6 +514,22 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     [tab.id, updateTab],
   );
 
+  const openBookSearch = (query = '') => {
+    setBookSearchQuery(query);
+    setSidebarOpen(true);
+    setSidebarTab('search');
+    setSearchSeed((seed) => seed + 1);
+  };
+
+  const openCommentaryForLine = (line: number) => {
+    setSelected(line);
+    setCommentLine(line);
+    if (!commentOpen) {
+      setCommentOpen(true);
+      saveLayoutPreference({ commentaryOpen: true });
+    }
+  };
+
   const openLocalTzuratHaDaf = () => {
     if (!dafMasechta) return;
     // Resolve the daf/amud closest to the reader's current position.
@@ -511,16 +605,17 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       await navigator.clipboard.writeText(text);
       toast(msg);
       setSelMenu(null);
+      setContextMenu(null);
     } catch {
+      setContextMenu(null);
       toast('לא ניתן להעתיק ללוח');
     }
   };
 
-  const copySelectionAsLink = async () => {
-    if (!selMenu) return;
-    const href = buildDeepLink({ book: String(tab.bookId), title, line: selMenu.line, from: selMenu.from, to: selMenu.to });
-    const html = `<a href="${escapeHtml(href)}" style="color:#1769e0;text-decoration:underline">${escapeHtml(selMenu.text)}</a>`;
-    const plain = `${selMenu.text}\n${href}`;
+  const copyTextAsLink = async (selection: Pick<SelMenu, 'text' | 'line' | 'from' | 'to'>) => {
+    const href = buildDeepLink({ book: String(tab.bookId), title, line: selection.line, from: selection.from, to: selection.to });
+    const html = `<a href="${escapeHtml(href)}" style="color:#1769e0;text-decoration:underline">${escapeHtml(selection.text)}</a>`;
+    const plain = `${selection.text}\\n${href}`;
     try {
       if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
         await navigator.clipboard.write([
@@ -534,24 +629,153 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       }
       toast('הטקסט הועתק כקישור');
       setSelMenu(null);
+      setContextMenu(null);
     } catch {
       try {
         await navigator.clipboard.writeText(plain);
         toast('הטקסט הועתק כקישור');
         setSelMenu(null);
+        setContextMenu(null);
       } catch {
+        setContextMenu(null);
         toast('לא ניתן להעתיק ללוח');
       }
     }
   };
 
+  const copySelectionAsLink = async () => {
+    if (!selMenu) return;
+    await copyTextAsLink(selMenu);
+  };
+
   const curLine = lines.find((l) => l.lineIndex === topLine);
   const refLabel = curLine?.heRef || '';
 
-  const addMark = () => {
-    const idx = selected ?? topLine;
-    const l = lines.find((x) => x.lineIndex === idx);
-    addBookmark({ bookId: tab.bookId, bookTitle: title, lineIndex: idx, textSnippet: stripTags(l?.content || '').slice(0, 120), heRef: l?.heRef || '', category });
+  const addMarkAt = (lineIndex: number) => {
+    const line = lines.find((item) => item.lineIndex === lineIndex);
+    void addBookmark({
+      bookId: tab.bookId,
+      bookTitle: title,
+      lineIndex,
+      textSnippet: stripTags(line?.content || '').slice(0, 120),
+      heRef: line?.heRef || '',
+      category,
+    });
+  };
+
+  const addMark = () => addMarkAt(selected ?? topLine);
+
+  const openReaderContextMenuAt = (x: number, y: number, lineNode: HTMLElement) => {
+    const clickedLine = Number(lineNode.dataset.line);
+    if (!Number.isInteger(clickedLine) || clickedLine < 1) return;
+    const selection = scRef.current
+      ? getReaderSelectionForContextMenu(scRef.current, lineNode)
+      : null;
+    setSelMenu(null);
+    setContextMenu({
+      x,
+      y,
+      line: selection?.line ?? clickedLine,
+      text: selection?.text ?? '',
+      from: selection?.from ?? 0,
+      to: selection?.to ?? 0,
+    });
+  };
+
+  const handleReaderContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const lineNode = target?.closest<HTMLElement>('[data-line]');
+    if (!lineNode) return;
+    event.preventDefault();
+    openReaderContextMenuAt(event.clientX, event.clientY, lineNode);
+  };
+
+  const handleReaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
+    event.preventDefault();
+    const lineIndex = selected ?? topLine;
+    const lineNode = scRef.current?.querySelector<HTMLElement>('[data-line="' + lineIndex + '"]');
+    if (!lineNode) return;
+    const rect = lineNode.getBoundingClientRect();
+    openReaderContextMenuAt(rect.left + Math.min(rect.width / 2, 180), rect.bottom, lineNode);
+  };
+
+  const clearReaderTouchTimer = () => {
+    if (touchTimerRef.current !== null) {
+      window.clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+    touchStartRef.current = null;
+  };
+
+  const handleReaderTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    const target = event.target instanceof Element ? event.target : null;
+    const lineNode = target?.closest<HTMLElement>('[data-line]');
+    const line = Number(lineNode?.dataset.line);
+    if (!touch || !lineNode || !Number.isInteger(line) || line < 1) return;
+    clearReaderTouchTimer();
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, line };
+    touchTimerRef.current = window.setTimeout(() => {
+      const point = touchStartRef.current;
+      touchTimerRef.current = null;
+      if (!point) return;
+      const node = scRef.current?.querySelector<HTMLElement>('[data-line="' + point.line + '"]');
+      if (node) openReaderContextMenuAt(point.x, point.y, node);
+    }, 560);
+  };
+
+  const handleReaderTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const point = touchStartRef.current;
+    const touch = event.touches[0];
+    if (!point || !touch) return;
+    if (Math.hypot(touch.clientX - point.x, touch.clientY - point.y) > 12) {
+      clearReaderTouchTimer();
+    }
+  };
+
+  const closeReaderContextMenu = () => {
+    setContextMenu(null);
+    window.requestAnimationFrame(() => scRef.current?.focus({ preventScroll: true }));
+  };
+
+  const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeReaderContextMenu();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || []);
+    if (!items.length) return;
+    event.preventDefault();
+    const activeIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : event.key === 'ArrowDown'
+          ? (activeIndex + 1 + items.length) % items.length
+          : (activeIndex <= 0 ? items.length - 1 : activeIndex - 1);
+    items[nextIndex].focus();
+  };
+
+  const saveContextNote = () => {
+    if (!noteDraft) return;
+    const text = noteText.trim();
+    if (!text) {
+      toast('יש להזין תוכן להערה');
+      return;
+    }
+    saveNote({
+      bookId: tab.bookId,
+      line: noteDraft.line - 1,
+      heRef: noteDraft.heRef,
+      text,
+    });
+    setNoteDraft(null);
+    setNoteText('');
+    toast('ההערה נשמרה');
   };
 
   const onCopy = (e: React.ClipboardEvent) => {
@@ -681,14 +905,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             <X size={12} /> הדגשה
           </button>
         )}
-        <IconBtn
-          title="חיפוש בספר"
-          onClick={() => {
-            setSidebarOpen(true);
-            setSidebarTab('search');
-            setSearchSeed((s) => s + 1);
-          }}
-        >
+        <IconBtn title="חיפוש בספר" onClick={() => openBookSearch('')}>
           <TextSearch size={20} />
         </IconBtn>
         <IconBtn title="הוסף סימניה" onClick={addMark}>
@@ -742,6 +959,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 onGo={goTo}
                 opts={opts}
                 searchSeed={searchSeed}
+                searchQuery={bookSearchQuery}
                 toc={toc}
                 tocError={tocError}
               />}
@@ -763,7 +981,20 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         )}
 
         <div className="relative min-w-0 flex-1" style={{ order: 1 }}>
-          <div ref={scRef} onScroll={onScroll} onCopy={onCopy} className="relative h-full overflow-y-auto px-4 py-4 md:px-10">
+          <div
+            ref={scRef}
+            tabIndex={0}
+            aria-label="תוכן הספר"
+            onScroll={() => { onScroll(); setContextMenu(null); }}
+            onCopy={onCopy}
+            onContextMenu={handleReaderContextMenu}
+            onKeyDown={handleReaderKeyDown}
+            onTouchStart={handleReaderTouchStart}
+            onTouchMove={handleReaderTouchMove}
+            onTouchEnd={clearReaderTouchTimer}
+            onTouchCancel={clearReaderTouchTimer}
+            className="relative h-full overflow-y-auto px-4 py-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 md:px-10"
+          >
             {loading && lines.length === 0 && <Spinner label="טוען את הספר..." />}
             {error && (
               <EmptyState icon={<Search size={48} />} title="שגיאה בטעינת הספר" hint={error}>
@@ -821,7 +1052,206 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         </div>
       </div>
 
-      {selMenu && (
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-[110]"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeReaderContextMenu();
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div
+            ref={contextMenuRef}
+            role="menu"
+            aria-label="פעולות על טקסט בספר"
+            dir="rtl"
+            className="fixed z-[111] flex w-[min(300px,calc(100vw-16px))] max-h-[calc(100vh-16px)] flex-col overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-2xl"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onMouseDown={(event) => event.preventDefault()}
+            onKeyDown={handleContextMenuKeyDown}
+          >
+            <button
+              ref={firstContextMenuItemRef}
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none motion-reduce:transition-none"
+              onClick={() => {
+                const line = lines.find((item) => item.lineIndex === contextMenu.line);
+                void copy(stripTags(line?.content || '').trim(), 'הפסקה הועתקה');
+              }}
+            >
+              <Copy size={15} /> העתק את כל הפסקה
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!contextMenu.text}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => void copy(contextMenu.text, 'הטקסט הועתק')}
+            >
+              <Copy size={15} /> העתק טקסט נבחר
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onClick={() => void copy(buildDeepLink({ book: String(tab.bookId), title, line: contextMenu.line }), 'הקישור לשורה הועתק')}
+            >
+              <Link2 size={15} /> העתק קישור לשורה
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!contextMenu.text}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => void copyTextAsLink(contextMenu)}
+            >
+              <Link2 size={15} /> העתק טקסט כקישור
+            </button>
+
+            <div role="separator" className="my-1 border-t border-outline-variant" />
+
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onClick={() => {
+                setContextMenu(null);
+                openSearch(contextMenu.text || undefined);
+              }}
+            >
+              <Search size={15} /> חיפוש בכל הספרים
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onClick={() => {
+                setContextMenu(null);
+                openBookSearch(contextMenu.text);
+              }}
+            >
+              <TextSearch size={15} /> חיפוש בספר
+            </button>
+
+            <div role="separator" className="my-1 border-t border-outline-variant" />
+
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onClick={() => {
+                setContextMenu(null);
+                addMarkAt(contextMenu.line);
+              }}
+            >
+              <Bookmark size={15} /> הוסף סימניה לקטע זה
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onClick={() => {
+                const line = lines.find((item) => item.lineIndex === contextMenu.line);
+                setNoteDraft({
+                  line: contextMenu.line,
+                  heRef: line?.heRef || '',
+                  selectedText: contextMenu.text,
+                });
+                setNoteText('');
+                setContextMenu(null);
+              }}
+            >
+              <MessageSquareText size={15} /> הוסף הערה אישית
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onClick={() => {
+                setContextMenu(null);
+                openCommentaryForLine(contextMenu.line);
+              }}
+            >
+              <MessageSquareText size={15} /> הצג מפרשים לשורה
+            </button>
+          </div>
+        </div>
+      )}
+
+      {noteDraft && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setNoteDraft(null);
+              setNoteText('');
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setNoteDraft(null);
+              setNoteText('');
+            }
+          }}
+        >
+          <section
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reader-note-title"
+            className="w-full max-w-lg rounded-2xl border border-outline-variant bg-surface p-4 shadow-2xl"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="reader-note-title" className="text-base font-semibold">הערה אישית</h2>
+                <p className="mt-1 text-xs text-on-variant">{title} · {noteDraft.heRef || 'שורה ' + noteDraft.line}</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-full p-1.5 text-on-variant hover:bg-surface-3"
+                aria-label="סגור"
+                onClick={() => { setNoteDraft(null); setNoteText(''); }}
+              >
+                <X size={17} />
+              </button>
+            </div>
+            {noteDraft.selectedText && (
+              <blockquote className="mb-3 max-h-24 overflow-y-auto rounded-lg bg-surface-1 px-3 py-2 text-sm text-on-variant">
+                {noteDraft.selectedText}
+              </blockquote>
+            )}
+            <textarea
+              autoFocus
+              value={noteText}
+              onChange={(event) => setNoteText(event.target.value)}
+              rows={6}
+              placeholder="כתוב כאן את ההערה או החידוש..."
+              className="w-full resize-y rounded-xl border border-outline-variant bg-surface-1 p-3 text-sm leading-relaxed text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-full px-4 py-2 text-sm text-on-variant hover:bg-surface-3"
+                onClick={() => { setNoteDraft(null); setNoteText(''); }}
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                disabled={!noteText.trim()}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={saveContextNote}
+              >
+                שמור הערה
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {selMenu && !contextMenu && !noteDraft && (
         <div
           className="fixed z-[80] flex -translate-x-1/2 items-center gap-0.5 rounded-2xl border border-outline-variant bg-surface-2 p-1 text-[13px] text-on-surface shadow-xl"
           style={{ left: selMenu.left, top: selMenu.top }}
