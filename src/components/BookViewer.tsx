@@ -89,6 +89,22 @@ interface ReaderNoteDraft {
   selectedText: string;
 }
 
+function isPointInsideReaderSelection(range: Range, lineNode: HTMLElement, x: number, y: number) {
+  const documentWithCaret = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  const caretRange = documentWithCaret.caretRangeFromPoint?.(x, y) ?? null;
+  if (caretRange) return range.isPointInRange(caretRange.startContainer, caretRange.startOffset);
+  const caretPosition = documentWithCaret.caretPositionFromPoint?.(x, y) ?? null;
+  if (caretPosition) return range.isPointInRange(caretPosition.offsetNode, caretPosition.offset);
+  try {
+    return range.intersectsNode(lineNode);
+  } catch {
+    return false;
+  }
+}
+
 function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLElement, rangeOverride?: Range) {
   const selection = window.getSelection();
   const range = rangeOverride ?? (
@@ -718,20 +734,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     }
 
     const range = selection.getRangeAt(0);
-    const documentWithCaret = document as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    };
-    const caret = documentWithCaret.caretRangeFromPoint?.(event.clientX, event.clientY) ?? null;
-    let pointerIsInsideSelection = false;
-    if (caret) {
-      pointerIsInsideSelection = range.isPointInRange(caret.startContainer, caret.startOffset);
-    } else {
-      try {
-        pointerIsInsideSelection = range.intersectsNode(lineNode);
-      } catch {
-        pointerIsInsideSelection = false;
-      }
-    }
+    const pointerIsInsideSelection = isPointInsideReaderSelection(
+      range,
+      lineNode,
+      event.clientX,
+      event.clientY,
+    );
     selectionSnapshotRef.current = pointerIsInsideSelection
       ? getReaderSelectionForContextMenu(root, lineNode, range)
       : null;
@@ -779,11 +787,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const selection = window.getSelection();
     if (root && selection && !selection.isCollapsed && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
-      const documentWithCaret = document as Document & {
-        caretRangeFromPoint?: (x: number, y: number) => Range | null;
-      };
-      const caret = documentWithCaret.caretRangeFromPoint?.(touch.clientX, touch.clientY) ?? null;
-      if (caret && range.isPointInRange(caret.startContainer, caret.startOffset)) {
+      if (isPointInsideReaderSelection(range, lineNode, touch.clientX, touch.clientY)) {
         selectionSnapshotRef.current = getReaderSelectionForContextMenu(root, lineNode, range);
       }
     }
