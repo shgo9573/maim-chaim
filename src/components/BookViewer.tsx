@@ -156,6 +156,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [noteDraft, setNoteDraft] = useState<ReaderNoteDraft | null>(null);
   const [noteText, setNoteText] = useState('');
   const [bookSearchQuery, setBookSearchQuery] = useState('');
+  const [bookSearchAutoRun, setBookSearchAutoRun] = useState(false);
   const [topLine, setTopLine] = useState(tab.line);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
   const [sidebarTab, setSidebarTab] = useState<'toc' | 'search'>('toc');
@@ -204,6 +205,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     setContextMenu(null);
     setNoteDraft(null);
     setNoteText('');
+    setBookSearchAutoRun(false);
   }, [tab.bookId]);
 
   useEffect(() => () => {
@@ -545,8 +547,9 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     [tab.id, updateTab],
   );
 
-  const openBookSearch = (query = '') => {
+  const openBookSearch = (query = '', autoRun = false) => {
     setBookSearchQuery(query);
+    setBookSearchAutoRun(autoRun);
     setSidebarOpen(true);
     setSidebarTab('search');
     setSearchSeed((seed) => seed + 1);
@@ -1038,6 +1041,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 opts={opts}
                 searchSeed={searchSeed}
                 searchQuery={bookSearchQuery}
+                searchAutoRun={bookSearchAutoRun}
                 toc={toc}
                 tocError={tocError}
               />}
@@ -1212,7 +1216,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
               onClick={() => {
                 setContextMenu(null);
-                openBookSearch(contextMenu.text);
+                openBookSearch(contextMenu.text, Boolean(contextMenu.text.trim()));
               }}
             >
               <TextSearch size={15} /> חיפוש בספר
