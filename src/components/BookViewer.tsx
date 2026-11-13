@@ -77,6 +77,7 @@ interface ReaderContextMenu {
   x: number;
   y: number;
   line: number;
+  selectionLine: number;
   text: string;
   from: number;
   to: number;
@@ -178,6 +179,17 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const frame = window.requestAnimationFrame(() => firstContextMenuItemRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
   }, [contextMenu]);
+
+  useEffect(() => {
+    setContextMenu(null);
+    setNoteDraft(null);
+    setNoteText('');
+    setBookSearchQuery('');
+  }, [tab.bookId]);
+
+  useEffect(() => () => {
+    if (touchTimerRef.current !== null) window.clearTimeout(touchTimerRef.current);
+  }, []);
   const pending = useRef<null | { type: 'jump'; line: number } | { type: 'prepend'; h: number; t: number }>(null);
   const busyDown = useRef(false);
   const busyUp = useRef(false);
@@ -615,7 +627,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const copyTextAsLink = async (selection: Pick<SelMenu, 'text' | 'line' | 'from' | 'to'>) => {
     const href = buildDeepLink({ book: String(tab.bookId), title, line: selection.line, from: selection.from, to: selection.to });
     const html = `<a href="${escapeHtml(href)}" style="color:#1769e0;text-decoration:underline">${escapeHtml(selection.text)}</a>`;
-    const plain = `${selection.text}\\n${href}`;
+    const plain = `${selection.text}\n${href}`;
     try {
       if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
         await navigator.clipboard.write([
@@ -675,7 +687,8 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     setContextMenu({
       x,
       y,
-      line: selection?.line ?? clickedLine,
+      line: clickedLine,
+      selectionLine: selection?.line ?? clickedLine,
       text: selection?.text ?? '',
       from: selection?.from ?? 0,
       to: selection?.to ?? 0,
@@ -1104,7 +1117,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
               role="menuitem"
               disabled={!contextMenu.text}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={() => void copyTextAsLink(contextMenu)}
+              onClick={() => void copyTextAsLink({
+                text: contextMenu.text,
+                line: contextMenu.selectionLine,
+                from: contextMenu.from,
+                to: contextMenu.to,
+              })}
             >
               <Link2 size={15} /> העתק טקסט כקישור
             </button>
