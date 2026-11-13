@@ -200,6 +200,9 @@ export default function ReadingScreen() {
 
   useEffect(() => () => {
     if (touchTimerRef.current !== null) window.clearTimeout(touchTimerRef.current);
+    if (touchMoveHandlerRef.current) {
+      window.removeEventListener('pointermove', touchMoveHandlerRef.current);
+    }
   }, []);
 
   // keep the active tab visible when there are many tabs
