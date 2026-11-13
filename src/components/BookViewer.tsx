@@ -184,7 +184,6 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     setContextMenu(null);
     setNoteDraft(null);
     setNoteText('');
-    setBookSearchQuery('');
   }, [tab.bookId]);
 
   useEffect(() => () => {
