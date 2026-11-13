@@ -46,7 +46,7 @@ test('close plan records the requested tabs and selects the next visible tab', (
 
 test('batch close keeps recently closed tabs in their original visible order', () => {
   const plan = planTabClose(tabs, 'search-1', ['book-1', 'search-1']);
-  let entries = [];
+  let entries: ReturnType<typeof rememberRecentlyClosedTab> = [];
   for (const entry of [...plan.closing].reverse()) {
     entries = rememberRecentlyClosedTab(entries, entry.tab, entry.originalIndex);
   }
