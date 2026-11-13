@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronUp, Search, X } from 'lucide-react';
 import { api } from '../api';
 import type { ID, SearchResultItem, TocEntry } from '../types';
@@ -57,6 +57,7 @@ export default function BookSidebar({
   opts,
   searchSeed,
   searchQuery = '',
+  searchAutoRun = false,
   toc,
   tocError,
 }: {
@@ -69,6 +70,7 @@ export default function BookSidebar({
   opts: TextOpts;
   searchSeed: number;
   searchQuery?: string;
+  searchAutoRun?: boolean;
   toc: TocEntry[] | null;
   tocError: string;
 }) {
@@ -79,6 +81,7 @@ export default function BookSidebar({
   const [searchError, setSearchError] = useState('');
   const [lastQuery, setLastQuery] = useState('');
   const [cursor, setCursor] = useState(-1);
+  const autoSearchSeedRef = useRef<number | null>(null);
 
   useEffect(() => {
     setResults(null);
@@ -113,8 +116,8 @@ export default function BookSidebar({
     return best;
   }, [toc, currentLine]);
 
-  const doSearch = async () => {
-    const query = q.trim();
+  const doSearch = useCallback(async (queryInput: string) => {
+    const query = queryInput.trim();
     if (!query) return;
     setSearching(true);
     setSearchError('');
@@ -131,7 +134,14 @@ export default function BookSidebar({
     } finally {
       setSearching(false);
     }
-  };
+  }, [bookId, bookTitle]);
+
+  useEffect(() => {
+    if (!searchAutoRun || searchSeed <= 0 || !searchQuery.trim() || autoSearchSeedRef.current === searchSeed) return;
+    autoSearchSeedRef.current = searchSeed;
+    const timer = window.setTimeout(() => { void doSearch(searchQuery); }, 60);
+    return () => window.clearTimeout(timer);
+  }, [searchSeed, searchAutoRun, searchQuery, doSearch]);
 
   const goResult = (i: number) => {
     if (!results || !results[i]) return;
@@ -187,7 +197,7 @@ export default function BookSidebar({
             onSubmit={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              doSearch();
+              void doSearch(q);
             }}
           >
             <div className="relative">
