@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { api, getUid } from '../api';
 import { useApp } from '../store';
 import type { ID, LinksResponse, CommentaryLink } from '../types';
 import { highlight, normalizeHe, processHtml, snippetAround, stripTags, type TextOpts } from '../utils/text';
 import { Spinner } from './ui';
-import { Filter, Search, X, ChevronsDownUp, ChevronsUpDown, AlignJustify, PenLine, Trash2, Check } from 'lucide-react';
+import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, Copy, Filter, MoreVertical, PenLine, Search, Trash2, X, AlignJustify } from 'lucide-react';
+import { getCommentaryContextMenuActions, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
+import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 
 interface BookFilterPreference {
   hidden: string[];
@@ -13,6 +16,31 @@ interface BookFilterPreference {
 }
 type FilterPreferences = Record<string, BookFilterPreference>;
 type Expand = 'all' | 'partial' | 'none';
+
+interface CommentaryContextMenuState {
+  x: number;
+  y: number;
+  selectedText: string;
+  paragraphText: string;
+  sourceBook: string;
+  line: number;
+  itemKey: string;
+}
+
+function selectedTextWithin(element: HTMLElement): string {
+  if (typeof window === 'undefined') return '';
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) return '';
+  const range = selection.getRangeAt(0);
+  const start = range.startContainer.nodeType === 1
+    ? range.startContainer as Element
+    : range.startContainer.parentElement;
+  const end = range.endContainer.nodeType === 1
+    ? range.endContainer as Element
+    : range.endContainer.parentElement;
+  if (!start || !end || !element.contains(start) || !element.contains(end)) return '';
+  return selection.toString().trim();
+}
 
 function readFilterPreferences(key: string): FilterPreferences {
   try {
@@ -31,7 +59,7 @@ function isRashiOrTosafot(name: string): boolean {
 
 export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, context = 'text' }: { bookId: ID; bookTitle: string; line: number; heRef?: string; opts: TextOpts; context?: 'text' | 'tzurat-hadaf' }) {
   const isTzuratHaDaf = context === 'tzurat-hadaf';
-  const { settings, updateSettings, openBookByTitle, notes, saveNote, deleteNote, toast } = useApp();
+  const { settings, updateSettings, openBookByTitle, openSearch, notes, saveNote, deleteNote, toast } = useApp();
   const [data, setData] = useState<LinksResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -44,6 +72,177 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
+  const [contextMenu, setContextMenu] = useState<CommentaryContextMenuState | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ left: number; top: number; maxWidth: number; maxHeight: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const menuReturnFocusRef = useRef<HTMLElement | null>(null);
+  const touchTimerRef = useRef<number | null>(null);
+  const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  const clearLongPress = useCallback(() => {
+    if (touchTimerRef.current !== null) {
+      window.clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+    if (touchMoveHandlerRef.current) {
+      window.removeEventListener('pointermove', touchMoveHandlerRef.current);
+      touchMoveHandlerRef.current = null;
+    }
+  }, []);
+
+  const closeContextMenu = useCallback((restoreFocus = false) => {
+    const trigger = menuReturnFocusRef.current;
+    setContextMenu(null);
+    setContextMenuPosition(null);
+    if (restoreFocus && trigger) {
+      window.requestAnimationFrame(() => {
+        if (trigger.isConnected) trigger.focus();
+      });
+    }
+  }, []);
+
+  const openContextMenuAt = useCallback((
+    x: number,
+    y: number,
+    trigger: HTMLElement,
+    link: CommentaryLink,
+    sourceBook: string,
+    itemKey: string,
+  ) => {
+    menuReturnFocusRef.current = trigger;
+    setContextMenu({
+      x,
+      y,
+      selectedText: selectedTextWithin(trigger),
+      paragraphText: stripTags(processHtml(link.text, opts)).trim(),
+      sourceBook,
+      line: link.line,
+      itemKey,
+    });
+    setContextMenuPosition(null);
+  }, [opts]);
+
+  const startLongPress = useCallback((
+    event: ReactPointerEvent<HTMLDivElement>,
+    link: CommentaryLink,
+    sourceBook: string,
+    itemKey: string,
+  ) => {
+    if (event.pointerType !== 'touch' || (event.target as HTMLElement).closest('[data-commentary-context-control]')) return;
+    clearLongPress();
+    longPressTriggeredRef.current = false;
+    const target = event.currentTarget;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const pointerId = event.pointerId;
+    const moveHandler = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId === pointerId && Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 10) {
+        clearLongPress();
+      }
+    };
+    touchMoveHandlerRef.current = moveHandler;
+    window.addEventListener('pointermove', moveHandler, { passive: true });
+    touchTimerRef.current = window.setTimeout(() => {
+      clearLongPress();
+      longPressTriggeredRef.current = true;
+      openContextMenuAt(startX, startY, target, link, sourceBook, itemKey);
+    }, 550);
+  }, [clearLongPress, openContextMenuAt]);
+
+  const copyContextText = async (value: string, successMessage: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(value);
+      toast(successMessage);
+    } catch {
+      toast('לא ניתן להעתיק ללוח');
+    }
+    closeContextMenu(true);
+  };
+
+  const runContextMenuAction = async (action: CommentaryContextMenuActionId) => {
+    if (!contextMenu) return;
+    const current = contextMenu;
+    if (action === 'copy-selection') {
+      await copyContextText(current.selectedText, 'הטקסט הועתק');
+    } else if (action === 'copy-paragraph') {
+      await copyContextText(current.paragraphText, 'הפסקה הועתקה');
+    } else if (action === 'search-selection') {
+      closeContextMenu(false);
+      openSearch(current.selectedText);
+    } else if (action === 'open-commentary') {
+      closeContextMenu(false);
+      openBookByTitle(current.sourceBook, current.line);
+    }
+  };
+
+  const handleContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || []);
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    else if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = items.length - 1;
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeContextMenu(true);
+      return;
+    } else return;
+    event.preventDefault();
+    items[nextIndex].focus();
+  };
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    setContextMenuPosition(placeReaderContextMenu(
+      { x: contextMenu.x, y: contextMenu.y },
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    contextMenuRef.current
+      ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+      ?.focus();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as Node)) closeContextMenu(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
+        event.preventDefault();
+        closeContextMenu(true);
+      }
+    };
+    const reposition = () => {
+      const menu = contextMenuRef.current;
+      if (!menu) return;
+      const rect = menu.getBoundingClientRect();
+      setContextMenuPosition(placeReaderContextMenu(
+        { x: contextMenu.x, y: contextMenu.y },
+        { width: rect.width, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ));
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', reposition);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', reposition);
+    };
+  }, [contextMenu, closeContextMenu]);
+
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
+  useEffect(() => {
+    closeContextMenu(false);
+  }, [bookId, line, closeContextMenu]);
 
   useEffect(() => {
     let cancelled = false;
@@ -341,9 +540,62 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                 return (
                   <div
                     key={i}
-                    className="book-text mb-2 border-r-2 border-outline-variant pr-3"
+                    data-commentary-item="true"
+                    role="group"
+                    tabIndex={0}
+                    aria-label={`אפשרויות לפירוש ${src}`}
+                    aria-haspopup="menu"
+                    aria-keyshortcuts="ContextMenu Shift+F10"
+                    onContextMenu={(event: ReactMouseEvent<HTMLDivElement>) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      clearLongPress();
+                      openContextMenuAt(event.clientX, event.clientY, event.currentTarget, l, src, k);
+                    }}
+                    onKeyDown={(event) => {
+                      if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
+                      event.preventDefault();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      openContextMenuAt(rect.left, rect.bottom, event.currentTarget, l, src, k);
+                    }}
+                    onPointerDown={(event) => startLongPress(event, l, src, k)}
+                    onPointerUp={() => {
+                      clearLongPress();
+                      if (longPressTriggeredRef.current) {
+                        window.setTimeout(() => { longPressTriggeredRef.current = false; }, 0);
+                      }
+                    }}
+                    onPointerCancel={() => {
+                      clearLongPress();
+                      longPressTriggeredRef.current = false;
+                    }}
+                    onClickCapture={(event) => {
+                      if (!longPressTriggeredRef.current) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      longPressTriggeredRef.current = false;
+                    }}
+                    className="book-text group relative mb-2 border-r-2 border-outline-variant py-0.5 pr-3 pl-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     style={{ fontFamily: fontStack(settings.commentaryFontFamily), fontSize: settings.commentaryFontSize, lineHeight: 1.55 }}
                   >
+                    <button
+                      type="button"
+                      data-commentary-context-control="true"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        const item = event.currentTarget.closest<HTMLElement>('[data-commentary-item]');
+                        if (item) openContextMenuAt(rect.left, rect.bottom, item, l, src, k);
+                      }}
+                      aria-label={`אפשרויות מפרש: ${src}`}
+                      aria-haspopup="menu"
+                      aria-expanded={contextMenu?.itemKey === k}
+                      title="אפשרויות מפרש"
+                      className="absolute left-0 top-0 rounded-full p-1 text-on-variant opacity-100 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                    >
+                      <MoreVertical size={14} />
+                    </button>
                     {l.dibburHamatchil && settings.showCommentaryMarkers && (
                       <button onClick={() => toggleItem(k)} className="block text-start text-[11px] leading-tight text-on-variant hover:text-primary" style={{ fontFamily: 'Heebo, sans-serif' }}>
                         {l.dibburHamatchil}
@@ -363,6 +615,51 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
           ))}
         </div>
       </div>
+      {contextMenu && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={`אפשרויות מפרש: ${contextMenu.sourceBook}`}
+          dir="rtl"
+          onKeyDown={handleContextMenuKeyDown}
+          style={{
+            position: 'fixed',
+            left: contextMenuPosition?.left ?? contextMenu.x,
+            top: contextMenuPosition?.top ?? contextMenu.y,
+            width: 264,
+            maxWidth: contextMenuPosition?.maxWidth ?? 'calc(100vw - 16px)',
+            maxHeight: contextMenuPosition?.maxHeight ?? 'calc(100vh - 16px)',
+            overflowY: 'auto',
+            boxSizing: 'border-box',
+            zIndex: 12000,
+          }}
+          className="rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl"
+        >
+          <div className="px-3 py-2 text-xs font-semibold text-on-variant">{contextMenu.sourceBook}</div>
+          {getCommentaryContextMenuActions({
+            hasSelection: Boolean(contextMenu.selectedText),
+            hasParagraph: Boolean(contextMenu.paragraphText),
+            hasCommentary: Boolean(contextMenu.sourceBook),
+          }).map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              role="menuitem"
+              disabled={action.disabled}
+              onClick={() => void runContextMenuAction(action.id)}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {action.id === 'search-selection'
+                ? <Search size={15} className="shrink-0" />
+                : action.id.startsWith('copy-')
+                  ? <Copy size={15} className="shrink-0" />
+                  : <BookOpen size={15} className="shrink-0" />}
+              <span className="min-w-0 flex-1">{action.label}</span>
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
