@@ -8,6 +8,7 @@ import { highlight, normalizeHe, processHtml, snippetAround, stripTags, type Tex
 import { Spinner } from './ui';
 import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, Copy, Filter, MoreVertical, PenLine, Search, Trash2, X, AlignJustify } from 'lucide-react';
 import { getCommentaryContextMenuActions, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
+import { getPersonalNoteContextMenuActions, type PersonalNoteContextMenuActionId } from '../utils/personalNoteContextMenu';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 
 interface BookFilterPreference {
@@ -18,10 +19,12 @@ type FilterPreferences = Record<string, BookFilterPreference>;
 type Expand = 'all' | 'partial' | 'none';
 
 interface CommentaryContextMenuState {
+  kind: 'commentary' | 'personal-note';
   x: number;
   y: number;
   selectedText: string;
   paragraphText: string;
+  noteText?: string;
   sourceBook: string;
   line: number;
   itemKey: string;
@@ -112,6 +115,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
   ) => {
     menuReturnFocusRef.current = trigger;
     setContextMenu({
+      kind: 'commentary',
       x,
       y,
       selectedText: selectedTextWithin(trigger),
@@ -122,6 +126,28 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     });
     setContextMenuPosition(null);
   }, [opts]);
+
+  const openPersonalNoteContextMenuAt = useCallback((
+    x: number,
+    y: number,
+    trigger: HTMLElement,
+    noteId: string,
+    noteText: string,
+  ) => {
+    menuReturnFocusRef.current = trigger;
+    setContextMenu({
+      kind: 'personal-note',
+      x,
+      y,
+      selectedText: '',
+      paragraphText: '',
+      noteText,
+      sourceBook: bookTitle,
+      line,
+      itemKey: `personal-note:${noteId}`,
+    });
+    setContextMenuPosition(null);
+  }, [bookTitle, line]);
 
   const startLongPress = useCallback((
     event: ReactPointerEvent<HTMLDivElement>,
@@ -161,9 +187,17 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     closeContextMenu(true);
   };
 
-  const runContextMenuAction = async (action: CommentaryContextMenuActionId) => {
+  const runContextMenuAction = async (
+    action: CommentaryContextMenuActionId | PersonalNoteContextMenuActionId,
+  ) => {
     if (!contextMenu) return;
     const current = contextMenu;
+    if (current.kind === 'personal-note') {
+      if (action === 'copy-note') {
+        await copyContextText(current.noteText || '', 'ההערה הועתקה');
+      }
+      return;
+    }
     if (action === 'copy-selection') {
       await copyContextText(current.selectedText, 'הטקסט הועתק');
     } else if (action === 'copy-paragraph') {
@@ -510,12 +544,39 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
           {myNotes.map((n) => (
             <div key={n.id} className="group mt-1 flex gap-1.5 rounded-lg bg-surface px-2 py-1">
               <div
-                className="book-text min-w-0 flex-1 whitespace-pre-wrap"
+                tabIndex={0}
+                aria-label={`תוכן הערה אישית: ${bookTitle}`}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  openPersonalNoteContextMenuAt(event.clientX, event.clientY, event.currentTarget, n.id, n.text);
+                }}
+                onKeyDown={(event) => {
+                  if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  openPersonalNoteContextMenuAt(rect.left, rect.bottom, event.currentTarget, n.id, n.text);
+                }}
+                className="book-text min-w-0 flex-1 whitespace-pre-wrap rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                 style={{ fontFamily: fontStack(settings.commentaryFontFamily), fontSize: Math.max(12, settings.commentaryFontSize - 3), lineHeight: 1.45 }}
               >
                 {n.text}
               </div>
-              <div className="flex shrink-0 flex-col gap-0.5 opacity-0 transition group-hover:opacity-100">
+              <div className="flex shrink-0 flex-col gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    openPersonalNoteContextMenuAt(rect.left, rect.bottom, event.currentTarget, n.id, n.text);
+                  }}
+                  aria-label={`אפשרויות הערה אישית: ${bookTitle}`}
+                  aria-haspopup="menu"
+                  aria-expanded={contextMenu?.itemKey === `personal-note:${n.id}`}
+                  title="העתק הערה"
+                  className="rounded-full p-0.5 hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <MoreVertical size={11} />
+                </button>
                 <button onClick={() => { setNoteDraft(n.text); setEditingId(n.id); }} className="rounded-full p-0.5 hover:bg-surface-3" title="ערוך"><PenLine size={11} /></button>
                 <button onClick={() => deleteNote(n.id)} className="rounded-full p-0.5 hover:bg-surface-3 hover:text-error" title="מחק"><Trash2 size={11} /></button>
               </div>
@@ -619,7 +680,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
         <div
           ref={contextMenuRef}
           role="menu"
-          aria-label={`אפשרויות מפרש: ${contextMenu.sourceBook}`}
+          aria-label={contextMenu.kind === 'personal-note' ? `אפשרויות הערה אישית: ${contextMenu.sourceBook}` : `אפשרויות מפרש: ${contextMenu.sourceBook}`}
           dir="rtl"
           onKeyDown={handleContextMenuKeyDown}
           style={{
@@ -635,12 +696,16 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
           }}
           className="rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl"
         >
-          <div className="px-3 py-2 text-xs font-semibold text-on-variant">{contextMenu.sourceBook}</div>
-          {getCommentaryContextMenuActions({
-            hasSelection: Boolean(contextMenu.selectedText),
-            hasParagraph: Boolean(contextMenu.paragraphText),
-            hasCommentary: Boolean(contextMenu.sourceBook),
-          }).map((action) => (
+          <div className="px-3 py-2 text-xs font-semibold text-on-variant">
+            {contextMenu.kind === 'personal-note' ? 'הערה אישית' : contextMenu.sourceBook}
+          </div>
+          {(contextMenu.kind === 'personal-note'
+            ? getPersonalNoteContextMenuActions(contextMenu.noteText || '')
+            : getCommentaryContextMenuActions({
+                hasSelection: Boolean(contextMenu.selectedText),
+                hasParagraph: Boolean(contextMenu.paragraphText),
+                hasCommentary: Boolean(contextMenu.sourceBook),
+              })).map((action) => (
             <button
               key={action.id}
               type="button"
