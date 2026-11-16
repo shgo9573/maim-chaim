@@ -59,6 +59,7 @@ interface Ctx {
   openTzuratHaDaf: (ref: BookRef, daf?: number, amud?: 'a' | 'b', mode?: 'reuse' | 'new' | 'replace') => boolean;
   openBook: (ref: BookRef, line?: number, highlight?: Highlight) => void;
   openBookInNewTab: (ref: BookRef, line?: number, highlight?: Highlight) => void;
+  openBookInBackground: (ref: BookRef, line?: number, highlight?: Highlight) => void;
   openBookInActiveTab: (ref: BookRef, line?: number) => void;
   removeHistoryItem: (item: ReadingHistoryItem) => Promise<void>;
   notes: PersonalNote[];
@@ -581,6 +582,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [setScreen, toast, settings.talmudBavliOpenFormat, openTzuratHaDaf],
   );
 
+  const openBookInBackground = useCallback(
+    (ref: BookRef, line?: number, highlight?: Highlight) => {
+      const knownBook = libRef.current?.byId.get(String(ref.id));
+      if (isExcludedBook(knownBook || ref)) {
+        toast(EXCLUDED_BOOK_NOTICE);
+        return;
+      }
+      const h = histRef.current.find((x) => String(x.bookId) === String(ref.id));
+      const tab: BookTab = {
+        id: newTabId(),
+        kind: 'book',
+        bookId: ref.id,
+        title: ref.title,
+        category: ref.categoryPath,
+        line: line ?? h?.lastPosition ?? 1,
+        highlight,
+      };
+      // Background opening must not change activeTabId or screen.
+      setTabs((ts) => [...ts, tab]);
+    },
+    [toast],
+  );
+
   const openBookInActiveTab = useCallback(
     (ref: BookRef, line?: number) => {
       const knownBook = libRef.current?.byId.get(String(ref.id));
@@ -889,7 +913,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
       settings, updateSettings, resetSettings,
-      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInActiveTab, openBookByTitle, openSearch,
+      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
       bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory,
       setBookmarks: setVisibleBookmarks, setHistory: setVisibleHistory,
@@ -897,7 +921,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

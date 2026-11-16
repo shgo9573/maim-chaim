@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Clock3, Search, SlidersHorizontal, Settings2, X, ChevronDown } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { BookOpen, Clock3, Search, SlidersHorizontal, Settings2, X, ChevronDown, MoreVertical } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { ContentLine, SearchResultItem, SearchTab } from '../types';
@@ -8,6 +9,8 @@ import { Btn, EmptyState, Select, Spinner, Switch } from './ui';
 import { fontStack } from './CommentaryPanel';
 import { t } from '../i18n';
 import { isExcludedBook } from '../utils/bookFilter';
+import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
+import { buildSearchResultBackgroundOpen, type SearchResultBackgroundOpen } from '../utils/searchResultContextMenu';
 import { GEMINI_API_KEY_STORAGE, GEMINI_SEARCH_MODE_STORAGE, searchWithGemini } from '../services/geminiSearch';
 
 interface Opts {
@@ -19,6 +22,11 @@ interface Opts {
   slop: number;
   proximityScope: 'wordDistance' | 'sameParagraph' | 'sameSection';
   grouping: 'none' | 'sameSection' | 'identicalText' | 'byBook';
+}
+interface SearchResultContextMenuState {
+  open: SearchResultBackgroundOpen;
+  x: number;
+  y: number;
 }
 interface Cached {
   results: SearchResultItem[] | null;
@@ -102,7 +110,7 @@ function generationRankForResult(heEra: string | undefined, categoryPath: string
 }
 
 export default function SearchTabView({ tab }: { tab: SearchTab }) {
-  const { library, updateTab, openBookInNewTab, settings, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches } = useApp();
+  const { library, updateTab, openBookInNewTab, openBookInBackground, settings, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches } = useApp();
   const lang = settings.interfaceLanguage;
   const cached = cache.get(tab.id);
   const [q, setQ] = useState(cached?.q ?? tab.query);
@@ -128,6 +136,11 @@ export default function SearchTabView({ tab }: { tab: SearchTab }) {
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ lines: ContentLine[]; error: string } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [contextMenu, setContextMenu] = useState<SearchResultContextMenuState | null>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<ReturnType<typeof placeReaderContextMenu> | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
+  const firstContextMenuItemRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
 
@@ -462,6 +475,71 @@ export default function SearchTabView({ tab }: { tab: SearchTab }) {
     const matches = (results ?? []).filter((x) => String(x.bookId) === String(r.bookId)).map((x) => x.lineIndex).sort((a, b) => a - b);
     openBookInNewTab({ id: r.bookId, title: r.bookTitle, categoryPath: r.categoryPath }, r.lineIndex, { text: lastQ, matches });
   };
+
+  const buildBackgroundOpen = (r: SearchResultItem) =>
+    buildSearchResultBackgroundOpen(r, results ?? [], lastQ);
+
+  const openResultInBackground = (r: SearchResultItem) => {
+    const action = buildBackgroundOpen(r);
+    openBookInBackground(action.book, action.line, action.highlight);
+  };
+
+  const openResultContextMenu = (r: SearchResultItem, x: number, y: number, trigger: HTMLElement) => {
+    contextMenuTriggerRef.current = trigger;
+    setContextMenuPosition(null);
+    setContextMenu({ open: buildBackgroundOpen(r), x, y });
+  };
+
+  const dismissSearchResultContextMenu = useCallback((restoreFocus = false) => {
+    setContextMenu(null);
+    setContextMenuPosition(null);
+    if (restoreFocus) {
+      const target = contextMenuTriggerRef.current;
+      window.requestAnimationFrame(() => {
+        if (target?.isConnected) target.focus();
+      });
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    setContextMenuPosition(
+      placeReaderContextMenu(
+        { x: contextMenu.x, y: contextMenu.y },
+        { width: rect.width, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const frame = window.requestAnimationFrame(() => firstContextMenuItemRef.current?.focus());
+    const onPointerDown = (event: PointerEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as Node)) {
+        dismissSearchResultContextMenu(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dismissSearchResultContextMenu(true);
+        return;
+      }
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        firstContextMenuItemRef.current?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu, dismissSearchResultContextMenu]);
 
   const hasMore = !!results && total > scannedCount;
 
@@ -800,12 +878,30 @@ export default function SearchTabView({ tab }: { tab: SearchTab }) {
                     const sel = k === previewKey;
                     const displaySnippet = hasVisibleSnippet(r.snippet) ? String(r.snippet) : '';
                     return (
-                      <button
-                        key={k}
-                        onClick={() => setPreviewKey(k)}
-                        onDoubleClick={() => openResult(r)}
-                        className={`fade-in mb-2 block w-full rounded-2xl border px-4 py-3 text-start transition ${sel ? 'border-primary/50 bg-primary/5' : 'border-outline-variant bg-surface-1 hover:bg-surface-3'}`}
-                      >
+                      <div key={k} className="group relative mb-2">
+                        <button
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={String(contextMenu?.open.book.id) === String(r.bookId) && contextMenu?.open.line === r.lineIndex}
+                          onClick={() => setPreviewKey(k)}
+                          onDoubleClick={() => openResult(r)}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            openResultContextMenu(r, event.clientX, event.clientY, event.currentTarget);
+                          }}
+                          onAuxClick={(event) => {
+                            if (event.button !== 1) return;
+                            event.preventDefault();
+                            openResultInBackground(r);
+                          }}
+                          onKeyDown={(event) => {
+                            if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
+                            event.preventDefault();
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            openResultContextMenu(r, rect.left + Math.min(rect.width / 2, 180), rect.bottom, event.currentTarget);
+                          }}
+                          className={`fade-in block w-full rounded-2xl border px-4 py-3 pe-10 text-start transition ${sel ? 'border-primary/50 bg-primary/5' : 'border-outline-variant bg-surface-1 hover:bg-surface-3'}`}
+                        >
                         <div className="flex items-baseline gap-2">
                           <span className="font-bold text-primary">{r.bookTitle}</span>
                           {r.reference && <span className="text-sm text-on-variant">{r.reference}</span>}
@@ -831,7 +927,23 @@ export default function SearchTabView({ tab }: { tab: SearchTab }) {
                         ) : (
                           <div dir="rtl" className="mt-1 text-sm text-on-variant" role="status">לחצו על התוצאה כדי לטעון את התצוגה המקדימה</div>
                         )}
-                      </button>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={lang === 'en' ? `Actions for ${r.bookTitle}` : `אפשרויות עבור ${r.bookTitle}`}
+                          title={lang === 'en' ? 'Open result actions' : 'אפשרויות לתוצאה'}
+                          aria-haspopup="menu"
+                          aria-expanded={String(contextMenu?.open.book.id) === String(r.bookId) && contextMenu?.open.line === r.lineIndex}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            openResultContextMenu(r, rect.right, rect.bottom, event.currentTarget);
+                          }}
+                          className="absolute end-2 top-2 z-10 rounded-lg p-1.5 text-on-variant opacity-100 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -897,6 +1009,38 @@ export default function SearchTabView({ tab }: { tab: SearchTab }) {
           </aside>
         )}
       </div>
+      {contextMenu && typeof document !== 'undefined' && createPortal(
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={lang === 'en' ? 'Search result actions' : 'פעולות תוצאת חיפוש'}
+          dir="rtl"
+          className="fixed z-[140] flex w-[min(260px,calc(100vw-16px))] max-h-[calc(100vh-16px)] flex-col overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-2xl motion-reduce:transition-none"
+          style={{
+            left: contextMenuPosition?.left ?? contextMenu.x,
+            top: contextMenuPosition?.top ?? contextMenu.y,
+            maxWidth: contextMenuPosition?.maxWidth,
+            maxHeight: contextMenuPosition?.maxHeight,
+          }}
+          onMouseDown={(event) => event.preventDefault()}
+        >
+          <button
+            ref={firstContextMenuItemRef}
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none motion-reduce:transition-none"
+            onClick={() => {
+              const action = contextMenu.open;
+              dismissSearchResultContextMenu(true);
+              openBookInBackground(action.book, action.line, action.highlight);
+            }}
+          >
+            <BookOpen size={15} />
+            {lang === 'en' ? 'Open in background tab' : 'פתח בכרטיסייה חדשה ברקע'}
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
