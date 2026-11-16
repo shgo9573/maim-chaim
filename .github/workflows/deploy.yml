@@ -1,9 +1,8 @@
 name: Deploy to Oracle Server
 
 on:
-  push:
-    branches:
-      - main
+  # Manual only: automated development commits must never deploy to Oracle.
+  workflow_dispatch:
 
 # Never let two SSH deployments build/write dist concurrently. Keep the active
 # deployment intact and only queue the newest pending commit.

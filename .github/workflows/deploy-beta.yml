@@ -1,9 +1,7 @@
 name: Deploy Beta
 
 on:
-  push:
-    branches:
-      - main
+  # Manual only: automated development commits must never deploy to the server.
   workflow_dispatch:
 
 permissions:
