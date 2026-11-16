@@ -6,9 +6,10 @@ import { useApp } from '../store';
 import type { ID, LinksResponse, CommentaryLink } from '../types';
 import { highlight, normalizeHe, processHtml, snippetAround, stripTags, type TextOpts } from '../utils/text';
 import { Spinner } from './ui';
-import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, Copy, Filter, MoreVertical, PenLine, Search, Trash2, X, AlignJustify } from 'lucide-react';
+import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, ClipboardPaste, Copy, Filter, ListChecks, MoreVertical, PenLine, Scissors, Search, Trash2, X, AlignJustify } from 'lucide-react';
 import { getCommentaryContextMenuActions, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
 import { getPersonalNoteContextMenuActions, type PersonalNoteContextMenuActionId } from '../utils/personalNoteContextMenu';
+import { getPersonalNoteEditorContextMenuActions, type PersonalNoteEditorContextMenuActionId } from '../utils/personalNoteEditorContextMenu';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 
 interface BookFilterPreference {
@@ -19,12 +20,14 @@ type FilterPreferences = Record<string, BookFilterPreference>;
 type Expand = 'all' | 'partial' | 'none';
 
 interface CommentaryContextMenuState {
-  kind: 'commentary' | 'personal-note';
+  kind: 'commentary' | 'personal-note' | 'personal-note-editor';
   x: number;
   y: number;
   selectedText: string;
   paragraphText: string;
   noteText?: string;
+  selectionStart?: number;
+  selectionEnd?: number;
   sourceBook: string;
   line: number;
   itemKey: string;
@@ -75,6 +78,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
   const [openItems, setOpenItems] = useState<Set<string>>(new Set());
   const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | undefined>(undefined);
+  const noteEditorRef = useRef<HTMLTextAreaElement>(null);
   const [contextMenu, setContextMenu] = useState<CommentaryContextMenuState | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ left: number; top: number; maxWidth: number; maxHeight: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -149,6 +153,40 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     setContextMenuPosition(null);
   }, [bookTitle, line]);
 
+  const openPersonalNoteEditorContextMenuAt = useCallback((
+    x: number,
+    y: number,
+    trigger: HTMLTextAreaElement,
+    noteText: string,
+    selectionStart: number,
+    selectionEnd: number,
+  ) => {
+    menuReturnFocusRef.current = trigger;
+    setContextMenu({
+      kind: 'personal-note-editor',
+      x,
+      y,
+      selectedText: '',
+      paragraphText: '',
+      noteText,
+      selectionStart,
+      selectionEnd,
+      sourceBook: bookTitle,
+      line,
+      itemKey: 'personal-note-editor',
+    });
+    setContextMenuPosition(null);
+  }, [bookTitle, line]);
+
+  const restorePersonalNoteEditorSelection = (start: number, end: number) => {
+    window.requestAnimationFrame(() => {
+      const editor = noteEditorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.setSelectionRange(start, end);
+    });
+  };
+
   const startLongPress = useCallback((
     event: ReactPointerEvent<HTMLDivElement>,
     link: CommentaryLink,
@@ -188,13 +226,74 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
   };
 
   const runContextMenuAction = async (
-    action: CommentaryContextMenuActionId | PersonalNoteContextMenuActionId,
+    action: CommentaryContextMenuActionId | PersonalNoteContextMenuActionId | PersonalNoteEditorContextMenuActionId,
   ) => {
     if (!contextMenu) return;
     const current = contextMenu;
     if (current.kind === 'personal-note') {
       if (action === 'copy-note') {
         await copyContextText(current.noteText || '', 'ההערה הועתקה');
+      }
+      return;
+    }
+    if (current.kind === 'personal-note-editor') {
+      const text = current.noteText || '';
+      const start = Math.max(0, Math.min(current.selectionStart ?? text.length, text.length));
+      const end = Math.max(start, Math.min(current.selectionEnd ?? start, text.length));
+      const selected = text.slice(start, end);
+
+      if (action === 'cut-selection' || action === 'copy-selection') {
+        if (!selected) {
+          closeContextMenu(true);
+          return;
+        }
+        try {
+          if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+          await navigator.clipboard.writeText(selected);
+        } catch {
+          toast(action === 'cut-selection' ? 'לא ניתן לגזור ללוח' : 'לא ניתן להעתיק ללוח');
+          closeContextMenu(true);
+          return;
+        }
+
+        if (action === 'cut-selection') {
+          setNoteDraft(text.slice(0, start) + text.slice(end));
+          closeContextMenu(false);
+          restorePersonalNoteEditorSelection(start, start);
+          toast('הטקסט נחתך');
+        } else {
+          closeContextMenu(false);
+          restorePersonalNoteEditorSelection(start, end);
+          toast('הטקסט הועתק');
+        }
+        return;
+      }
+
+      if (action === 'paste') {
+        try {
+          if (!navigator.clipboard?.readText) throw new Error('Clipboard unavailable');
+          const pasted = await navigator.clipboard.readText();
+          if (!pasted) {
+            toast('הלוח ריק');
+            closeContextMenu(false);
+            restorePersonalNoteEditorSelection(start, end);
+            return;
+          }
+          setNoteDraft(text.slice(0, start) + pasted + text.slice(end));
+          const cursor = start + pasted.length;
+          closeContextMenu(false);
+          restorePersonalNoteEditorSelection(cursor, cursor);
+          toast('הטקסט הודבק');
+        } catch {
+          toast('לא ניתן להדביק מהלוח');
+          closeContextMenu(true);
+        }
+        return;
+      }
+
+      if (action === 'select-all') {
+        closeContextMenu(false);
+        restorePersonalNoteEditorSelection(0, text.length);
       }
       return;
     }
@@ -516,15 +615,67 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
           {noteDraft !== null && (
             <div className="mb-2">
               <textarea
+                ref={noteEditorRef}
                 autoFocus
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  openPersonalNoteEditorContextMenuAt(
+                    event.clientX,
+                    event.clientY,
+                    event.currentTarget,
+                    event.currentTarget.value,
+                    event.currentTarget.selectionStart,
+                    event.currentTarget.selectionEnd,
+                  );
+                }}
+                onKeyDown={(event) => {
+                  if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  openPersonalNoteEditorContextMenuAt(
+                    rect.left,
+                    rect.bottom,
+                    event.currentTarget,
+                    event.currentTarget.value,
+                    event.currentTarget.selectionStart,
+                    event.currentTarget.selectionEnd,
+                  );
+                }}
+                aria-label={`עריכת הערה אישית על ${heRef || bookTitle}`}
+                aria-haspopup="menu"
+                aria-keyshortcuts="ContextMenu Shift+F10"
                 rows={4}
                 placeholder={`חידוש על ${heRef || bookTitle}…`}
                 className="w-full rounded-xl border border-outline-variant bg-surface p-2 text-[15px] outline-none focus:border-primary"
                 style={{ fontFamily: fontStack(settings.commentaryFontFamily) }}
               />
               <div className="mt-1 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={(event) => {
+                    const editor = noteEditorRef.current;
+                    if (!editor) return;
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    openPersonalNoteEditorContextMenuAt(
+                      rect.left,
+                      rect.bottom,
+                      editor,
+                      editor.value,
+                      editor.selectionStart,
+                      editor.selectionEnd,
+                    );
+                  }}
+                  aria-label="אפשרויות עריכת הערה"
+                  aria-haspopup="menu"
+                  aria-expanded={contextMenu?.kind === 'personal-note-editor'}
+                  title="אפשרויות עריכה"
+                  className="rounded-full p-1 text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <MoreVertical size={13} />
+                </button>
                 <button onClick={() => { setNoteDraft(null); setEditingId(undefined); }} className="rounded-full px-3 py-1 text-xs text-on-variant hover:bg-surface-3">ביטול</button>
                 <button
                   onClick={() => {
@@ -680,7 +831,11 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
         <div
           ref={contextMenuRef}
           role="menu"
-          aria-label={contextMenu.kind === 'personal-note' ? `אפשרויות הערה אישית: ${contextMenu.sourceBook}` : `אפשרויות מפרש: ${contextMenu.sourceBook}`}
+          aria-label={contextMenu.kind === 'personal-note'
+            ? `אפשרויות הערה אישית: ${contextMenu.sourceBook}`
+            : contextMenu.kind === 'personal-note-editor'
+              ? 'אפשרויות עריכת הערה'
+              : `אפשרויות מפרש: ${contextMenu.sourceBook}`}
           dir="rtl"
           onKeyDown={handleContextMenuKeyDown}
           style={{
@@ -697,11 +852,20 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
           className="rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl"
         >
           <div className="px-3 py-2 text-xs font-semibold text-on-variant">
-            {contextMenu.kind === 'personal-note' ? 'הערה אישית' : contextMenu.sourceBook}
+            {contextMenu.kind === 'personal-note'
+              ? 'הערה אישית'
+              : contextMenu.kind === 'personal-note-editor'
+                ? 'עריכת הערה'
+                : contextMenu.sourceBook}
           </div>
           {(contextMenu.kind === 'personal-note'
             ? getPersonalNoteContextMenuActions(contextMenu.noteText || '')
-            : getCommentaryContextMenuActions({
+            : contextMenu.kind === 'personal-note-editor'
+              ? getPersonalNoteEditorContextMenuActions({
+                  hasSelection: (contextMenu.selectionEnd ?? 0) > (contextMenu.selectionStart ?? 0),
+                  hasText: (contextMenu.noteText || '').length > 0,
+                })
+              : getCommentaryContextMenuActions({
                 hasSelection: Boolean(contextMenu.selectedText),
                 hasParagraph: Boolean(contextMenu.paragraphText),
                 hasCommentary: Boolean(contextMenu.sourceBook),
@@ -716,9 +880,15 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
             >
               {action.id === 'search-selection'
                 ? <Search size={15} className="shrink-0" />
-                : action.id.startsWith('copy-')
-                  ? <Copy size={15} className="shrink-0" />
-                  : <BookOpen size={15} className="shrink-0" />}
+                : action.id === 'cut-selection'
+                  ? <Scissors size={15} className="shrink-0" />
+                  : action.id === 'paste'
+                    ? <ClipboardPaste size={15} className="shrink-0" />
+                    : action.id === 'select-all'
+                      ? <ListChecks size={15} className="shrink-0" />
+                      : action.id.startsWith('copy-')
+                        ? <Copy size={15} className="shrink-0" />
+                        : <BookOpen size={15} className="shrink-0" />}
               <span className="min-w-0 flex-1">{action.label}</span>
             </button>
           ))}
