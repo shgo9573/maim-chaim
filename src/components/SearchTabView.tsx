@@ -939,7 +939,12 @@ export default function SearchTabView({ tab }: { tab: SearchTab }) {
                             const rect = event.currentTarget.getBoundingClientRect();
                             openResultContextMenu(r, rect.right, rect.bottom, event.currentTarget);
                           }}
-                          className="absolute end-2 top-2 z-10 rounded-lg p-1.5 text-on-variant opacity-100 hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            openResultContextMenu(r, event.clientX, event.clientY, event.currentTarget);
+                          }}
+                          className="absolute end-2 top-2 z-10 rounded-lg p-1.5 text-on-variant hover:bg-surface-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
                         >
                           <MoreVertical size={16} />
                         </button>
