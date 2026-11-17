@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, PenLine, Search, Trash2, Upload, X } from 'lucide-react';
+import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, PenLine, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
 import DailyStudy from './DailyStudy';
 import CalendarZmanim from './CalendarZmanim';
 import TzuratHaDaf from './TzuratHaDaf';
