@@ -7,7 +7,7 @@ import type { ID, LinksResponse, CommentaryLink } from '../types';
 import { highlight, normalizeHe, processHtml, snippetAround, stripTags, type TextOpts } from '../utils/text';
 import { Spinner } from './ui';
 import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, ClipboardPaste, Copy, Filter, ListChecks, MoreVertical, PenLine, Scissors, Search, Trash2, X, AlignJustify } from 'lucide-react';
-import { getCommentaryContextMenuActions, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
+import { findUniqueCommentaryBook, getCommentaryContextMenuActions, hasNikudOrTeamim, removeNikudAndTeamim, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
 import { getPersonalNoteContextMenuActions, type PersonalNoteContextMenuActionId } from '../utils/personalNoteContextMenu';
 import { getPersonalNoteEditorContextMenuActions, type PersonalNoteEditorContextMenuActionId } from '../utils/personalNoteEditorContextMenu';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
@@ -65,7 +65,7 @@ function isRashiOrTosafot(name: string): boolean {
 
 export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, context = 'text' }: { bookId: ID; bookTitle: string; line: number; heRef?: string; opts: TextOpts; context?: 'text' | 'tzurat-hadaf' }) {
   const isTzuratHaDaf = context === 'tzurat-hadaf';
-  const { settings, updateSettings, openBookByTitle, openSearch, notes, saveNote, deleteNote, toast } = useApp();
+  const { library, settings, updateSettings, openBookByTitle, openBookInBackground, openSearch, notes, saveNote, deleteNote, toast } = useApp();
   const [data, setData] = useState<LinksResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -225,6 +225,19 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     closeContextMenu(true);
   };
 
+  const openCommentaryInBackground = (sourceBook: string, targetLine: number) => {
+    const book = library ? findUniqueCommentaryBook(library.books, sourceBook) : null;
+    if (!book) {
+      toast('לא ניתן לפתוח ברקע: ספר המפרש אינו מזוהה באופן חד-משמעי');
+      return false;
+    }
+    openBookInBackground(
+      { id: book.id, title: book.title, categoryPath: book.categoryPath },
+      targetLine,
+    );
+    return true;
+  };
+
   const runContextMenuAction = async (
     action: CommentaryContextMenuActionId | PersonalNoteContextMenuActionId | PersonalNoteEditorContextMenuActionId,
   ) => {
@@ -299,6 +312,11 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     }
     if (action === 'copy-selection') {
       await copyContextText(current.selectedText, 'הטקסט הועתק');
+    } else if (action === 'copy-selection-without-nikud') {
+      await copyContextText(
+        removeNikudAndTeamim(current.selectedText),
+        'הטקסט הועתק ללא ניקוד',
+      );
     } else if (action === 'copy-paragraph') {
       await copyContextText(current.paragraphText, 'הפסקה הועתקה');
     } else if (action === 'search-selection') {
@@ -307,6 +325,9 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     } else if (action === 'open-commentary') {
       closeContextMenu(false);
       openBookByTitle(current.sourceBook, current.line);
+    } else if (action === 'open-commentary-background') {
+      closeContextMenu(false);
+      openCommentaryInBackground(current.sourceBook, current.line);
     }
   };
 
@@ -764,6 +785,12 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                       clearLongPress();
                       openContextMenuAt(event.clientX, event.clientY, event.currentTarget, l, src, k);
                     }}
+                    onAuxClick={(event: ReactMouseEvent<HTMLDivElement>) => {
+                      if (event.button !== 1) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openCommentaryInBackground(src, l.line);
+                    }}
                     onKeyDown={(event) => {
                       if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
                       event.preventDefault();
@@ -867,8 +894,12 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                 })
               : getCommentaryContextMenuActions({
                 hasSelection: Boolean(contextMenu.selectedText),
+                hasNikudSelection: hasNikudOrTeamim(contextMenu.selectedText),
                 hasParagraph: Boolean(contextMenu.paragraphText),
                 hasCommentary: Boolean(contextMenu.sourceBook),
+                canOpenInBackground: Boolean(
+                  library && findUniqueCommentaryBook(library.books, contextMenu.sourceBook),
+                ),
               })).map((action) => (
             <button
               key={action.id}
