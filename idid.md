@@ -1542,3 +1542,12 @@ Commits חדשים ב־main שנבדקו:
 - לא נערך Backend ולא שונו נתונים.
 - לא בוצעה משימת PDF.
 - אין כתיבה לענפי arena או למאגר המקור.
+
+
+### 17 בנובמבר 2026 — ממצא CI לפני תיקון חסם typecheck
+- לאחר החזרת trigger אוטומטי ל-`Deploy Beta`, workflow run `44024859023` הופעל ב-`push` ל-main והגיע ל-`completed/failure`.
+- `npm ci --ignore-scripts` עבר; השלב `npm run lint` נכשל בשגיאה יחידה: `src/components/MoreScreen.tsx(19,43): error TS2552: Cannot find name 'ScrollText'`.
+- השוואת הקובץ ב-main מול ה-parent `110c2f39ebbc68042470d398017fb594a984c441` הראתה SHA זהה; השגיאה קדמה לשינויי תפריט המפרשים ואינה נגרמה מהם.
+- סיבת השורש שאומתה: `ScrollText` משמש כאייקון בשורת "צורת הדף" אך חסר ב-import מ-`lucide-react`. התיקון המתוכנן: להוסיף את האייקון ל-import בלבד, בלי שינוי UI/זרימה.
+- ה-typecheck של ה-frontend, בדיקות ה-frontend, build ופריסה לא רצו בגלל עצירת ה-workflow בשלב הראשון; אין לטעון שעברו.
+- אין שינוי במנוע/שירות/חוזה החיפוש; אין משימת PDF.
