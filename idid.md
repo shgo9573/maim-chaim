@@ -1759,3 +1759,16 @@ Commits חדשים ב־main שנבדקו:
 2. להמשיך בתפריט מפרשים וב-wiring של הערות/תוספים.
 3. לאחר מכן לשחזר בדפדפן ולתקן את באג פריסת חיפוש הכרטיסיות. להשאיר אותו פתוח עד אימות אמיתי במסך רחב וצר.
 4. להמשיך במטריצת כלל התוכנה; אין להמתין ל-commits חדשים. PDF ומנוע/שירות החיפוש נשארים מחוץ לתחום.
+
+
+### השלמת סריקת עץ קוד תפריטי ההקשר במקור — ממצא רוחבי נוסף
+- סריקת עץ `Otzaria/otzaria:dev` לפי כל נתיבי `context_menu`, `menu_entries` ו-`menu_utils` זיהתה גם את מנוע התפריטים המשותף:
+  - `packages/otzaria_context_menu/lib/src/context_menu_region.dart`, `context_menu_gestures.dart`, `context_menu_entries.dart`, `context_menu_rows.dart`, `menu_rows.dart`, `menu_presentation.dart`, `menu_metrics.dart`, `menu_models.dart`, `lazy_submenu_button.dart`, `submenu_button.dart`.
+  - בדיקות המנוע מכסות פתיחה/סגירה, כיוון עוגן, viewport צר, גלילה בשורת אייקונים, תתי-תפריטים עצלים, Escape בתפריט מקונן, רוחב ותצוגה.
+  - מסקנה לאתר: מימוש Web הנוכחי משתמש ב-Portal וב-`placeReaderContextMenu` ומכסה את זרימת ספר-הספרייה החדשה, אך אין עדיין רכיב משותף מלא לתפריטים מקוננים/שורות אייקונים. כשנוסיף תתי-תפריטים בקורא ובמפרשים, עדיף לבנות שכבת ContextMenu משותפת במקום לשכפל טיפול במיקום/focus.
+- נתיבים נוספים שאומתו:
+  - `lib/text_book/utils/commentators_context_menu.dart` — תפריט פעולות/מעבר למפרשים לפי שורת יעד.
+  - `lib/widgets/misc/direct_link_menu_entries.dart` ו-`link_context_menu_entry.dart` — בניית פעולות קישור ישיר וקישור טקסט.
+  - `lib/pdf_book/utils/pdf_plugin_menu_entries.dart` ו-`test/pdf_book/pdf_plugin_menu_entries_test.dart` — תפריטי תוספי PDF; מחוץ לתחום לפי הוראת המשתמש.
+  - `test/text_book/view/combined_view/combined_view_context_menu_test.dart`, `commentary_right_click_selection_test.dart`, `simple_text_viewer_context_menu_test.dart`, `simple_text_viewer_menu_entries_test.dart`, `test/navigation/tab_context_menu_test.dart`, `test/library/view/library_book_context_menu_test.dart`, `test/personal_notes/personal_note_content_view_context_menu_test.dart`, `test/plugins/services/context_menu_registry_test.dart`, `test/tools/dictionary/aramaic_context_menu_open_tool_test.dart`, `test/widgets/misc/direct_link_menu_entries_test.dart`, `test/widgets/misc/link_context_menu_entry_test.dart`, `test/widgets/text/rtl_text_field_context_menu_test.dart`.
+- תיעדוף מעודכן: לפני הוספת תתי-תפריטים חדשים לקורא, להשלים בדיקת פעולות קיימות באתר ולבנות primitive משותף רק אם הוא נחוץ לזרימה מלאה. אין לגעת במנוע/שירות החיפוש.
