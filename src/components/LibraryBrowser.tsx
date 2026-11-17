@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState, useEffect } from 'react';
-import { ArrowRight, BookOpen, BookText, ChevronLeft, Folder, Info, LayoutGrid, List, RefreshCw, Search, X, Home } from 'lucide-react';
+import { useMemo, useRef, useState, useEffect, useLayoutEffect, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowRight, BookOpen, BookText, Check, ChevronLeft, Folder, Info, LayoutGrid, List, MoreVertical, Plus, RefreshCw, Search, X, Home } from 'lucide-react';
 import { useApp } from '../store';
 import { Btn, EmptyState, IconBtn, Spinner } from './ui';
 import { normalizeHe } from '../utils/text';
@@ -8,12 +9,20 @@ import type { TocEntry } from '../types';
 import { findShasTractate, parseDafString } from './TzuratHaDafModal';
 import { DailyStudyStrip } from './DailyStudy';
 import { t } from '../i18n';
+import { placeReaderContextMenu } from '../utils/readerContextMenu';
+import { getLibraryBookContextMenuAction, reconcileLibraryBookSelection, selectLibraryBookRange, toggleLibraryBookSelection } from '../utils/libraryContextMenu';
 import type { BookItem } from '../types';
 import BookInfoDialog from './BookInfoDialog';
 
 interface TocNode {
   entry: TocEntry;
   children: TocNode[];
+}
+
+interface BookContextMenuState {
+  bookId: string;
+  x: number;
+  y: number;
 }
 
 function buildTocTree(entries: TocEntry[], bookTitle: string): TocNode[] {
@@ -64,7 +73,7 @@ function ChapterGrid({ label, nodes, selectedIndex, onPick, onOpen }: { label: s
 }
 
 export default function LibraryBrowser() {
-  const { library, libraryLoading, libraryError, reloadLibrary, settings, updateSettings, openBook, openTzuratHaDaf, history, screen, removeHistoryItem, clearHistory, setScreen } = useApp();
+  const { library, libraryLoading, libraryError, reloadLibrary, settings, updateSettings, openBook, openBooksInReadingTabs, openTzuratHaDaf, history, screen, removeHistoryItem, clearHistory, setScreen } = useApp();
   const [path, setPath] = useState('');
   const [query, setQuery] = useState('');
   const [infoBook, setInfoBook] = useState<BookItem | null>(null);
@@ -73,8 +82,19 @@ export default function LibraryBrowser() {
   const [tocLoading, setTocLoading] = useState(false);
   const [tocPath, setTocPath] = useState<TocNode[]>([]);
   const [selectedLine, setSelectedLine] = useState(1);
+  const [selectedBookIds, setSelectedBookIds] = useState<string[]>([]);
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+  const [bookContextMenu, setBookContextMenu] = useState<BookContextMenuState | null>(null);
+  const [bookContextMenuPosition, setBookContextMenuPosition] = useState<{ left: number; top: number; maxWidth: number; maxHeight: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const bookContextMenuRef = useRef<HTMLDivElement>(null);
+  const bookContextMenuActionRef = useRef<HTMLButtonElement>(null);
+  const bookMenuReturnFocusRef = useRef<HTMLElement | null>(null);
+  const bookTouchTimerRef = useRef<number | null>(null);
+  const bookTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const selectionGestureRef = useRef(false);
   useEffect(() => {
     let cancelled = false;
     setTocPath([]);
@@ -144,6 +164,208 @@ export default function LibraryBrowser() {
   const grid = settings.libraryViewMode === 'grid';
   const lang = settings.interfaceLanguage;
 
+  const selectedBooks = useMemo(
+    () => selectedBookIds
+      .map((id) => library?.books.find((book) => String(book.id) === id))
+      .filter((book): book is BookItem => Boolean(book)),
+    [selectedBookIds, library],
+  );
+
+  useEffect(() => {
+    if (!library) return;
+    const availableIds = library.books.map((book) => String(book.id));
+    setSelectedBookIds((current) => reconcileLibraryBookSelection(current, availableIds));
+    setSelectionAnchorId((current) => current && availableIds.includes(current) ? current : null);
+  }, [library]);
+
+  useEffect(() => {
+    selectionGestureRef.current = selectedBookIds.length > 0;
+  }, [selectedBookIds.length]);
+
+  useEffect(() => {
+    if (selectedBookIds.length === 0 || bookContextMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setSelectedBookIds([]);
+      setSelectionAnchorId(null);
+      selectionGestureRef.current = false;
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selectedBookIds.length, bookContextMenu]);
+
+  const closeBookContextMenu = (restoreFocus = false) => {
+    setBookContextMenu(null);
+    setBookContextMenuPosition(null);
+    if (restoreFocus) {
+      const target = bookMenuReturnFocusRef.current;
+      window.requestAnimationFrame(() => {
+        if (target?.isConnected) target.focus();
+      });
+    }
+  };
+
+  const openBookContextMenu = (book: BookItem, x: number, y: number, returnFocus: HTMLElement | null) => {
+    bookMenuReturnFocusRef.current = returnFocus;
+    setBookContextMenuPosition(null);
+    setBookContextMenu({ bookId: String(book.id), x, y });
+  };
+
+  const getVisibleBookIds = () => (results ?? node?.books ?? []).map((book) => String(book.id));
+
+  useLayoutEffect(() => {
+    if (!bookContextMenu || !bookContextMenuRef.current) return;
+    const rect = bookContextMenuRef.current.getBoundingClientRect();
+    setBookContextMenuPosition(placeReaderContextMenu(
+      { x: bookContextMenu.x, y: bookContextMenu.y },
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  }, [bookContextMenu]);
+
+  useEffect(() => {
+    if (!bookContextMenu) return;
+    const placeMenu = () => {
+      const menu = bookContextMenuRef.current;
+      if (!menu) return;
+      const rect = menu.getBoundingClientRect();
+      setBookContextMenuPosition(placeReaderContextMenu(
+        { x: bookContextMenu.x, y: bookContextMenu.y },
+        { width: rect.width, height: rect.height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ));
+    };
+    const frame = window.requestAnimationFrame(() => {
+      placeMenu();
+      bookContextMenuActionRef.current?.focus();
+    });
+    const onPointerDown = (event: PointerEvent) => {
+      if (!bookContextMenuRef.current?.contains(event.target as Node)) closeBookContextMenu(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeBookContextMenu(true);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', placeMenu);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', placeMenu);
+    };
+  }, [bookContextMenu]);
+
+  useEffect(() => () => {
+    if (bookTouchTimerRef.current !== null) window.clearTimeout(bookTouchTimerRef.current);
+  }, []);
+
+  const clearBookTouchTimer = () => {
+    if (bookTouchTimerRef.current !== null) {
+      window.clearTimeout(bookTouchTimerRef.current);
+      bookTouchTimerRef.current = null;
+    }
+    bookTouchStartRef.current = null;
+  };
+
+  const handleBookContextMenu = (book: BookItem, event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    openBookContextMenu(book, event.clientX, event.clientY, target?.closest('button') ?? null);
+  };
+
+  const handleBookPointerDown = (book: BookItem, event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'touch') return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.closest('[data-book-action]')) return;
+    clearBookTouchTimer();
+    bookTouchStartRef.current = { x: event.clientX, y: event.clientY };
+    const returnFocus = target?.closest('button') ?? null;
+    const x = event.clientX;
+    const y = event.clientY;
+    bookTouchTimerRef.current = window.setTimeout(() => {
+      bookTouchTimerRef.current = null;
+      bookTouchStartRef.current = null;
+      longPressTriggeredRef.current = true;
+      openBookContextMenu(book, x, y, returnFocus);
+    }, 560);
+  };
+
+  const handleBookPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = bookTouchStartRef.current;
+    if (!start) return;
+    if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) clearBookTouchTimer();
+  };
+
+  const handleBookPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (bookTouchTimerRef.current !== null) clearBookTouchTimer();
+    if (longPressTriggeredRef.current) event.preventDefault();
+  };
+
+  const handleBookClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!longPressTriggeredRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    longPressTriggeredRef.current = false;
+  };
+
+  const handleBookClick = (book: BookItem, event: ReactMouseEvent<HTMLButtonElement>) => {
+    const id = String(book.id);
+    const selectionActive = selectedBookIds.length > 0;
+    if (selectionActive || event.shiftKey || event.ctrlKey || event.metaKey) {
+      if (event.shiftKey) {
+        setSelectedBookIds((current) => selectLibraryBookRange(current, getVisibleBookIds(), selectionAnchorId, id));
+      } else {
+        setSelectedBookIds((current) => toggleLibraryBookSelection(current, id));
+      }
+      setSelectionAnchorId(id);
+      selectionGestureRef.current = true;
+      return;
+    }
+    selectionGestureRef.current = false;
+    setPreviewBook(book);
+  };
+
+  const handleBookDoubleClick = (book: BookItem, event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (selectionGestureRef.current || selectedBookIds.length > 0) {
+      event.preventDefault();
+      return;
+    }
+    openBook(book);
+  };
+
+  const handleBookKeyDown = (book: BookItem, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    openBookContextMenu(book, Math.max(8, rect.right - 220), rect.bottom, event.currentTarget);
+  };
+
+  const bookInteractionProps = (book: BookItem) => ({
+    onContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => handleBookContextMenu(book, event),
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => handleBookPointerDown(book, event),
+    onPointerMove: handleBookPointerMove,
+    onPointerUp: handleBookPointerUp,
+    onPointerCancel: () => {
+      clearBookTouchTimer();
+      longPressTriggeredRef.current = false;
+    },
+    onClickCapture: handleBookClickCapture,
+  });
+
+  const handleOpenSelectedBooks = () => {
+    if (selectedBooks.length === 0) return;
+    const booksToOpen = selectedBooks;
+    setSelectedBookIds([]);
+    setSelectionAnchorId(null);
+    selectionGestureRef.current = false;
+    openBooksInReadingTabs(booksToOpen);
+  };
+
   const results = useMemo(() => {
     const q = normalizeHe(query.trim());
     if (!q || !library) return null;
@@ -171,19 +393,25 @@ export default function LibraryBrowser() {
 
   const BookRow = ({ b, showPath }: { b: BookItem; showPath?: boolean }) =>
     grid ? (
-      <div className="relative min-w-0">
+      <div className={`relative min-w-0 rounded-2xl ${selectedBookIds.includes(String(b.id)) ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : ''}`} {...bookInteractionProps(b)}>
         <button
           type="button"
-          onClick={() => setPreviewBook(b)}
-          onDoubleClick={() => openBook(b)}
+          data-book-primary
+          aria-pressed={selectedBookIds.includes(String(b.id))}
+          aria-keyshortcuts="ContextMenu Shift+F10"
+          onClick={(event) => handleBookClick(b, event)}
+          onDoubleClick={(event) => handleBookDoubleClick(b, event)}
+          onKeyDown={(event) => handleBookKeyDown(b, event)}
           title={settings.showBookPreview ? [b.author, b.heDesc].filter(Boolean).join(' – ') : undefined}
-          className="flex h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl border border-outline-variant bg-surface-1 p-3 pt-8 text-center transition hover:bg-surface-3"
+          className={`flex h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl border p-3 pt-8 text-center transition hover:bg-surface-3 ${selectedBookIds.includes(String(b.id)) ? 'border-primary bg-primary-container/35' : 'border-outline-variant bg-surface-1'}`}
         >
           <BookText size={26} className="text-primary" />
           <span className="line-clamp-2 text-sm leading-tight">{b.title}</span>
+          {selectedBookIds.includes(String(b.id)) && <span className="absolute bottom-2 right-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary text-on-primary"><Check size={13} /></span>}
         </button>
         <button
           type="button"
+          data-book-action
           onClick={() => setInfoBook(b)}
           title="מידע על הספר"
           aria-label={`מידע על הספר ${b.title}`}
@@ -191,13 +419,33 @@ export default function LibraryBrowser() {
         >
           <Info size={14} /><span>מידע</span>
         </button>
-      </div>
-    ) : (
-      <div className="flex w-full items-center gap-1 rounded-xl transition hover:bg-surface-3">
         <button
           type="button"
-          onClick={() => setPreviewBook(b)}
-          onDoubleClick={() => openBook(b)}
+          data-book-action
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openBookContextMenu(b, Math.max(8, rect.right - 220), rect.bottom, event.currentTarget);
+          }}
+          aria-label={lang === 'en' ? `Options for ${b.title}` : `אפשרויות לספר ${b.title}`}
+          aria-haspopup="menu"
+          aria-expanded={bookContextMenu?.bookId === String(b.id)}
+          title={lang === 'en' ? 'Book options' : 'אפשרויות ספר'}
+          className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-surface-2 text-on-variant hover:bg-surface-3 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <MoreVertical size={15} />
+        </button>
+      </div>
+    ) : (
+      <div className={`flex w-full items-center gap-1 rounded-xl transition hover:bg-surface-3 ${selectedBookIds.includes(String(b.id)) ? 'bg-primary-container/25 ring-1 ring-primary' : ''}`} {...bookInteractionProps(b)}>
+        <button
+          type="button"
+          data-book-primary
+          aria-pressed={selectedBookIds.includes(String(b.id))}
+          aria-keyshortcuts="ContextMenu Shift+F10"
+          onClick={(event) => handleBookClick(b, event)}
+          onDoubleClick={(event) => handleBookDoubleClick(b, event)}
+          onKeyDown={(event) => handleBookKeyDown(b, event)}
           title={settings.showBookPreview ? b.heDesc || undefined : undefined}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2.5 text-start"
         >
@@ -212,15 +460,33 @@ export default function LibraryBrowser() {
               </span>
             )}
           </span>
+          {selectedBookIds.includes(String(b.id)) && <Check size={16} className="shrink-0 text-primary" />}
         </button>
         <button
           type="button"
+          data-book-action
           onClick={() => setInfoBook(b)}
           title="מידע על הספר"
           aria-label={`מידע על הספר ${b.title}`}
           className="mr-1 shrink-0 rounded-full p-2 text-on-variant hover:bg-surface-2 hover:text-primary"
         >
           <Info size={18} />
+        </button>
+        <button
+          type="button"
+          data-book-action
+          onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openBookContextMenu(b, Math.max(8, rect.right - 220), rect.bottom, event.currentTarget);
+          }}
+          aria-label={lang === 'en' ? `Options for ${b.title}` : `אפשרויות לספר ${b.title}`}
+          aria-haspopup="menu"
+          aria-expanded={bookContextMenu?.bookId === String(b.id)}
+          title={lang === 'en' ? 'Book options' : 'אפשרויות ספר'}
+          className="mr-1 shrink-0 rounded-full p-2 text-on-variant hover:bg-surface-2 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <MoreVertical size={17} />
         </button>
       </div>
     );
@@ -381,6 +647,34 @@ export default function LibraryBrowser() {
             )}
           </div>
         )}
+        {selectedBooks.length > 0 && (
+          <div className="sticky bottom-0 z-20 mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant bg-surface-2/95 px-4 py-3 shadow-[0_-4px_14px_rgba(0,0,0,0.08)] backdrop-blur motion-reduce:transition-none">
+            <span role="status" aria-live="polite" className="text-sm font-medium text-on-surface">
+              {lang === 'en' ? `${selectedBooks.length} books selected` : `${selectedBooks.length} ספרים נבחרו`}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedBookIds([]);
+                  setSelectionAnchorId(null);
+                  selectionGestureRef.current = false;
+                }}
+                className="rounded-lg px-3 py-2 text-sm text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {lang === 'en' ? 'Clear selection' : 'ביטול בחירה'}
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenSelectedBooks}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              >
+                <BookOpen size={16} />
+                {lang === 'en' ? 'Open selected' : 'פתח נבחרים'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       {previewBook && (
         <aside className="flex max-h-[45vh] min-h-0 w-full max-w-none shrink-0 flex-col border-t border-outline-variant bg-surface-1 lg:max-h-none lg:w-[390px] lg:max-w-[390px] lg:border-t-0 lg:border-r">
@@ -419,6 +713,54 @@ export default function LibraryBrowser() {
         </aside>
       )}
       </div>
+      {bookContextMenu && library && (() => {
+        const contextBook = library.books.find((book) => String(book.id) === bookContextMenu.bookId);
+        if (!contextBook) return null;
+        const isSelected = selectedBookIds.includes(bookContextMenu.bookId);
+        const action = getLibraryBookContextMenuAction(isSelected, lang === 'en' ? 'en' : 'he');
+        return createPortal(
+          <div
+            className="fixed inset-0 z-[120] bg-transparent"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) closeBookContextMenu(false);
+            }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <div
+              ref={bookContextMenuRef}
+              role="menu"
+              aria-label={lang === 'en' ? 'Book options' : 'אפשרויות ספר'}
+              dir={lang === 'en' ? 'ltr' : 'rtl'}
+              className="fixed z-[121] min-w-[190px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-2xl motion-reduce:transition-none"
+              style={{
+                left: bookContextMenuPosition?.left ?? bookContextMenu.x,
+                top: bookContextMenuPosition?.top ?? bookContextMenu.y,
+                maxWidth: bookContextMenuPosition?.maxWidth ?? 'calc(100vw - 16px)',
+                maxHeight: bookContextMenuPosition?.maxHeight ?? 'calc(100vh - 16px)',
+              }}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <button
+                ref={bookContextMenuActionRef}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={isSelected}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-start hover:bg-surface-3 focus:bg-surface-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                onClick={() => {
+                  setSelectedBookIds((current) => toggleLibraryBookSelection(current, bookContextMenu.bookId));
+                  setSelectionAnchorId(bookContextMenu.bookId);
+                  selectionGestureRef.current = !isSelected || selectedBookIds.length > 1;
+                  closeBookContextMenu(true);
+                }}
+              >
+                {isSelected ? <Check size={16} /> : <Plus size={16} />}
+                <span>{action.label}</span>
+              </button>
+            </div>
+          </div>,
+          document.body,
+        );
+      })()}
       <BookInfoDialog book={infoBook} onClose={() => setInfoBook(null)} />
     </div>
   );

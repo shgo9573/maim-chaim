@@ -60,6 +60,7 @@ interface Ctx {
   openBook: (ref: BookRef, line?: number, highlight?: Highlight) => void;
   openBookInNewTab: (ref: BookRef, line?: number, highlight?: Highlight) => void;
   openBookInBackground: (ref: BookRef, line?: number, highlight?: Highlight) => void;
+  openBooksInReadingTabs: (refs: BookRef[]) => void;
   openBookInActiveTab: (ref: BookRef, line?: number) => void;
   removeHistoryItem: (item: ReadingHistoryItem) => Promise<void>;
   notes: PersonalNote[];
@@ -605,6 +606,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
+  // Opens a selected library batch as ordinary reading tabs. This deliberately
+  // bypasses the desktop Talmud PDF preference: the web selection workflow is text-only.
+  const openBooksInReadingTabs = useCallback((refs: BookRef[]) => {
+    const uniqueRefs: BookRef[] = [];
+    const seen = new Set<string>();
+    for (const ref of refs) {
+      const id = String(ref.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const knownBook = libRef.current?.byId.get(id);
+      if (isExcludedBook(knownBook || ref)) {
+        toast(EXCLUDED_BOOK_NOTICE);
+        continue;
+      }
+      uniqueRefs.push(ref);
+    }
+    if (uniqueRefs.length === 0) return;
+
+    const existingById = new Map<string, BookTab>(
+      tabsRef.current
+        .filter((tab): tab is BookTab => tab.kind === 'book')
+        .map((tab) => [String(tab.bookId), tab] as const),
+    );
+    const newTabs: BookTab[] = uniqueRefs
+      .filter((ref) => !existingById.has(String(ref.id)))
+      .map((ref) => ({
+        id: newTabId(),
+        kind: 'book',
+        bookId: ref.id,
+        title: ref.title,
+        category: ref.categoryPath,
+        line: histRef.current.find((item) => String(item.bookId) === String(ref.id))?.lastPosition ?? 1,
+      }));
+
+    const firstRefId = String(uniqueRefs[0].id);
+    const firstTabId =
+      existingById.get(firstRefId)?.id ??
+      newTabs.find((tab) => String(tab.bookId) === firstRefId)?.id;
+    if (!firstTabId) return;
+
+    setTabs((current) => {
+      const currentBookIds = new Set(
+        current.filter((tab) => tab.kind === 'book').map((tab) => String(tab.bookId)),
+      );
+      const additions = newTabs.filter((tab) => !currentBookIds.has(String(tab.bookId)));
+      return additions.length > 0 ? [...current, ...additions] : current;
+    });
+    setActiveTabId(firstTabId);
+    setScreen('reading');
+  }, [setScreen, toast]);
+
   const openBookInActiveTab = useCallback(
     (ref: BookRef, line?: number) => {
       const knownBook = libRef.current?.byId.get(String(ref.id));
@@ -913,7 +965,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
       settings, updateSettings, resetSettings,
-      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBookInActiveTab, openBookByTitle, openSearch,
+      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
       bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory,
       setBookmarks: setVisibleBookmarks, setHistory: setVisibleHistory,
@@ -921,7 +973,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
