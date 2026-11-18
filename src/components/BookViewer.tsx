@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bookmark, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, X, Copy, ScrollText } from 'lucide-react';
+import { Bookmark, BookOpen, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, X, Copy, ScrollText } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { BookTab, ContentLine, TocEntry } from '../types';
@@ -10,6 +10,7 @@ import { EmptyState, IconBtn, Spinner } from './ui';
 import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
+import { groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -144,7 +145,7 @@ function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLEleme
 }
 
 export default function BookViewer({ tab }: { tab: BookTab }) {
-  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
+  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, openBookByTitle, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
   const [lines, setLines] = useState<ContentLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -153,6 +154,9 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [selMenu, setSelMenu] = useState<SelMenu | null>(null);
   const [contextMenu, setContextMenu] = useState<ReaderContextMenu | null>(null);
+  const [commentaryMenuExpanded, setCommentaryMenuExpanded] = useState(false);
+  const [commentaryMenuStatus, setCommentaryMenuStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const [commentaryMenuItems, setCommentaryMenuItems] = useState<ReturnType<typeof groupReaderCommentaryLinks>>([]);
   const [noteDraft, setNoteDraft] = useState<ReaderNoteDraft | null>(null);
   const [noteText, setNoteText] = useState('');
   const [bookSearchQuery, setBookSearchQuery] = useState('');
@@ -175,6 +179,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const scRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const firstContextMenuItemRef = useRef<HTMLButtonElement>(null);
+  const commentaryMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const commentaryMenuFirstItemRef = useRef<HTMLButtonElement>(null);
+  const commentaryMenuRequestRef = useRef(0);
+  const focusCommentaryMenuItemRef = useRef(false);
   const touchTimerRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; line: number } | null>(null);
   const selectionSnapshotRef = useRef<ReturnType<typeof getReaderSelectionForContextMenu> | null>(null);
@@ -202,7 +210,20 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   }, [contextMenu]);
 
   useEffect(() => {
+    if (!contextMenu || !commentaryMenuExpanded || !focusCommentaryMenuItemRef.current || commentaryMenuStatus === 'loading') return;
+    const frame = window.requestAnimationFrame(() => {
+      commentaryMenuFirstItemRef.current?.focus();
+      focusCommentaryMenuItemRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [contextMenu, commentaryMenuExpanded, commentaryMenuStatus, commentaryMenuItems]);
+
+  useEffect(() => {
+    commentaryMenuRequestRef.current += 1;
     setContextMenu(null);
+    setCommentaryMenuExpanded(false);
+    setCommentaryMenuStatus('idle');
+    setCommentaryMenuItems([]);
     setNoteDraft(null);
     setNoteText('');
     setBookSearchAutoRun(false);
@@ -710,6 +731,11 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const selection = selectionOverride === undefined
       ? (scRef.current ? getReaderSelectionForContextMenu(scRef.current, lineNode) : null)
       : selectionOverride;
+    commentaryMenuRequestRef.current += 1;
+    setCommentaryMenuExpanded(false);
+    setCommentaryMenuStatus('idle');
+    setCommentaryMenuItems([]);
+    focusCommentaryMenuItemRef.current = false;
     setSelMenu(null);
     setContextMenu({
       x,
@@ -824,7 +850,43 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     }
   };
 
+  const loadReaderCommentaryLinks = async (line: number) => {
+    const requestId = ++commentaryMenuRequestRef.current;
+    setCommentaryMenuStatus('loading');
+    setCommentaryMenuItems([]);
+    try {
+      const response = await api.links(tab.bookId, line);
+      if (requestId !== commentaryMenuRequestRef.current) return;
+      setCommentaryMenuItems(groupReaderCommentaryLinks(response.links ?? []));
+      setCommentaryMenuStatus('loaded');
+    } catch {
+      if (requestId !== commentaryMenuRequestRef.current) return;
+      setCommentaryMenuStatus('error');
+    }
+  };
+
+  const toggleReaderCommentaryMenu = () => {
+    if (!contextMenu) return;
+    if (commentaryMenuExpanded) {
+      setCommentaryMenuExpanded(false);
+      return;
+    }
+    setCommentaryMenuExpanded(true);
+    if (commentaryMenuStatus === 'idle' || commentaryMenuStatus === 'error') {
+      void loadReaderCommentaryLinks(contextMenu.line);
+    }
+  };
+
+  const closeReaderCommentaryMenu = () => {
+    setCommentaryMenuExpanded(false);
+    window.requestAnimationFrame(() => commentaryMenuTriggerRef.current?.focus());
+  };
+
   const closeReaderContextMenu = () => {
+    commentaryMenuRequestRef.current += 1;
+    setCommentaryMenuExpanded(false);
+    setCommentaryMenuStatus('idle');
+    setCommentaryMenuItems([]);
     setContextMenu(null);
     window.requestAnimationFrame(() => scRef.current?.focus({ preventScroll: true }));
   };
@@ -832,6 +894,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      if (commentaryMenuExpanded) {
+        closeReaderCommentaryMenu();
+        return;
+      }
       closeReaderContextMenu();
       return;
     }
@@ -1262,16 +1328,105 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
               <MessageSquareText size={15} /> הוסף הערה אישית
             </button>
             <button
+              ref={commentaryMenuTriggerRef}
               type="button"
               role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={commentaryMenuExpanded}
+              aria-controls={`reader-commentary-context-submenu-${tab.id}`}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
-              onClick={() => {
-                setContextMenu(null);
-                openCommentaryForLine(contextMenu.line);
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                event.preventDefault();
+                if (commentaryMenuExpanded) {
+                  closeReaderCommentaryMenu();
+                  return;
+                }
+                focusCommentaryMenuItemRef.current = true;
+                toggleReaderCommentaryMenu();
               }}
+              onClick={toggleReaderCommentaryMenu}
             >
-              <MessageSquareText size={15} /> הצג מפרשים לשורה
+              <MessageSquareText size={15} />
+              <span className="flex-1">מפרשים על שורה זו</span>
+              <ChevronDown size={14} className={`transition-transform motion-reduce:transition-none ${commentaryMenuExpanded ? 'rotate-180' : ''}`} />
             </button>
+            {commentaryMenuExpanded && (
+              <div
+                id={`reader-commentary-context-submenu-${tab.id}`}
+                role="group"
+                aria-label="מפרשים על שורה זו"
+                dir="rtl"
+                className="mr-3 mt-1 flex flex-col border-r border-outline-variant pr-2"
+              >
+                <button
+                  ref={commentaryMenuFirstItemRef}
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                  onClick={() => {
+                    setContextMenu(null);
+                    openCommentaryForLine(contextMenu.line);
+                  }}
+                >
+                  <PanelRightOpen size={15} /> הצג את חלונית המפרשים
+                </button>
+                {commentaryMenuStatus === 'loading' && (
+                  <div role="presentation" aria-live="polite" className="px-3 py-2 text-xs text-on-variant">
+                    טוען מפרשים…
+                  </div>
+                )}
+                {commentaryMenuStatus === 'error' && (
+                  <>
+                    <div role="presentation" aria-live="polite" className="px-3 py-2 text-xs text-error">
+                      לא ניתן לטעון את המפרשים לשורה זו
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                      onClick={() => void loadReaderCommentaryLinks(contextMenu.line)}
+                    >
+                      נסה שוב
+                    </button>
+                  </>
+                )}
+                {commentaryMenuStatus === 'loaded' && commentaryMenuItems.length === 0 && (
+                  <div role="presentation" className="px-3 py-2 text-xs text-on-variant">
+                    אין מפרשים לשורה זו
+                  </div>
+                )}
+                {commentaryMenuStatus === 'loaded' && commentaryMenuItems.map((item) => {
+                  const matches = (library?.books ?? []).filter((book) => book.title.trim() === item.title);
+                  const targetBook = matches.length === 1 ? matches[0] : null;
+                  const unavailableReason = libraryLoading
+                    ? 'טוען את פרטי הספרייה'
+                    : !targetBook
+                      ? 'לא ניתן לפתוח: שם הספר אינו ייחודי בקטלוג'
+                      : isExcludedBook(targetBook)
+                        ? EXCLUDED_BOOK_NOTICE
+                        : '';
+                  return (
+                    <button
+                      key={item.title}
+                      type="button"
+                      role="menuitem"
+                      disabled={Boolean(unavailableReason)}
+                      title={unavailableReason || item.title}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={() => {
+                        setContextMenu(null);
+                        openBookByTitle(item.title, item.line);
+                      }}
+                    >
+                      <BookOpen size={15} />
+                      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                      {item.count > 1 && <span className="text-xs text-on-variant">×{item.count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
