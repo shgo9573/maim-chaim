@@ -28,8 +28,9 @@ export function shouldOfferTextOpenContextAction(
     .split(/[\\/,]/)
     .map((segment) => segment.trim())
     .filter(Boolean);
+  const seder = segments[1] ?? '';
   return segments[0] === 'תלמוד בבלי'
-    && /^סדר(?:\\s|$)/u.test(segments[1] ?? '')
+    && (seder === 'סדר' || seder.startsWith('סדר '))
     && !/pdf/i.test(book.fileType ?? '');
 }
 
