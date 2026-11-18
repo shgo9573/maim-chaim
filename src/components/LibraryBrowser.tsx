@@ -10,7 +10,7 @@ import { findShasTractate, parseDafString } from './TzuratHaDafModal';
 import { DailyStudyStrip } from './DailyStudy';
 import { t } from '../i18n';
 import { placeReaderContextMenu } from '../utils/readerContextMenu';
-import { getLibraryBookContextMenuAction, reconcileLibraryBookSelection, selectLibraryBookRange, toggleLibraryBookSelection } from '../utils/libraryContextMenu';
+import { getLibraryBookContextMenuAction, reconcileLibraryBookSelection, selectLibraryBookRange, shouldOfferTextOpenContextAction, toggleLibraryBookSelection } from '../utils/libraryContextMenu';
 import type { BookItem } from '../types';
 import BookInfoDialog from './BookInfoDialog';
 
@@ -756,6 +756,20 @@ export default function LibraryBrowser() {
                 {isSelected ? <Check size={16} /> : <Plus size={16} />}
                 <span>{action.label}</span>
               </button>
+              {shouldOfferTextOpenContextAction(contextBook) && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-start hover:bg-surface-3 focus:bg-surface-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  onClick={() => {
+                    closeBookContextMenu(false);
+                    openBooksInReadingTabs([contextBook]);
+                  }}
+                >
+                  <BookOpen size={16} />
+                  <span>{lang === 'en' ? 'Open as text' : 'פתיחה כטקסט'}</span>
+                </button>
+              )}
             </div>
           </div>,
           document.body,

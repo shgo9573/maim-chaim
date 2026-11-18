@@ -1,3 +1,5 @@
+import type { BookItem } from '../types';
+
 export type LibraryBookContextMenuActionId = 'toggle-selection';
 
 export interface LibraryBookContextMenuAction {
@@ -17,6 +19,18 @@ export function getLibraryBookContextMenuAction(
       : (isSelected ? 'הסר מהבחירה' : 'הוסף לבחירה'),
     selected: isSelected,
   };
+}
+
+export function shouldOfferTextOpenContextAction(
+  book: Pick<BookItem, 'categoryPath' | 'fileType'>,
+): boolean {
+  const segments = book.categoryPath
+    .split(/[\\/,]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return segments[0] === 'תלמוד בבלי'
+    && /^סדר(?:\\s|$)/u.test(segments[1] ?? '')
+    && !/pdf/i.test(book.fileType ?? '');
 }
 
 export function toggleLibraryBookSelection(

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   getLibraryBookContextMenuAction,
   reconcileLibraryBookSelection,
+  shouldOfferTextOpenContextAction,
   selectLibraryBookRange,
   toggleLibraryBookSelection,
 } from '../../src/utils/libraryContextMenu';
@@ -38,4 +39,27 @@ test('missing range anchor selects only the target and does not discard prior se
 
 test('selection reconciliation drops books that disappeared from the library', () => {
   assert.deepEqual(reconcileLibraryBookSelection(['10', '20', '30'], ['10', '30', '40']), ['10', '30']);
+});
+
+test('text-open context action is limited to text books in Bavli seder categories', () => {
+  assert.equal(
+    shouldOfferTextOpenContextAction({ categoryPath: 'תלמוד בבלי/סדר זרעים', fileType: 'text' }),
+    true,
+  );
+  assert.equal(
+    shouldOfferTextOpenContextAction({ categoryPath: 'תלמוד בבלי, סדר מועד/מסכת ברכות' }),
+    true,
+  );
+  assert.equal(
+    shouldOfferTextOpenContextAction({ categoryPath: 'תלמוד בבלי/ראשונים/רש"י' }),
+    false,
+  );
+  assert.equal(
+    shouldOfferTextOpenContextAction({ categoryPath: 'תורה/סדר זרעים' }),
+    false,
+  );
+  assert.equal(
+    shouldOfferTextOpenContextAction({ categoryPath: 'תלמוד בבלי/סדר זרעים', fileType: 'pdf' }),
+    false,
+  );
 });
