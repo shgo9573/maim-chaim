@@ -1772,3 +1772,58 @@ Commits חדשים ב־main שנבדקו:
   - `lib/pdf_book/utils/pdf_plugin_menu_entries.dart` ו-`test/pdf_book/pdf_plugin_menu_entries_test.dart` — תפריטי תוספי PDF; מחוץ לתחום לפי הוראת המשתמש.
   - `test/text_book/view/combined_view/combined_view_context_menu_test.dart`, `commentary_right_click_selection_test.dart`, `simple_text_viewer_context_menu_test.dart`, `simple_text_viewer_menu_entries_test.dart`, `test/navigation/tab_context_menu_test.dart`, `test/library/view/library_book_context_menu_test.dart`, `test/personal_notes/personal_note_content_view_context_menu_test.dart`, `test/plugins/services/context_menu_registry_test.dart`, `test/tools/dictionary/aramaic_context_menu_open_tool_test.dart`, `test/widgets/misc/direct_link_menu_entries_test.dart`, `test/widgets/misc/link_context_menu_entry_test.dart`, `test/widgets/text/rtl_text_field_context_menu_test.dart`.
 - תיעדוף מעודכן: לפני הוספת תתי-תפריטים חדשים לקורא, להשלים בדיקת פעולות קיימות באתר ולבנות primitive משותף רק אם הוא נחוץ לזרימה מלאה. אין לגעת במנוע/שירות החיפוש.
+
+
+## 18 בנובמבר 2026, 07:15 — מיפוי רוחבי של תפריטי ההקשר והמשך התאמה
+
+### Branch map ובקרת שינויים
+| מאגר/ענף | HEAD SHA | תאריך HEAD (UTC) | מצב |
+|---|---|---|---|
+| `shgo9573/maim-chaim:main` | `73d66cb7aee4eb37e17d94332d7d0234c64995de` | 2026-11-17 17:40:52 | נבדק; מאז `8fb7fe881c9152244a5667a13b7d5b413983268e` נוספו שני commits תיעודיים בלבד ב-`idid.md` |
+| `arena/9b3e1906-maim-chaim` | `ee8a38c72d1e70461bc1750376660a9d15ea93a9` | 2026-11-06 02:21:56 | נבדק; ללא שינוי מאז ה-SHA המתועד |
+| `arena/9c1ba425-maim-chaim` | `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d` | 2026-11-06 02:34:08 | נבדק; ללא שינוי מאז ה-SHA המתועד |
+| `Otzaria/otzaria:dev` | `740fb0c1755ebf4beb286d25a62b17dd54d26c49` | 2026-11-18 00:19:32 | מקור לקריאה בלבד; 197 commits חדשים מאז `f99dc4bda1d803b76a0e170125d1f124097e566b` |
+
+- נשלפו כל עמודי הענפים של מאגר היעד (`per_page=100`): עמוד 1 החזיר שלושה ענפים ועמוד 2 ריק. הענף האחרון לפי תאריך HEAD הוא `main`.
+- `newbugs.md` נקרא ב-`main`: נמצא דיווח פתוח על חלון חיפוש הכרטיסיות שמזיז את התצוגה שמאלה ומסתיר את סרגל הצד. אין בדיווח מזהה/חומרה/שלבי שחזור מלאים; חומרה לא צוינה, והוא נשאר פתוח ולא מאומת כתיקון.
+- `newbugs.md` אינו קיים בענפים `arena/9b3e1906-maim-chaim` ו-`arena/9c1ba425-maim-chaim`; לא הוחלף בקובץ אחר ולא הוסק מכך שאין בהם באגים.
+- הושוו כל שלושת ה-HEADs ל-SHA האחרון שתועד. השינויים ב-`main` מאז הריצה הקודמת הם תיעודיים בלבד; לא נמצאו commits חדשים בענפי arena.
+- מקור dev התקדם ב-197 commits וב-228 קבצים מאז ה-SHA המתועד. השינויים הרלוונטיים למיפוי UI/תפריטים כוללים את `lib/library/view/library_browser.dart`, `lib/text_book/view/page_shape/simple_text_viewer.dart`, `lib/text_book/utils/commentators_context_menu.dart`, `lib/text_book/view/sibling_commentaries_menu.dart`, `lib/widgets/misc/link_context_menu_entry.dart` וחבילת `packages/otzaria_context_menu`. שינויים ב-PDF ובמנוע/תשתית החיפוש לא נבחרו למימוש ולא הועתקו.
+- HEAD המקור האחרון הוא commit `740fb0c1755ebf4beb286d25a62b17dd54d26c49`, שכותרתו מתארת הוספת "מעבר למקור" ברמה העליונה בתפריט ההקשר של מפרש. הקוד והבדיקות ב-`simple_text_viewer.dart`, `sibling_commentaries_menu.dart` ו-`simple_text_viewer_context_menu_test.dart` מאמתים שהפריט מתווסף לאחר טעינת קישור SOURCE מועדף, ולא מניחים מקור על סמך טקסט בלבד.
+
+### מפת תפריטי ההקשר — מקור מול האתר
+| הקשר | מימוש מקור שנבדק | מצב אתר ב-HEAD הנוכחי | פער/החלטה |
+|---|---|---|---|
+| ספר בספרייה | `lib/library/view/library_browser.dart`: הוספה/הסרה מבחירה; למסכת בבלי רשמית גם "פתיחה כטקסט" ו"פתיחה כ-PDF". הבדיקה: `test/library/view/library_book_context_menu_test.dart`. | `LibraryBrowser.tsx` מציג הוספה/הסרה מבחירה; בחירה מרובה עובדת. | חסרה פתיחה מפורשת כטקסט למסכת בבלי כאשר העדפת הפתיחה הגלובלית היא PDF. ייבחר למימוש; אפשרות PDF נדחית ולא תתווסף. |
+| טקסט ראשי בקורא | `simple_text_viewer.dart`, `reader_menu_entries.dart`, `commentators_context_menu.dart`, `dictionary_context_menu_entries.dart`, `reader_plugin_menu_entries.dart`: שורת פעולות חיפוש/העתקה/הערה/קישור; "העתק כ..."; חיפוש בספר; מפרשים על פסקה; קישורים; מעבר למקור/מפרשים נוספים; מילון ראשי תיבות וארמי-עברי; סימניה; דיווח טעות; העתקת פסקה; פעולות תוספים. | `BookViewer.tsx` כולל העתקת פסקה/בחירה, קישור לשורה/לטקסט, חיפוש כללי, חיפוש בספר, סימניה, הערה והצגת מפרשים. | חסרים תתי-תפריטי מפרשים/קישורים/מעבר למקור, מילון, "העתק כ...", דיווח טעות ותוספים. אין לשנות חיפוש; פתיחת חלונית המפרשים הקיימת מותרת. |
+| שורת מפרש/טקסט מפרש | `ContextMenuUtils.buildCommentaryContextMenu`, `simple_text_viewer.dart`: חיפוש, העתקה, הערה, קישור ישיר, העתק כ..., מפרשים/קישורים של יעד, פתיחה בכרטיסייה קיימת/חדשה ודיווח טעות לספר רשמי. | `CommentaryPanel.tsx` כולל חיפוש, העתקה, גזירה/הדבקה, בחירת הכול, העתקת פסקה, פתיחה פעילה/ברקע; קיים תפריט נפרד להערה אישית ולעורך. | חסרים קישור ישיר, תתי-תפריטי יעד ודיווח טעות. "מעבר למקור" אינו ניתן למימוש אמין עם טיפוס `CommentaryLink` הנוכחי בלבד, כי אין בו connectionType/provenance או מזהה יעד יציב; לא להמציא קישור. |
+| כרטיסיות | `lib/navigation/view/tab_context_menu.dart`: הצמדה/ביטול הצמדה, סגירה בודדת/מרובה, סגור הכל/אחרים/אחרי, שכפול, העברה לחלון חדש/קיים, חלון חדש, הצג לצד, סגירת חלונית, החלפת צדדים, חזרה לתצוגה רגילה, מיקום הרצועה ורשימת כרטיסיות פתוחות. | `ReadingScreen.tsx` כולל סגור, סגור הכל, סגור אחרים, סגור משמאל, שכפול ורשימת כרטיסיות פתוחות. | הצמדה ופיצול/חלונות חסרים; חלונות Desktop לא יועתקו ללא מודל Web אמיתי. יש לבחון הצמדה ומעבר בין טאבים בהמשך. |
+| הערות אישיות | `personal_note_content_view.dart` ו-`personal_note_content_view_context_menu_test.dart`: בתוכן הערה תפריט מותאם להעתקה; בעורך יש לשמר את פעולות העורך בלי לפתוח תפריט כפול. | `CommentaryPanel.tsx` כולל תפריט לתוכן הערה ותפריט לעורך, בנוסף לפעולות עריכה/מחיקה. | ה-wiring קיים חלקית; נדרשת בדיקת רגרסיה/מגע, אך אינו נבחר כרגע. |
+| מילון מתוך בחירת טקסט | `dictionary_context_menu_entries.dart`: התאמות ראשי תיבות, מילון ארמי-עברי, התאמות מדויקות/מכילות/צירופים ופתיחת כלי המילון. | קיים `assets/dictionary.json`, אך אין חיבור מתועד מתפריט הקורא לחיפוש מילון. | חסר; אפשר לבחון שימוש בנכס הקיים, ללא חיפוש ברשת וללא שינוי מנוע החיפוש. |
+| תוספים | `context_menu_registry.dart`, `plugin_context_menu_entries.dart`, `reader_plugin_menu_entries.dart`: רישום מותנה, עד שני פריטים ראשיים לתוסף, עומק עד 2 ועד 30 ילדים, הקשר בחירה/ספר/מפרש. | קיימים SDK/מסמכי תוספים ו-MCP ייעודי; לא נמצא runtime תוספים כללי המקביל ל-registry של המקור. | חסר/חסום עד שיוגדר runtime Web אמיתי; אין להוסיף פריטי דמה. |
+| קישור inline | `ContextMenuUtils.buildInlineLinkContextMenuEntries` ו-`html_link_handler.dart`: פתיחת קישור לספר אחר בכרטיסייה חדשה. | הקורא תומך בקישורי עומק שהועתקו, אך תפריט ייעודי לקישור inline לא אומת. | להוסיף לאחר אימות ה-HTML והיעד; ללא שינוי חיפוש. |
+| מנוע תפריטים משותף | `packages/otzaria_context_menu`: תתי-תפריטים עצלים, שורות אייקונים, פריטים מושהים, focus/keyboard, hover preview, viewport ומגע. | קיימים Portals נפרדים ו-`placeReaderContextMenu`; אין primitive Web משותף מלא לתת-תפריטים. | פער ארכיטקטוני. יש לבנות רכיב משותף רק כאשר מימוש תת-תפריט ממשי מצדיק זאת. |
+| PDF | תפריטי פתיחה/קישורים/הערות PDF במקור. | — | נדחה במפורש לפי הוראת המשתמש; לא לממש ולא לבדוק. |
+
+### בחירת המשימה לריצה זו — לפני המימוש
+- מקור: `Otzaria/otzaria:dev`, `lib/library/view/library_browser.dart`, הפונקציות `_offersTalmudFormatChoice` ו-`_buildBookContextMenuRegion`; תנאי המקור הוא ספר טקסט רשמי בנתיב "תלמוד בבלי / סדר ...". המקור מציג "פתיחה כטקסט" לצד אפשרות PDF.
+- בדיקת מקור: `test/library/view/library_book_context_menu_test.dart` מאמתת את פתיחת תפריט הפורמט בלחיצה ימנית על ספר בבלי.
+- מצב האתר: `src/components/LibraryBrowser.tsx` מציג כרגע רק toggle של בחירה. `src/store.tsx` כבר מספק `openBooksInReadingTabs`, שממחזר טאב קיים/יוצר טאב חדש ופותח טקסט בלבד תוך עקיפת העדפת PDF הגלובלית.
+- פער: אין דרך מפורשת לפתוח טקסט בבלי מהתפריט כאשר הגדרת פתיחת בבלי מכוונת ל-PDF.
+- מימוש מתוכנן: להוסיף פעולה אמיתית "פתיחה כטקסט" רק למסכתות בבלי בנתיב `תלמוד בבלי/סדר ...`, באמצעות `openBooksInReadingTabs([book])`; לא להוסיף פריט PDF, לא לשנות את ברירת המחדל לפתיחה רגילה ולא לשנות Backend.
+- קבצים ובדיקות מתוכננים: `src/utils/libraryContextMenu.ts`, `src/components/LibraryBrowser.tsx`, `test/frontend/libraryContextMenu.test.ts`. לבדוק סינון לפי נתיב/סוג קובץ, פעולה בטאב טקסט, ושהפעולה אינה משנה את בחירת הספרים.
+- תלות: `openBooksInReadingTabs` קיים ב-store ונבדק בריצת 17 בנובמבר; אין צורך בשינוי סכמת נתונים או API.
+
+### סדר המשך
+1. להשלים פתיחה כטקסט בתפריט ספר בבלי (נבחרה לריצה זו).
+2. להשלים תת-תפריט מפרשים/קישורים בקורא הראשי באמצעות נתוני API קיימים בלבד; לא לשנות את חוזה החיפוש.
+3. לאמת תפריטי מפרשים, הערות, קישורי מקור ומילון; לא להציג פעולה ללא יעד/נתונים אמינים.
+4. להמשיך בכרטיסיות ובתפריט התוספים לפי יכולות Web אמיתיות.
+5. לאחר השלמת קבוצה משמעותית של תפריטי הקשר, לשחזר ולתקן את באג פריסת חיפוש הכרטיסיות. הבאג נשאר פתוח עד בדיקת דפדפן במסך רחב וצר, פתיחה/סגירה ו-focus.
+6. להמשיך במטריצת ההתאמה הכללית של כלל אוצריא; לא להמתין ל-commits חדשים.
+
+### גבולות ואימות
+- `AGENTS.md` ו-`package.json` נקראו. פקודות הפרויקט הזמינות: `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend`, `npm run build`.
+- לא בוצע שינוי בקוד המקור; המקור נשאר לקריאה בלבד.
+- מנוע החיפוש ושירות החיפוש לא נערכו; לא שונו routes, payloads, שאילתות או תוצאות חיפוש.
+- לא נגעה תמיכת PDF, לא נוספה אפשרות PDF, ולא נגעו בשרת/DNS/פריסה ידנית.
