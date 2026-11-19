@@ -2105,7 +2105,7 @@ Commits חדשים ב־main שנבדקו:
 - לא נערך קוד PDF ולא נוספה תמיכת PDF.
 
 #### מפת ענפים מעודכנת בסוף הריצה
-- `main`: `9638e5dd1073c730121cc89d971aa91fcc9258c7` — HEAD סופי לאחר commit התיעוד; commit המימוש הוא `6f1e682f7c33fbe7e8103ba94afc476d775e5a4a`; נבדק.
+- `main`: `149ebeecf138d35102bd840ee58451087b7539f2` — HEAD סופי לאחר commits התיעוד; commit המימוש הוא `6f1e682f7c33fbe7e8103ba94afc476d775e5a4a`; נבדק.
 - `arena/9b3e1906-maim-chaim`: `ee8a38c72d1e70461bc1750376660a9d15ea93a9` — ללא שינוי; לקריאה בלבד.
 - `arena/9c1ba425-maim-chaim`: `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d` — ללא שינוי; לקריאה בלבד.
 - `Otzaria/otzaria:dev`: `5f36632113ff87425de525b009f7b1125d75fb2c` — מקור לקריאה בלבד.
