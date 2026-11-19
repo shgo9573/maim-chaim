@@ -145,6 +145,8 @@ export const api = {
   bookmarks: async (): Promise<BookmarkItem[]> => (await request<{ bookmarks: BookmarkItem[] }>('/user/bookmarks')).bookmarks || [],
   addBookmark: (b: Partial<BookmarkItem>) =>
     request<{ success: boolean; item: BookmarkItem; bookmarks: BookmarkItem[] }>('/user/bookmarks', { method: 'POST', json: b }),
+  updateBookmarkDescription: (id: string, description: string) =>
+    request<{ success: boolean; item: BookmarkItem; bookmarks: BookmarkItem[] }>(`/user/bookmarks/${encodeURIComponent(id)}`, { method: 'PATCH', json: { description } }),
   deleteBookmark: (id: string) =>
     request<{ success: boolean; bookmarks: BookmarkItem[] }>(`/user/bookmarks/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   history: async (): Promise<ReadingHistoryItem[]> => (await request<{ history: ReadingHistoryItem[] }>('/user/history')).history || [],

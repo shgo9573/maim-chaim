@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, PenLine, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, MoreVertical, PenLine, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
 import DailyStudy from './DailyStudy';
 import CalendarZmanim from './CalendarZmanim';
 import TzuratHaDaf from './TzuratHaDaf';
+import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { useApp } from '../store';
 import { Btn, EmptyState, Select, Spinner } from './ui';
 import { gematria, timeAgo } from '../utils/text';
-import type { PersonalNote, ServerStatus } from '../types';
+import type { BookmarkItem, PersonalNote, ServerStatus } from '../types';
 import { filterAndSortPersonalNotes, type PersonalNotesSortOrder } from '../utils/personalNotes';
 import { t as translate } from '../i18n';
+import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
+import { getBookmarkContextMenuActions, normalizeBookmarkDescription, type BookmarkContextMenuActionId } from '../utils/bookmarkContextMenu';
 
 type Tool = 'daily' | 'calendar' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
 
@@ -67,8 +70,201 @@ export default function MoreScreen() {
   );
 }
 
+interface BookmarkContextMenuState {
+  bookmarkId: string;
+  x: number;
+  y: number;
+}
+
 function Bookmarks() {
-  const { bookmarks, removeBookmark, openBook } = useApp();
+  const { bookmarks, openBook, setBookmarks, toast } = useApp();
+  const [contextMenu, setContextMenu] = useState<BookmarkContextMenuState | null>(null);
+  const [menuPosition, setMenuPosition] = useState<ReturnType<typeof placeReaderContextMenu> | null>(null);
+  const [editingBookmark, setEditingBookmark] = useState<BookmarkItem | null>(null);
+  const [descriptionDraft, setDescriptionDraft] = useState('');
+  const [savingDescription, setSavingDescription] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuReturnFocusRef = useRef<HTMLElement | null>(null);
+  const touchTimerRef = useRef<number | null>(null);
+  const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+  const longPressTriggeredRef = useRef(false);
+
+  const closeContextMenu = useCallback((restoreFocus = false) => {
+    const trigger = menuReturnFocusRef.current;
+    setContextMenu(null);
+    setMenuPosition(null);
+    if (restoreFocus && trigger) {
+      window.requestAnimationFrame(() => {
+        if (trigger.isConnected) trigger.focus();
+      });
+    }
+  }, []);
+
+  const openContextMenu = useCallback((
+    bookmarkId: string,
+    x: number,
+    y: number,
+    returnFocus: HTMLElement | null,
+  ) => {
+    menuReturnFocusRef.current = returnFocus;
+    setMenuPosition(null);
+    setContextMenu({ bookmarkId, x, y });
+  }, []);
+
+  const clearLongPress = useCallback(() => {
+    if (touchTimerRef.current !== null) {
+      window.clearTimeout(touchTimerRef.current);
+      touchTimerRef.current = null;
+    }
+    if (touchMoveHandlerRef.current) {
+      window.removeEventListener('pointermove', touchMoveHandlerRef.current);
+      touchMoveHandlerRef.current = null;
+    }
+  }, []);
+
+  const startLongPress = useCallback((
+    event: ReactPointerEvent<HTMLDivElement>,
+    bookmarkId: string,
+  ) => {
+    const target = event.target;
+    if (
+      event.pointerType !== 'touch' ||
+      (target instanceof HTMLElement && target.closest('[data-bookmark-menu-control], [data-bookmark-delete-control]'))
+    ) return;
+
+    clearLongPress();
+    longPressTriggeredRef.current = false;
+    const row = event.currentTarget;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const pointerId = event.pointerId;
+    const moveHandler = (moveEvent: PointerEvent) => {
+      if (
+        moveEvent.pointerId === pointerId &&
+        Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) > 10
+      ) {
+        clearLongPress();
+      }
+    };
+    touchMoveHandlerRef.current = moveHandler;
+    window.addEventListener('pointermove', moveHandler, { passive: true });
+    touchTimerRef.current = window.setTimeout(() => {
+      clearLongPress();
+      longPressTriggeredRef.current = true;
+      openContextMenu(bookmarkId, startX, startY, row);
+    }, 560);
+  }, [clearLongPress, openContextMenu]);
+
+  const finishLongPress = useCallback(() => {
+    clearLongPress();
+    if (longPressTriggeredRef.current) {
+      window.setTimeout(() => {
+        longPressTriggeredRef.current = false;
+      }, 0);
+    }
+  }, [clearLongPress]);
+
+  useEffect(() => () => clearLongPress(), [clearLongPress]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    setMenuPosition(placeReaderContextMenu(
+      { x: contextMenu.x, y: contextMenu.y },
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const frame = window.requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
+        ?.focus();
+    });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeContextMenu(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu, closeContextMenu]);
+
+  const handleContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || [],
+    );
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
+    else if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = items.length - 1;
+    else if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeContextMenu(true);
+      return;
+    } else return;
+    event.preventDefault();
+    items[nextIndex].focus();
+  };
+
+  const deleteBookmark = async (bookmarkId: string) => {
+    try {
+      const response = await api.deleteBookmark(bookmarkId);
+      setBookmarks(response.bookmarks || []);
+      toast('הסימניה נמחקה');
+    } catch (error) {
+      toast((error as Error).message || 'מחיקת הסימניה נכשלה');
+    }
+  };
+
+  const saveDescription = async () => {
+    if (!editingBookmark || savingDescription) return;
+    const description = normalizeBookmarkDescription(descriptionDraft);
+    if (description === null) {
+      toast('התיאור מוגבל ל־500 תווים');
+      return;
+    }
+    setSavingDescription(true);
+    try {
+      const response = await api.updateBookmarkDescription(editingBookmark.id, description);
+      setBookmarks(response.bookmarks || []);
+      setEditingBookmark(null);
+      setDescriptionDraft('');
+      toast(description ? 'תיאור הסימניה עודכן' : 'תיאור הסימניה הוסר');
+    } catch (error) {
+      toast((error as Error).message || 'עדכון תיאור הסימניה נכשל');
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const runContextMenuAction = (action: BookmarkContextMenuActionId) => {
+    const bookmark = contextMenu
+      ? bookmarks.find((item) => item.id === contextMenu.bookmarkId)
+      : undefined;
+    closeContextMenu(false);
+    if (!bookmark) return;
+    if (action === 'edit-description') {
+      setEditingBookmark(bookmark);
+      setDescriptionDraft(bookmark.description || '');
+    } else {
+      void deleteBookmark(bookmark.id);
+    }
+  };
+
+  const menuBookmark = contextMenu
+    ? bookmarks.find((item) => item.id === contextMenu.bookmarkId)
+    : undefined;
+
   return (
     <div>
       <h2 className="mb-4 text-xl font-medium">סימניות</h2>
@@ -76,19 +272,197 @@ function Bookmarks() {
         <EmptyState icon={<Bookmark size={52} />} title="אין סימניות" hint="לחצו על סמל הסימניה בסרגל הכלים של הספר כדי להוסיף סימניה" />
       )}
       {bookmarks.map((b) => (
-        <div key={b.id} className="mb-2 flex items-center gap-2 rounded-2xl border border-outline-variant bg-surface-1 pl-2 transition hover:bg-surface-3">
-          <button onClick={() => openBook({ id: b.bookId, title: b.bookTitle, categoryPath: b.category }, b.lineIndex)} className="min-w-0 flex-1 px-4 py-3 text-start">
+        <div
+          key={b.id}
+          tabIndex={0}
+          role="group"
+          aria-label={`סימניה: ${b.bookTitle}`}
+          aria-haspopup="menu"
+          aria-expanded={contextMenu?.bookmarkId === b.id}
+          aria-keyshortcuts="ContextMenu Shift+F10"
+          onContextMenu={(event) => {
+            event.preventDefault();
+            clearLongPress();
+            openContextMenu(b.id, event.clientX, event.clientY, event.currentTarget);
+          }}
+          onKeyDown={(event) => {
+            if (!isReaderContextMenuShortcut(event.key, event.shiftKey)) return;
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            openContextMenu(b.id, rect.left, rect.bottom, event.currentTarget);
+          }}
+          onPointerDown={(event) => startLongPress(event, b.id)}
+          onPointerUp={finishLongPress}
+          onPointerCancel={() => {
+            clearLongPress();
+            longPressTriggeredRef.current = false;
+          }}
+          onClickCapture={(event) => {
+            if (!longPressTriggeredRef.current) return;
+            event.preventDefault();
+            event.stopPropagation();
+            longPressTriggeredRef.current = false;
+          }}
+          className="mb-2 flex items-center gap-2 rounded-2xl border border-outline-variant bg-surface-1 pl-2 transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
+        >
+          <button
+            type="button"
+            onClick={() => openBook({ id: b.bookId, title: b.bookTitle, categoryPath: b.category }, b.lineIndex)}
+            className="min-w-0 flex-1 px-4 py-3 text-start"
+          >
             <div className="font-bold text-primary">
               {b.bookTitle} {b.heRef && <span className="text-sm font-normal text-on-variant">– {b.heRef}</span>}
             </div>
+            {b.description?.trim() && (
+              <div className="mt-1 text-sm font-medium text-on-surface">{b.description}</div>
+            )}
             {b.textSnippet && <div className="truncate text-sm" style={{ fontFamily: '"Frank Ruhl Libre"' }}>{b.textSnippet}</div>}
             <div className="text-xs text-on-variant">{timeAgo(b.createdAt)}</div>
           </button>
-          <button onClick={() => removeBookmark(b.id)} className="rounded-full p-2 text-on-variant hover:bg-surface-3 hover:text-error" title="מחק">
+          <button
+            type="button"
+            data-bookmark-delete-control="true"
+            onClick={() => void deleteBookmark(b.id)}
+            className="rounded-full p-2 text-on-variant hover:bg-surface-3 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+            title="מחק"
+            aria-label={`מחק סימניה של ${b.bookTitle}`}
+          >
             <Trash2 size={18} />
+          </button>
+          <button
+            type="button"
+            data-bookmark-menu-control="true"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              openContextMenu(b.id, rect.left, rect.bottom, event.currentTarget);
+            }}
+            className="rounded-full p-2 text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            title="אפשרויות סימניה"
+            aria-label={`אפשרויות סימניה של ${b.bookTitle}`}
+            aria-haspopup="menu"
+            aria-expanded={contextMenu?.bookmarkId === b.id}
+          >
+            <MoreVertical size={18} />
           </button>
         </div>
       ))}
+      {contextMenu && menuBookmark && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[120] bg-transparent"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) closeContextMenu(false);
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={`אפשרויות סימניה: ${menuBookmark.bookTitle}`}
+            dir="rtl"
+            className="fixed z-[121] min-w-[190px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-2xl motion-reduce:transition-none"
+            style={{
+              left: menuPosition?.left ?? contextMenu.x,
+              top: menuPosition?.top ?? contextMenu.y,
+              maxWidth: menuPosition?.maxWidth ?? 'calc(100vw - 16px)',
+              maxHeight: menuPosition?.maxHeight ?? 'calc(100vh - 16px)',
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            onKeyDown={handleContextMenuKeyDown}
+          >
+            {getBookmarkContextMenuActions().map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                role="menuitem"
+                onClick={() => runContextMenuAction(action.id)}
+                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none ${action.destructive ? 'text-error hover:bg-error/10 focus:bg-error/10' : 'hover:bg-surface-3 focus:bg-surface-3'}`}
+              >
+                {action.id === 'edit-description' ? <PenLine size={16} /> : <Trash2 size={16} />}
+                {action.label}
+              </button>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      )}
+      {editingBookmark && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[130] flex items-center justify-center bg-black/45 p-4"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget && !savingDescription) {
+              setEditingBookmark(null);
+              setDescriptionDraft('');
+            }
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bookmark-description-title"
+            dir="rtl"
+            className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface p-5 shadow-2xl"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !savingDescription) {
+                event.preventDefault();
+                setEditingBookmark(null);
+                setDescriptionDraft('');
+              }
+            }}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 id="bookmark-description-title" className="text-base font-semibold">עריכת תיאור סימניה</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBookmark(null);
+                  setDescriptionDraft('');
+                }}
+                disabled={savingDescription}
+                className="rounded-full p-2 text-on-variant hover:bg-surface-3 disabled:opacity-40"
+                aria-label="סגירה"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mb-3 text-sm text-on-variant">{editingBookmark.bookTitle}</p>
+            <textarea
+              autoFocus
+              value={descriptionDraft}
+              onChange={(event) => setDescriptionDraft(event.target.value)}
+              maxLength={500}
+              rows={4}
+              aria-label="תיאור הסימניה"
+              placeholder="הוסף תיאור קצר לסימניה..."
+              className="w-full resize-y rounded-xl border border-outline-variant bg-surface-1 p-3 text-sm text-on-surface outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            <div className="mt-1 text-end text-xs text-on-variant">{descriptionDraft.length}/500</div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingBookmark(null);
+                  setDescriptionDraft('');
+                }}
+                disabled={savingDescription}
+                className="rounded-full px-4 py-2 text-sm text-on-variant hover:bg-surface-3 disabled:opacity-40"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveDescription()}
+                disabled={savingDescription}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {savingDescription ? 'שומר...' : 'שמור'}
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

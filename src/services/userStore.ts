@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { updateBookmarkDescriptionInList } from '../utils/bookmarkContextMenu.js';
 
 export interface UserRecord {
   userId: string;
@@ -172,6 +173,15 @@ export function addBookmark(
 
   saveUserRecord(user);
   return newItem;
+}
+
+export function updateBookmarkDescription(userId: string, bookmarkId: string, description: string): UserRecord['bookmarks'][0] | null {
+  const user = getUserRecord(userId);
+  const updated = updateBookmarkDescriptionInList(user.bookmarks, bookmarkId, description);
+  if (!updated) return null;
+  user.bookmarks = updated;
+  saveUserRecord(user);
+  return user.bookmarks.find(bookmark => bookmark.id === bookmarkId) || null;
 }
 
 export function removeBookmark(userId: string, bookmarkId: string): void {

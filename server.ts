@@ -33,8 +33,10 @@ import {
   exportUserBackup,
   importUserBackup,
   removeReadingHistoryItem,
+  updateBookmarkDescription,
   recordFeedback
 } from './src/services/userStore.js';
+import { normalizeBookmarkDescription } from './src/utils/bookmarkContextMenu.js';
 import {
   isSeforimDbAvailable,
   getCatalogFromDb,
@@ -2252,6 +2254,22 @@ app.post('/api/user/bookmarks', (req, res) => {
     res.json({ success: true, item, bookmarks: filterBookReferences(user.bookmarks) });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to add bookmark', message: err.message });
+  }
+});
+
+app.patch('/api/user/bookmarks/:id', (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const description = normalizeBookmarkDescription(req.body?.description);
+    if (description === null) {
+      return res.status(400).json({ error: 'Invalid bookmark description', message: 'תיאור הסימניה חייב להיות עד 500 תווים' });
+    }
+    const item = updateBookmarkDescription(userId, String(req.params.id), description);
+    if (!item) return res.status(404).json({ error: 'Bookmark not found' });
+    const user = getUserRecord(userId);
+    res.json({ success: true, item, bookmarks: filterBookReferences(user.bookmarks) });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update bookmark description', message: err.message });
   }
 });
 
