@@ -54,7 +54,8 @@ export default function NavRail() {
   );
 
   return (
-    <nav className="flex shrink-0 flex-row items-center justify-between overflow-x-auto border-t border-outline-variant bg-surface px-1 md:w-20 md:flex-col md:justify-start md:overflow-y-auto md:border-t-0 md:border-l md:px-0 md:py-3">
+    <>
+      <nav className="flex shrink-0 flex-row items-center justify-between overflow-x-auto border-t border-outline-variant bg-surface px-1 md:w-20 md:flex-col md:justify-start md:overflow-y-auto md:border-t-0 md:border-l md:px-0 md:py-3">
       <button
         onClick={() => setScreen('library')}
         className="hidden w-20 flex-col items-center gap-1 pb-3 pt-1 text-center text-[15px] font-bold leading-tight text-primary md:flex"
@@ -118,7 +119,8 @@ export default function NavRail() {
         אוצריא
       </a>
       <div className="flex flex-row md:flex-col md:items-center">{bottom.map(render)}</div>
-    </nav>
-    {workspacesOpen && <WorkspaceManager onClose={() => setWorkspacesOpen(false)} />}
+      </nav>
+      {workspacesOpen && <WorkspaceManager onClose={() => setWorkspacesOpen(false)} />}
+    </>
   );
 }
