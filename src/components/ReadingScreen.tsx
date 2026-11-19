@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, ChevronDown, Copy, MoreVertical, Pin, Search as SearchIcon, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Copy, Pin, Search as SearchIcon, X } from 'lucide-react';
 import { useApp } from '../store';
 import BookViewer from './BookViewer';
 import SearchTabView from './SearchTabView';
@@ -319,22 +319,6 @@ export default function ReadingScreen() {
                   title={lang === 'en' ? 'Close tab' : 'סגור לשונית'}
                 >
                   <X size={14} />
-                </button>
-                <button
-                  data-tab-control="true"
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    openTabContextMenu(t.id, lang === 'en' ? rect.left : Math.max(8, rect.right - 240), rect.bottom, event.currentTarget);
-                  }}
-                  className="rounded-full p-1 text-on-variant opacity-70 hover:bg-surface-3 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  aria-label={lang === 'en' ? 'Tab options' : 'אפשרויות לשונית'}
-                  aria-haspopup="menu"
-                  aria-expanded={tabMenu?.tabId === t.id}
-                  title={lang === 'en' ? 'Tab options' : 'אפשרויות לשונית'}
-                >
-                  <MoreVertical size={14} />
                 </button>
               </div>
             );
