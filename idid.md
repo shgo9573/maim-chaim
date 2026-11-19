@@ -2259,3 +2259,35 @@ Commits חדשים ב־main שנבדקו:
 - commit התיעוד הסופי הנוכחי ב-main: 044ad80de13306a525554d52ce982eb656cfacba. לא נוצרו commits בענפים אחרים.
 - לא הורצו בדיקות מקומיות. תוצאת CI Beta success היא האימות האוטומטי היחיד לסבב זה. יש לבצע בדיקה חזותית/אינטראקטיבית בדפדפן בהזדמנות הראשונה.
 - לא נערך מנוע החיפוש או שירות החיפוש; לא נערך PDF; לא נערך Backend; לא נערכו שרת חי או DNS. כל שינויי הקוד בוצעו ב-main בלבד.
+
+## ריצת ערב — 19 בנובמבר 2026, 19:16 (Asia/Jerusalem)
+
+### מפת ענפים ובקרת שינויים
+- נשלפה רשימת הענפים דרך GitHub API עם `per_page=100`: עמוד 1 החזיר 3 ענפים; עמוד 2 ריק.
+- `main`: HEAD `1f60c5eaa8cd0ed5d6a597da64c8f4d1bda3e4be`, commit מ-2026-11-19 13:14:59 UTC — הענף האחרון לפי תאריך HEAD. מאז ה-SHA הסופי הקודם שתועד (`044ad80de13306a525554d52ce982eb656cfacba`) נמצא commit אחד ששינה את `idid.md` בלבד; לא נמצאו שינויי קוד חדשים.
+- `arena/9b3e1906-maim-chaim`: HEAD `ee8a38c72d1e70461bc1750376660a9d15ea93a9`, 2026-11-06 02:21:56 UTC — ללא שינוי.
+- `arena/9c1ba425-maim-chaim`: HEAD `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`, 2026-11-06 02:34:08 UTC — ללא שינוי.
+- שני ענפי arena נשארים לקריאה בלבד. לא נוצרו בהם commits או שינויים.
+- `newbugs.md` נקרא בנפרד מתוך HEAD של כל ענף: ב-`main` הקובץ קיים ומכיל את הדיווח הפתוח היחיד על חלונית חיפוש הכרטיסיות שמזיזה את התצוגה שמאלה ומסתירה את סרגל הצד; בשני ענפי arena הקובץ אינו קיים (404). אין דיווח חדש/שינוי תיאור. הבאג לא שוחזר בדפדפן ונשאר פתוח.
+- `AGENTS.md` ו-`package.json` נקראו ב-main. פקודות בדיקת Frontend: `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend`, `npm run build`; ה-workflow האוטומטי של Beta מריץ lint, typecheck, tests ו-build.
+- הוסרה ונבדקה שוב התגלית הקודמת: ב-`src/components/ReadingScreen.tsx` אין כפתור `MoreVertical`/שלוש נקודות בטאבים. נשארים עכבר ימני, ContextMenu/Shift+F10 ולחיצה ארוכה במגע; ה-X לסגירה נשמר. ה-commit האחרון שמימש זאת הוא `90fd8eaab88b7a5194e912cccdc84c1491fd0e2d`.
+
+### מאגר המקור — Otzaria/otzaria:dev
+- HEAD נוכחי: `4d4e7011b18363552baf70e69d5f7e6d33c7a670`, תאריך commit ‏2026-11-19 10:55:48 UTC.
+- בהשוואה ל-SHA האחרון שתועד (`5f36632113ff87425de525b009f7b1125d75fb2c)) נמצאו 69 commits ו-59 נתיבי קובץ בדוח compare. מאגר המקור נשאר לקריאה בלבד.
+- תגליות רלוונטיות שאינן מנוע החיפוש: `lib/text_display/view/text_display_profile_editor.dart` ו-`text_display_bar_button.dart` — עורך פרופילי תצוגת טקסט וחלונית popup; `lib/text_book/view/alt_toc_sidebar_view.dart` — חלונית תוכן עניינים חלופית; `lib/personal_notes/utils/note_anchor_utils.dart` ו-`personal_notes/services/personal_notes_service.dart` — עוגנים ושמירת הערות; `lib/empty_library/bloc/empty_library_bloc.dart` — זרימת ספרייה ריקה והערכת מקום; `lib/find_ref/repository/find_ref_repository.dart` — הרחבת איתור מקורות; `lib/theme/app_surfaces.dart`/ `app_tokens.dart` — עדכוני שפה חזותית. אלה מועמדים להרחבת מטריצת ההתאמה בריצות הבאות.
+- קובצי search/plugin-search שהופיעו ב-diff נשארים מחוץ לתחום; לא יועתקו ולא ישונו. לא נבחרה משימה שמשנה חיפוש או חוזה API.
+- קובצי Workspaces עצמם לא השתנו ב-69 ה-commits: מקור ההתנהגות המאומת נשאר `lib/workspaces/workspace.dart`, `workspace_repository.dart`, `bloc/workspace_bloc.dart`, `workspace_event.dart`, `workspace_state.dart`, `view/workspace_switcher_dialog.dart`; תפריט העברת טאבים נמצא ב-`lib/navigation/view/tab_context_menu.dart`.
+
+### תגליות Workspaces — אימות מקור ואתר לפני מימוש
+- במקור: מודל `Workspace` שומר `id`, שם, רשימת טאבים, אינדקס טאב פעיל, צד חלונית פעילה בטאב מפוצל ו-`isPinned`. ה-JSON משחזר טאבים, מנרמל אינדקס, מתעלם מטאב מפרשי PDF (נדחה באתר לפי הוראת המשתמש) ומגן מפני טאב פגום.
+- Repository המקור שומר את רשימת המרחבים במאגר מצב משתמש משותף, ואת המרחב הפעיל בנפרד לפי חלון/session. ה-BLoC טוען/יוצר ברירת מחדל, יוצר מרחב חדש בשם ייחודי, משנה שם, מוחק רק מרחב שאינו פעיל, עובר בין מרחבים תוך צילום מצב הטאבים הפעילים, מעדכן snapshot, מצמיד/משחרר מרחב ומעביר טאב יחיד או קבוצה למרחב אחר. הוא מאזין לשינויים מחלונות אחרים ומונע צילום מצב בזמן החלפת טאבים.
+- `workspace_switcher_dialog.dart`: דיאלוג "שולחנות עבודה" עם חיפוש, Grid רספונסיבי עד 3 עמודות, אריח יצירה, תצוגת מספר/שמות טאבים, מעבר בלחיצה, שינוי שם inline, מחיקה עם אישור, pin/unpin ושמירה מפורשת של snapshot כשהמרחב המקובע פעיל.
+- `tab_context_menu.dart`: תפריט ההקשר תומך בהעברת טאב או בחירה מרובה של טאבים למרחב יעד; פעולות סגירה/הצמדה מתחשבות בבחירה. המקור גם כולל חלונות/פיצול/חלוניות פעילות, אך אין להציג אפשרויות Web שאין להן מימוש אמיתי.
+- באתר React ב-HEAD הנוכחי אין מודול Workspace. `src/store.tsx` שומר כרגע את כל הטאבים במשותף ב-`otz_tabs` ואת הטאב הפעיל ב-`otz_active`; אין מודל, persistence, active workspace או מעבר/שיוך טאבים. `src/components/NavRail.tsx` אינו מציג כניסה למרחבי עבודה, ו-`src/components/ReadingScreen.tsx` מציג רק רצועת טאבים ותפריט הקשר ללא יעדי Workspace. עץ main אינו מכיל מודול `src/**workspace**`; קובץ Flutter בשם `page_shape_workspace_scope.dart` אינו מימוש Workspace של האתר.
+- פערים מאומתים: יצירה/שם/מחיקה/חיפוש/תצוגה מקדימה/הצמדה/שמירת snapshot/מעבר ושחזור/העברת טאבים — חסרים ב-React. שמירת active pane אינה רלוונטית עדיין משום שאין באתר תצוגת reader מפוצלת; אין להוסיף שדה או UI דמה לכך.
+- החלטת מימוש Web: רשימת המרחבים ב-`localStorage`; מזהה המרחב הפעיל ב-`sessionStorage` כדי לבודד session של לשונית דפדפן; snapshot שומר טאבים ו-`activeTabId`. שינויי טאבים מעדכנים אוטומטית את המרחב הפעיל כל עוד אינו מקובע. מרחב מקובע שומר snapshot קפוא; למרחב מקובע פעיל תהיה פעולת "שמור מצב נוכחי" מפורשת. יצירה לא תחליף את המרחב הפעיל (כמו המקור); מחיקה של הפעיל תיחסם; מעבר ישמור את המקור אם אינו מקובע ויטען את יעדו; העברת טאב תעדכן את מקור/יעד ותשאיר active tab תקין.
+- קבצי יעד מתוכננים: `src/types.ts`, `src/utils/workspaces.ts`, `src/store.tsx`, `src/components/WorkspaceManager.tsx`, `src/components/NavRail.tsx`, `src/components/ReadingScreen.tsx`, `test/frontend/workspaces.test.ts`.
+- תיעדוף: להשלים בריצה זו זרימת Workspace Web שלמה: create/search/preview/rename/delete/confirm/pin/save snapshot/switch/restore/move tab, כולל תפריט נגיש ו-RTL. תתי-אפשרויות של חלונות נפרדים/פיצול/active pane יישארו לא רלוונטיות עד שתהיה תשתית Web מקבילה אמיתית.
+- באג חלונית חיפוש הטאבים נשאר פתוח, ללא שינוי במנוע החיפוש או ב-API שלו. אין PDF, אין שינוי Backend/DB, אין שרת חי/DNS ואין פריסה ידנית. כל כתיבת קוד ו-commit רק ב-main.
+
