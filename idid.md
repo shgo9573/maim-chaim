@@ -2238,3 +2238,16 @@ Commits חדשים ב־main שנבדקו:
 - במאגר היעד, בסריקת עץ main ב-HEAD 27b804fce09d4efe90e94b7287dbab6c364e6991, לא נמצאו קבצי src/**workspace** או מודל/שירות Workspace ב-React; נמצא רק lib/text_book/view/page_shape/utils/page_shape_workspace_scope.dart (קוד Flutter/תאימות מקור). לכן מערכת Workspaces באתר מסווגת כרגע חסרה, בכפוף לבדיקה נוספת של ה-state וה-UI הקיימים לפני מימוש.
 - סדר ביצוע: להסיר עכשיו את כפתור שלוש הנקודות בבטחה; לאחר מכן לתכנן ולממש Workspaces ב-Web בהדרגה, תוך שימוש ב-state/storage הקיימים של האתר בלי להעתיק Flutter/BLoC. לשמור את באג פריסת חיפוש הטאבים פתוח עד שחזור בדפדפן.
 - גבולות: לא נגעו במנוע/שירות/חוזה החיפוש, לא ב-PDF, ולא במאגר המקור. כל כתיבה רק ל-shgo9573/maim-chaim:main.
+### מימוש בפועל — הסרת כפתור שלוש הנקודות מהטאבים (19 בנובמבר 2026, 15:13 Asia/Jerusalem)
+- בוצע commit ב-main: 90fd8eaab88b7a5194e912cccdc84c1491fd0e2d — הסרת כפתור שלוש הנקודות מהטאבים.
+- שונה רק src/components/ReadingScreen.tsx: הוסר import של MoreVertical והוסר כפתור Tab options שהיה מופיע בכל טאב ומפעיל את openTabContextMenu. לא שונה מנגנון תפריט ההקשר עצמו.
+- נשמרו נתיבי הגישה שקיימים במקור: עכבר ימני (onContextMenu), מקש ContextMenu או Shift+F10 (onKeyDown) ולחיצה ארוכה במגע (pointer/touch long press). נשמר גם כפתור X לסגירת טאב. לא הוספנו כפתור חלופי.
+- אימות קוד דרך GitHub API לאחר ה-commit: אין יותר MoreVertical בקובץ; עדיין קיימים onContextMenu, handleTabMenuKeyDown ופתיחת התפריט בלחיצה ארוכה. מחרוזת Tab options נשארת רק כ-aria-label של חלונית התפריט הנגישה, לא ככפתור בטאב.
+- CI Beta הופעל אוטומטית בעקבות commit 90fd8eaab88b7a5194e912cccdc84c1491fd0e2d. Run 44531336964 בסטטוס in_progress בעת כתיבת הרשומה; טרם התקבלה תוצאה סופית. אין לטעון שבדיקות עברו עד לסיום ה-workflow.
+- לא הורצו בדיקות מקומיות בסביבת העבודה הנוכחית. יש לאמת את תוצאת CI ואת המראה בפועל בדפדפן לאחר הפריסה.
+
+### Workspaces — סטטוס והמשימה הבאה
+- מיפוי המקור הראה Workspaces כמערכת נפרדת: מודל, repository, bloc/events/state, dialog/switcher, העברת טאבים דרך תפריט ההקשר, שמירת snapshot, active pane, workspace pinning, rename/delete/create/search/preview ומעבר בין workspaces. המקור כולל גם ניהול לפי חלונות ומניעת מעבר בזמן שינוי טאבים.
+- באתר React לא נמצאו מודולי Workspace ב-src בעץ main. אין להתחיל בהעתקת Flutter; יש לתכנן מודל TypeScript ו-persistence המתאימים ל-Web ולבדוק אם ה-localStorage/מנגנון המשתמש הקיים מספיק או שנדרש API ייעודי. אין לשנות Backend/DB עד שהצורך והסיכון הובהרו.
+- סדר עבודה לריצה הבאה: (1) לאמת CI ולהשלים בדיקת טאבים בלי כפתור שלוש נקודות; (2) למפות את מסכי/הגדרות Workspaces במקור ואת ה-state הקיים ב-React; (3) לתעד תכנון מדורג ב-idid.md; (4) להתחיל מימוש של יצירה, שמירה, מעבר ושחזור workspace כזרימה שלמה, ולהמשיך לפעולות rename/delete/pin/move tabs בהתאם למקור. במקביל לא לשכוח את באג פריסת חיפוש הטאבים שעדיין פתוח.
+- גבולות נשמרו: אין PDF; אין שינוי במנוע/שירות/חוזה החיפוש; לא נערך מאגר Otzaria; כל כתיבה רק ב-main.
