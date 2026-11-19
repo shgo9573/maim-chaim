@@ -13,7 +13,7 @@ import {
   takeRecentlyClosedTab,
   type RecentlyClosedTabEntry,
 } from './utils/recentlyClosedTabs';
-import { duplicateTabWithId, planTabClose } from './utils/tabContextMenu';
+import { duplicateTabWithId, planTabClose, tabsToCloseAll } from './utils/tabContextMenu';
 
 type BookRef = { id: ID; title: string; categoryPath?: string };
 import {
@@ -49,6 +49,7 @@ interface Ctx {
   recentlyClosedTabs: Tab[];
   activeTabId: string | null;
   setActiveTab: (id: string) => void;
+  togglePinTab: (id: string) => void;
   closeTab: (id: string) => void;
   closeTabs: (ids: string[]) => void;
   duplicateTab: (id: string) => void;
@@ -381,6 +382,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setScreen('reading');
   }, [setScreen]);
 
+  const togglePinTab = useCallback((id: string) => {
+    setTabs((current) => current.map((tab) =>
+      tab.id === id ? ({ ...tab, isPinned: !tab.isPinned } as Tab) : tab,
+    ));
+  }, []);
+
   const closeTabs = useCallback((ids: string[]) => {
     const plan = planTabClose(tabsRef.current, activeTabRef.current, ids);
     if (plan.closing.length === 0) return;
@@ -414,18 +421,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const closeAllTabs = useCallback(() => {
     const current = tabsRef.current;
-    if (current.length) {
-      setClosedTabEntries((entries) => {
-        let next = entries;
-        for (let index = current.length - 1; index >= 0; index -= 1) {
-          next = rememberRecentlyClosedTab(next, current[index], index);
-        }
-        return next;
-      });
-    }
-    setTabs([]);
-    setActiveTabId(null);
-    setScreen('library');
+    const closing = tabsToCloseAll(current);
+    if (closing.length === 0) return;
+    const closingIds = new Set(closing.map((tab) => tab.id));
+    setClosedTabEntries((entries) => {
+      let next = entries;
+      for (let index = current.length - 1; index >= 0; index -= 1) {
+        const tab = current[index];
+        if (closingIds.has(tab.id)) next = rememberRecentlyClosedTab(next, tab, index);
+      }
+      return next;
+    });
+    const pinnedTabs = current.filter((tab) => tab.isPinned);
+    setTabs(pinnedTabs);
+    const nextActiveTabId = pinnedTabs.some((tab) => tab.id === activeTabRef.current)
+      ? activeTabRef.current
+      : pinnedTabs[0]?.id ?? null;
+    setActiveTabId(nextActiveTabId);
+    setScreen(pinnedTabs.length > 0 ? 'reading' : 'library');
   }, [setScreen]);
 
   const restoreClosedTab = useCallback((id: string) => {
@@ -965,7 +978,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
       settings, updateSettings, resetSettings,
-      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
+      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
       bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory,
       setBookmarks: setVisibleBookmarks, setHistory: setVisibleHistory,
@@ -973,7 +986,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;

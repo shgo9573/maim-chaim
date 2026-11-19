@@ -1,6 +1,7 @@
 import type { Tab } from '../types';
 
 export type TabContextMenuActionId =
+  | 'toggle-pin'
   | 'close'
   | 'close-all'
   | 'close-others'
@@ -60,12 +61,20 @@ export function planTabClose(
 }
 
 export function duplicateTabWithId(tab: Tab, id: string): Tab {
-  return { ...tab, id } as Tab;
+  return { ...tab, id, isPinned: false } as Tab;
 }
 
 export function tabsAfter(tabs: readonly Tab[], tabId: string): Tab[] {
   const index = tabs.findIndex((tab) => tab.id === tabId);
   return index < 0 ? [] : tabs.slice(index + 1);
+}
+
+export function tabsAfterClosable(tabs: readonly Tab[], tabId: string): Tab[] {
+  return tabsAfter(tabs, tabId).filter((tab) => !tab.isPinned);
+}
+
+export function tabsToCloseAll(tabs: readonly Tab[]): Tab[] {
+  return tabs.filter((tab) => !tab.isPinned);
 }
 
 export function tabsOtherThan(tabs: readonly Tab[], tabId: string): Tab[] {
@@ -77,13 +86,24 @@ export function getTabContextMenuActions(
   tabId: string,
   language: 'he' | 'en',
 ): TabContextMenuAction[] {
-  if (!tabs.some((tab) => tab.id === tabId)) return [];
+  const tab = tabs.find((item) => item.id === tabId);
+  if (!tab) return [];
 
   const english = language === 'en';
-  const after = tabsAfter(tabs, tabId);
+  const after = tabsAfterClosable(tabs, tabId);
   return [
+    {
+      id: 'toggle-pin',
+      label: tab.isPinned
+        ? (english ? 'Unpin tab' : 'בטל הצמדת כרטיסיה')
+        : (english ? 'Pin tab' : 'הצמד כרטיסיה'),
+    },
     { id: 'close', label: english ? 'Close tab' : 'סגור לשונית' },
-    { id: 'close-all', label: english ? 'Close all tabs' : 'סגור את כל הלשוניות' },
+    {
+      id: 'close-all',
+      label: english ? 'Close all tabs' : 'סגור את כל הלשוניות',
+      disabled: tabsToCloseAll(tabs).length === 0,
+    },
     {
       id: 'close-others',
       label: english ? 'Close other tabs' : 'סגור את שאר הלשוניות',

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, ChevronDown, Copy, MoreVertical, Search as SearchIcon, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Copy, MoreVertical, Pin, Search as SearchIcon, X } from 'lucide-react';
 import { useApp } from '../store';
 import BookViewer from './BookViewer';
 import SearchTabView from './SearchTabView';
@@ -11,8 +11,9 @@ import { t } from '../i18n';
 import { placeReaderContextMenu } from '../utils/readerContextMenu';
 import {
   getTabContextMenuActions,
-  tabsAfter,
+  tabsAfterClosable,
   tabsOtherThan,
+  tabsToCloseAll,
   type TabContextMenuActionId,
 } from '../utils/tabContextMenu';
 
@@ -27,6 +28,7 @@ export default function ReadingScreen() {
     closeTab,
     closeTabs,
     duplicateTab,
+    togglePinTab,
     closeAllTabs,
     restoreClosedTab,
     clearRecentlyClosedTabs,
@@ -39,6 +41,7 @@ export default function ReadingScreen() {
   const [menuPosition, setMenuPosition] = useState<ReturnType<typeof placeReaderContextMenu> | null>(null);
   const [openTabsExpanded, setOpenTabsExpanded] = useState(false);
   const lang = settings.interfaceLanguage || 'he';
+  const closableTabs = tabsToCloseAll(tabs);
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
   const stripRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -108,7 +111,10 @@ export default function ReadingScreen() {
       dismissTabContextMenu(false);
       return;
     }
-    if (action === 'close') {
+    if (action === 'toggle-pin') {
+      dismissTabContextMenu(false);
+      togglePinTab(tab.id);
+    } else if (action === 'close') {
       dismissTabContextMenu(false);
       closeTab(tab.id);
     } else if (action === 'close-all') {
@@ -119,7 +125,7 @@ export default function ReadingScreen() {
       dismissTabContextMenu(false);
       closeTabs(closing.map((item) => item.id));
     } else if (action === 'close-after') {
-      const closing = tabsAfter(tabs, tab.id);
+      const closing = tabsAfterClosable(tabs, tab.id);
       dismissTabContextMenu(false);
       closeTabs(closing.map((item) => item.id));
     } else if (action === 'duplicate') {
@@ -301,6 +307,7 @@ export default function ReadingScreen() {
                   className="flex min-w-0 flex-1 items-center gap-2 text-start"
                   title={t.kind === 'search' ? t.query : t.title}
                 >
+                  {t.isPinned && <Pin size={12} className="shrink-0 text-primary" aria-hidden="true" />}
                   {t.kind === 'search' && <SearchIcon size={15} className="shrink-0" />}
                   <span className="truncate">{t.kind === 'search' ? `${lang === 'en' ? 'Search' : 'חיפוש'}${t.query ? `: ${t.query}` : ''}` : t.title}</span>
                 </button>
@@ -335,7 +342,7 @@ export default function ReadingScreen() {
         </div>
         <TabSearch tabs={tabs} recentlyClosedTabs={recentlyClosedTabs} activeTabId={active?.id ?? null} language={lang} onSelect={setActiveTab} onClose={closeTab} onRestoreClosed={restoreClosedTab} onClearRecentlyClosed={clearRecentlyClosedTabs} />
         {/* Closing every tab only means something once there is more than one. */}
-        {tabs.length > 1 && (
+        {closableTabs.length > 0 && tabs.length > 1 && (
           <button
             type="button"
             onClick={() => setConfirmCloseAll(true)}
@@ -381,7 +388,7 @@ export default function ReadingScreen() {
                 onClick={() => handleTabMenuAction(action.id)}
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {action.id === 'duplicate' ? <Copy size={15} className="shrink-0" /> : action.id === 'open-tabs' ? <ChevronDown size={15} className={openTabsExpanded ? 'shrink-0 rotate-180' : 'shrink-0'} /> : <X size={15} className="shrink-0" />}
+                {action.id === 'toggle-pin' ? <Pin size={15} className="shrink-0" /> : action.id === 'duplicate' ? <Copy size={15} className="shrink-0" /> : action.id === 'open-tabs' ? <ChevronDown size={15} className={openTabsExpanded ? 'shrink-0 rotate-180' : 'shrink-0'} /> : <X size={15} className="shrink-0" />}
                 <span className="min-w-0 flex-1">{action.label}</span>
               </button>
             </div>
@@ -460,15 +467,15 @@ export default function ReadingScreen() {
                 </h2>
                 <p className="mt-1 text-sm leading-5 text-on-variant">
                   {lang === 'en'
-                    ? 'This will close every open book and search tab.'
-                    : 'פעולה זו תסגור את כל הספרים והחיפושים הפתוחים.'}
+                    ? 'This will close every unpinned book and search tab. Pinned tabs will remain open.'
+                    : 'פעולה זו תסגור את כל הספרים והחיפושים שאינם מוצמדים. לשוניות מוצמדות יישארו פתוחות.'}
                 </p>
               </div>
             </div>
             <div className="px-5 py-4 text-sm leading-6 text-on-variant">
               {lang === 'en'
-                ? `There are ${tabs.length} open tabs. This cannot be undone.`
-                : `פתוחות כרגע ${tabs.length} לשוניות. אי אפשר לבטל את הסגירה לאחר האישור.`}
+                ? `There are ${closableTabs.length} unpinned tabs to close. Pinned tabs will remain open.`
+                : `ייסגרו ${closableTabs.length} לשוניות שאינן מוצמדות. לשוניות מוצמדות יישארו פתוחות.`}
             </div>
             <div className="flex justify-end gap-2 px-5 pb-5">
               <button
@@ -487,7 +494,7 @@ export default function ReadingScreen() {
                 className="inline-flex items-center gap-2 rounded-xl bg-error px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/50"
               >
                 <X size={15} />
-                {lang === 'en' ? 'Close all tabs' : 'סגור את כולן'}
+                {lang === 'en' ? (closableTabs.length === tabs.length ? 'Close all tabs' : 'Close unpinned tabs') : (closableTabs.length === tabs.length ? 'סגור את כולן' : 'סגור את הלא מוצמדות')}
               </button>
             </div>
           </section>

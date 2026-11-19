@@ -7,7 +7,9 @@ import {
   getTabContextMenuActions,
   planTabClose,
   tabsAfter,
+  tabsAfterClosable,
   tabsOtherThan,
+  tabsToCloseAll,
 } from '../../src/utils/tabContextMenu';
 
 const bookTab: Tab = {
@@ -83,6 +85,7 @@ test('duplicate preserves the tab kind and data while assigning a new id', () =>
   assert.equal(duplicateTabWithId(bookTab, 'copy').line, 12);
   assert.equal(duplicateTabWithId(searchTab, 'copy').query, 'מילה');
   assert.equal(duplicateTabWithId(dafTab, 'copy').amud, 'b');
+  assert.equal(duplicateTabWithId({ ...bookTab, isPinned: true }, 'copy').isPinned, false);
 });
 
 test('tabs after the current tab follow the stored tab order', () => {
@@ -102,4 +105,31 @@ test('context menu uses RTL/LTR direction for the close-after label', () => {
   assert.equal(ltr.find((action) => action.id === 'close-after')?.label, 'Close tabs to the right');
   assert.equal(getTabContextMenuActions(tabs, 'daf-1', 'he').some((action) => action.id === 'close-after'), false);
   assert.deepEqual(getTabContextMenuActions(tabs, 'missing', 'he'), []);
+});
+
+
+test('pin action reflects the current tab state and is the first menu action', () => {
+  const unpinned = getTabContextMenuActions(tabs, 'book-1', 'he');
+  assert.equal(unpinned[0]?.id, 'toggle-pin');
+  assert.equal(unpinned[0]?.label, 'הצמד כרטיסיה');
+
+  const pinnedTabs: Tab[] = [{ ...bookTab, isPinned: true }, searchTab];
+  const pinned = getTabContextMenuActions(pinnedTabs, 'book-1', 'en');
+  assert.equal(pinned[0]?.id, 'toggle-pin');
+  assert.equal(pinned[0]?.label, 'Unpin tab');
+});
+
+test('close all and close-after skip pinned tabs, and close all disables when every tab is pinned', () => {
+  const pinnedSearch: Tab = { ...searchTab, isPinned: true };
+  const mixedTabs = [bookTab, pinnedSearch, dafTab];
+
+  assert.deepEqual(tabsToCloseAll(mixedTabs).map((tab) => tab.id), ['book-1', 'daf-1']);
+  assert.deepEqual(tabsAfterClosable(mixedTabs, 'book-1').map((tab) => tab.id), ['daf-1']);
+
+  const onlyPinned = [pinnedSearch];
+  assert.deepEqual(tabsToCloseAll(onlyPinned), []);
+  assert.equal(
+    getTabContextMenuActions(onlyPinned, 'search-1', 'he').find((action) => action.id === 'close-all')?.disabled,
+    true,
+  );
 });

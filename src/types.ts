@@ -225,6 +225,7 @@ export interface Highlight {
 
 export interface BookTab {
   id: string;
+  isPinned?: boolean;
   kind: 'book';
   bookId: ID;
   title: string;
@@ -261,6 +262,7 @@ export interface PersonalNote {
 
 export interface SearchTab {
   id: string;
+  isPinned?: boolean;
   kind: 'search';
   title: string;
   query: string;
@@ -268,6 +270,7 @@ export interface SearchTab {
 
 export interface TzuratHaDafTab {
   id: string;
+  isPinned?: boolean;
   kind: 'tzurat-hadaf';
   title: string;
   bookId: ID;
