@@ -280,4 +280,13 @@ export interface TzuratHaDafTab {
 }
 
 export type Tab = BookTab | SearchTab | TzuratHaDafTab;
+
+export interface Workspace {
+  id: string;
+  name: string;
+  tabs: Tab[];
+  activeTabId: string | null;
+  isPinned: boolean;
+}
+
 export type Screen = 'library' | 'find' | 'reading' | 'more' | 'settings' | 'admin';

@@ -1,8 +1,9 @@
-import { Library, FileSearch, BookOpen, Search, LayoutGrid, Settings, Info, Languages } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Library, FileSearch, BookOpen, Search, LayoutGrid, Settings, Info, Languages, PanelsTopLeft } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { useApp } from '../store';
 import { t } from '../i18n';
 import TabSearch from './TabSearch';
+import WorkspaceManager from './WorkspaceManager';
 
 interface Item {
   key: string;
@@ -15,6 +16,7 @@ interface Item {
 
 export default function NavRail() {
   const { screen, setScreen, tabs, activeTabId, setActiveTab, closeTab, recentlyClosedTabs, restoreClosedTab, clearRecentlyClosedTabs, openSearch, setDialog, settings, updateSettings } = useApp();
+  const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const lang = settings.interfaceLanguage || 'he';
   const isBetaDeployment = typeof window !== 'undefined' && (window.location.pathname === '/beta' || window.location.pathname.startsWith('/beta/'));
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -25,6 +27,7 @@ export default function NavRail() {
     { key: 'find', label: 'איתור', icon: <FileSearch size={24} />, tip: 'CTRL+O', selected: screen === 'find', onClick: () => setScreen('find') },
     { key: 'reading', label: 'עיון', icon: <BookOpen size={24} />, tip: '', selected: screen === 'reading' && !searchActive, onClick: () => setScreen('reading') },
     { key: 'search', label: 'חיפוש', icon: <Search size={24} />, tip: 'CTRL+Q', selected: searchActive, onClick: () => openSearch() },
+    { key: 'workspaces', label: 'שולחנות עבודה', icon: <PanelsTopLeft size={24} />, tip: '', selected: false, onClick: () => setWorkspacesOpen(true) },
     { key: 'more', label: 'כלים', icon: <LayoutGrid size={24} />, tip: 'CTRL+M', selected: screen === 'more', onClick: () => setScreen('more') },
   ];
   const bottom: Item[] = [
@@ -116,5 +119,6 @@ export default function NavRail() {
       </a>
       <div className="flex flex-row md:flex-col md:items-center">{bottom.map(render)}</div>
     </nav>
+    {workspacesOpen && <WorkspaceManager onClose={() => setWorkspacesOpen(false)} />}
   );
 }

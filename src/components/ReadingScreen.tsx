@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, ChevronDown, Copy, Pin, Search as SearchIcon, X } from 'lucide-react';
+import { BookOpen, ChevronDown, Copy, Folder, Pin, Search as SearchIcon, X } from 'lucide-react';
 import { useApp } from '../store';
 import BookViewer from './BookViewer';
 import SearchTabView from './SearchTabView';
@@ -35,11 +35,16 @@ export default function ReadingScreen() {
     setScreen,
     openSearch,
     settings,
+    workspaces,
+    activeWorkspaceId,
+    moveTabsToWorkspace,
+    toast,
   } = useApp();
   const [confirmCloseAll, setConfirmCloseAll] = useState(false);
   const [tabMenu, setTabMenu] = useState<TabContextMenuState | null>(null);
   const [menuPosition, setMenuPosition] = useState<ReturnType<typeof placeReaderContextMenu> | null>(null);
   const [openTabsExpanded, setOpenTabsExpanded] = useState(false);
+  const [selectedTabIds, setSelectedTabIds] = useState<string[]>([]);
   const lang = settings.interfaceLanguage || 'he';
   const closableTabs = tabsToCloseAll(tabs);
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -211,6 +216,10 @@ export default function ReadingScreen() {
     }
   }, []);
 
+  useEffect(() => {
+    setSelectedTabIds((current) => current.filter((id) => tabs.some((tab) => tab.id === id)));
+  }, [tabs]);
+
   // keep the active tab visible when there are many tabs
   useEffect(() => {
     const el = stripRef.current?.querySelector<HTMLElement>(`[data-tab="${active?.id}"]`);
@@ -238,6 +247,7 @@ export default function ReadingScreen() {
         <div ref={stripRef} className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-1 pt-1.5" style={{ scrollbarWidth: 'thin' }}>
           {tabs.map((t) => {
             const isActive = active?.id === t.id;
+            const isSelected = selectedTabIds.includes(t.id);
             return (
               <div
                 key={t.id}
@@ -286,7 +296,7 @@ export default function ReadingScreen() {
                   longPressTriggeredRef.current = false;
                 }}
                 className={`group flex h-9 min-w-[120px] max-w-[220px] shrink-0 items-center gap-1 rounded-t-xl pr-3 pl-1 text-sm transition-colors ${
-                  isActive ? 'bg-surface text-on-surface shadow-[0_-1px_0_var(--c-outline-variant)]' : 'text-on-variant hover:bg-surface-3'
+                  isActive ? 'bg-surface text-on-surface shadow-[0_-1px_0_var(--c-outline-variant)]' : isSelected ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/30' : 'text-on-variant hover:bg-surface-3'
                 }`}
               >
                 <button
@@ -296,8 +306,26 @@ export default function ReadingScreen() {
                       event.preventDefault();
                       return;
                     }
+                    if (event.ctrlKey || event.metaKey) {
+                      setSelectedTabIds((current) => current.includes(t.id)
+                        ? current.filter((id) => id !== t.id)
+                        : [...current, t.id]);
+                      return;
+                    }
+                    if (event.shiftKey && active) {
+                      const anchorIndex = tabs.findIndex((tab) => tab.id === active.id);
+                      const targetIndex = tabs.findIndex((tab) => tab.id === t.id);
+                      if (anchorIndex >= 0 && targetIndex >= 0) {
+                        const start = Math.min(anchorIndex, targetIndex);
+                        const end = Math.max(anchorIndex, targetIndex);
+                        setSelectedTabIds(tabs.slice(start, end + 1).map((tab) => tab.id));
+                        return;
+                      }
+                    }
+                    setSelectedTabIds([]);
                     setActiveTab(t.id);
                   }}
+                  aria-pressed={isSelected}
                   onKeyDown={(event) => {
                     if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
                     event.preventDefault();
@@ -403,6 +431,36 @@ export default function ReadingScreen() {
                     <X size={14} />
                   </button>
                 </div>
+              ))}
+            </div>
+          )}
+          {workspaces.some((workspace) => workspace.id !== activeWorkspaceId) && (
+            <div role="group" aria-label={lang === 'en' ? 'Move tabs to workspace' : 'העבר כרטיסיות לשולחן עבודה'} className="mt-1 border-t border-outline-variant pt-1">
+              <div className="flex items-center gap-2 px-3 py-2 text-xs font-semibold text-on-variant">
+                <Folder size={14} />
+                {lang === 'en' ? `Move ${selectedTabIds.includes(tabMenu.tabId) && selectedTabIds.length > 1 ? selectedTabIds.length : 1} tab(s) to workspace` : `העבר ${selectedTabIds.includes(tabMenu.tabId) && selectedTabIds.length > 1 ? selectedTabIds.length : 1} כרטיסיות לשולחן עבודה`}
+              </div>
+              {workspaces.filter((workspace) => workspace.id !== activeWorkspaceId).map((workspace) => (
+                <button
+                  key={workspace.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    const ids = selectedTabIds.includes(tabMenu.tabId) && selectedTabIds.length > 1
+                      ? selectedTabIds
+                      : [tabMenu.tabId];
+                    const moved = moveTabsToWorkspace(ids, workspace.id);
+                    dismissTabContextMenu(false);
+                    setSelectedTabIds([]);
+                    toast(moved
+                      ? (lang === 'en' ? `Moved to ${workspace.name}` : `הכרטיסיות הועברו אל ${workspace.name}`)
+                      : (lang === 'en' ? 'Could not move tabs' : 'לא ניתן להעביר את הכרטיסיות'));
+                  }}
+                  className="flex w-full items-center rounded-lg px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+                  <span className="text-xs text-on-variant">{workspace.tabs.length}</span>
+                </button>
               ))}
             </div>
           )}

@@ -14,6 +14,15 @@ import {
   type RecentlyClosedTabEntry,
 } from './utils/recentlyClosedTabs';
 import { duplicateTabWithId, planTabClose, tabsToCloseAll } from './utils/tabContextMenu';
+import {
+  cloneWorkspaceTabs,
+  createWorkspaceId,
+  moveTabsBetweenWorkspaces,
+  normalizeWorkspaceList,
+  snapshotWorkspace,
+  uniqueWorkspaceName,
+  validateWorkspaceName,
+} from './utils/workspaces';
 
 type BookRef = { id: ID; title: string; categoryPath?: string };
 import {
@@ -31,6 +40,7 @@ import {
   type SearchTab,
   type Tab,
   type TzuratHaDafTab,
+  type Workspace,
 } from './types';
 
 interface Ctx {
@@ -46,6 +56,15 @@ interface Ctx {
   resetSettings: () => Promise<void>;
 
   tabs: Tab[];
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+  createWorkspace: () => string;
+  renameWorkspace: (id: string, name: string) => boolean;
+  deleteWorkspace: (id: string) => boolean;
+  switchWorkspace: (id: string) => boolean;
+  togglePinWorkspace: (id: string) => boolean;
+  saveWorkspaceSnapshot: () => boolean;
+  moveTabsToWorkspace: (tabIds: string[], targetWorkspaceId: string) => boolean;
   recentlyClosedTabs: Tab[];
   activeTabId: string | null;
   setActiveTab: (id: string) => void;
@@ -172,12 +191,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState('');
   const [settings, setSettings] = useState<ReaderSettings>(() => ({ ...DEFAULT_SETTINGS, ...load<Partial<ReaderSettings>>('otz_settings', {}) }));
+  const [workspaceBootstrap] = useState(() => {
+    const savedWorkspaces = normalizeWorkspaceList(load<unknown>('otz_workspaces', []));
+    let requestedId: string | null = null;
+    try { requestedId = sessionStorage.getItem('otz_active_workspace'); } catch { /* unavailable */ }
+    const activeId = savedWorkspaces.some((workspace) => workspace.id === requestedId)
+      ? requestedId
+      : savedWorkspaces[0]?.id ?? null;
+    return { workspaces: savedWorkspaces, activeWorkspaceId: activeId };
+  });
   const [tabs, setTabs] = useState<Tab[]>(() => {
-    const saved = load<Tab[]>('otz_tabs', []);
+    const initialWorkspace = workspaceBootstrap.workspaces.find((workspace) => workspace.id === workspaceBootstrap.activeWorkspaceId);
+    const saved = initialWorkspace ? cloneWorkspaceTabs(initialWorkspace.tabs) : load<Tab[]>('otz_tabs', []);
     if (!linkedTab) return saved;
     return [...saved.filter((t) => !(t.kind === 'book' && String(t.bookId) === String(linkedTab.bookId))), linkedTab];
   });
-  const [activeTabId, setActiveTabId] = useState<string | null>(() => linkedTab?.id ?? load<string | null>('otz_active', null));
+  const [activeTabId, setActiveTabId] = useState<string | null>(() => {
+    const initialWorkspace = workspaceBootstrap.workspaces.find((workspace) => workspace.id === workspaceBootstrap.activeWorkspaceId);
+    return linkedTab?.id ?? initialWorkspace?.activeTabId ?? load<string | null>('otz_active', null);
+  });
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => workspaceBootstrap.workspaces.length > 0
+    ? workspaceBootstrap.workspaces
+    : [{ id: createWorkspaceId(), name: 'שולחן עבודה 1', tabs: cloneWorkspaceTabs(tabs), activeTabId, isPinned: false }]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>(() =>
+    workspaceBootstrap.activeWorkspaceId ?? workspaces[0]?.id ?? createWorkspaceId(),
+  );
   const [closedTabEntries, setClosedTabEntries] = useState<RecentlyClosedTabEntry[]>([]);
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
   const [history, setHistory] = useState<ReadingHistoryItem[]>([]);
@@ -196,6 +234,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   tabsRef.current = tabs;
   const activeTabRef = useRef(activeTabId);
   activeTabRef.current = activeTabId;
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
+  const activeWorkspaceRef = useRef(activeWorkspaceId);
+  activeWorkspaceRef.current = activeWorkspaceId;
 
   const setScreen = useCallback((s: Screen) => {
     setScreenState(s);
@@ -207,6 +249,106 @@ export function AppProvider({ children }: { children: ReactNode }) {
       else if (s !== 'admin' && onAdmin) window.history.pushState(null, '', '/');
     } catch { /* ignore */ }
   }, []);
+
+  const persistWorkspaceList = useCallback((next: Workspace[]) => {
+    workspacesRef.current = next;
+    setWorkspaces(next);
+    save('otz_workspaces', next);
+  }, []);
+
+  const createWorkspace = useCallback(() => {
+    const workspace: Workspace = {
+      id: createWorkspaceId(),
+      name: uniqueWorkspaceName(workspacesRef.current),
+      tabs: [],
+      activeTabId: null,
+      isPinned: false,
+    };
+    persistWorkspaceList([...workspacesRef.current, workspace]);
+    return workspace.id;
+  }, [persistWorkspaceList]);
+
+  const renameWorkspace = useCallback((id: string, name: string) => {
+    const current = workspacesRef.current;
+    if (!current.some((workspace) => workspace.id === id) || validateWorkspaceName(name, current, id)) return false;
+    persistWorkspaceList(current.map((workspace) => workspace.id === id ? { ...workspace, name: name.trim() } : workspace));
+    return true;
+  }, [persistWorkspaceList]);
+
+  const deleteWorkspace = useCallback((id: string) => {
+    const current = workspacesRef.current;
+    if (id === activeWorkspaceRef.current || current.length <= 1 || !current.some((workspace) => workspace.id === id)) return false;
+    persistWorkspaceList(current.filter((workspace) => workspace.id !== id));
+    return true;
+  }, [persistWorkspaceList]);
+
+  const switchWorkspace = useCallback((id: string) => {
+    const sourceId = activeWorkspaceRef.current;
+    if (sourceId === id) return true;
+    const current = workspacesRef.current;
+    const target = current.find((workspace) => workspace.id === id);
+    if (!target) return false;
+    const next = current.map((workspace) => workspace.id === sourceId && !workspace.isPinned
+      ? snapshotWorkspace(workspace, tabsRef.current, activeTabRef.current)
+      : workspace);
+    const targetSnapshot = next.find((workspace) => workspace.id === id);
+    if (!targetSnapshot) return false;
+    persistWorkspaceList(next);
+    const restoredTabs = cloneWorkspaceTabs(targetSnapshot.tabs);
+    const restoredActiveId = targetSnapshot.activeTabId && restoredTabs.some((tab) => tab.id === targetSnapshot.activeTabId)
+      ? targetSnapshot.activeTabId
+      : restoredTabs[0]?.id ?? null;
+    activeWorkspaceRef.current = id;
+    setActiveWorkspaceId(id);
+    try { sessionStorage.setItem('otz_active_workspace', id); } catch { /* unavailable */ }
+    setTabs(restoredTabs);
+    setActiveTabId(restoredActiveId);
+    setScreen(restoredTabs.length > 0 ? 'reading' : 'library');
+    return true;
+  }, [persistWorkspaceList, setScreen]);
+
+  const togglePinWorkspace = useCallback((id: string) => {
+    const current = workspacesRef.current;
+    const target = current.find((workspace) => workspace.id === id);
+    if (!target) return false;
+    const shouldPin = !target.isPinned;
+    const next = current.map((workspace) => {
+      if (workspace.id !== id) return workspace;
+      const snapshot = shouldPin && id === activeWorkspaceRef.current
+        ? snapshotWorkspace(workspace, tabsRef.current, activeTabRef.current)
+        : workspace;
+      return { ...snapshot, isPinned: shouldPin };
+    });
+    persistWorkspaceList(next);
+    return true;
+  }, [persistWorkspaceList]);
+
+  const saveWorkspaceSnapshot = useCallback(() => {
+    const id = activeWorkspaceRef.current;
+    const current = workspacesRef.current;
+    if (!current.some((workspace) => workspace.id === id)) return false;
+    persistWorkspaceList(current.map((workspace) => workspace.id === id
+      ? snapshotWorkspace(workspace, tabsRef.current, activeTabRef.current)
+      : workspace));
+    return true;
+  }, [persistWorkspaceList]);
+
+  const moveTabsToWorkspace = useCallback((tabIds: string[], targetWorkspaceId: string) => {
+    const result = moveTabsBetweenWorkspaces(
+      workspacesRef.current,
+      activeWorkspaceRef.current,
+      tabsRef.current,
+      activeTabRef.current,
+      tabIds,
+      targetWorkspaceId,
+    );
+    if (!result) return false;
+    persistWorkspaceList(result.workspaces);
+    setTabs(result.remainingTabs);
+    setActiveTabId(result.nextActiveTabId);
+    if (result.remainingTabs.length === 0) setScreen('library');
+    return true;
+  }, [persistWorkspaceList, setScreen]);
 
   // theme + seed colour + brightness
   useEffect(() => {
@@ -220,6 +362,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => save('otz_tabs', tabs), [tabs]);
   useEffect(() => save('otz_active', activeTabId), [activeTabId]);
+  useEffect(() => save('otz_workspaces', workspaces), [workspaces]);
+  useEffect(() => {
+    try { sessionStorage.setItem('otz_active_workspace', activeWorkspaceId); } catch { /* unavailable */ }
+  }, [activeWorkspaceId]);
+  useEffect(() => {
+    const current = workspacesRef.current.find((workspace) => workspace.id === activeWorkspaceId);
+    if (!current || current.isPinned) return;
+    const isUnchanged = current.activeTabId === activeTabId && current.tabs.length === tabs.length &&
+      current.tabs.every((tab, index) => JSON.stringify(tab) === JSON.stringify(tabs[index]));
+    if (isUnchanged) return;
+    persistWorkspaceList(workspacesRef.current.map((workspace) => workspace.id === activeWorkspaceId
+      ? snapshotWorkspace(workspace, tabs, activeTabId)
+      : workspace));
+  }, [tabs, activeTabId, activeWorkspaceId, persistWorkspaceList]);
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== 'otz_workspaces' || !event.newValue) return;
+      try {
+        const incoming = normalizeWorkspaceList(JSON.parse(event.newValue));
+        if (incoming.length === 0) return;
+        workspacesRef.current = incoming;
+        setWorkspaces(incoming);
+        if (!incoming.some((workspace) => workspace.id === activeWorkspaceRef.current)) {
+          const fallback = incoming[0];
+          activeWorkspaceRef.current = fallback.id;
+          setActiveWorkspaceId(fallback.id);
+          const restored = cloneWorkspaceTabs(fallback.tabs);
+          setTabs(restored);
+          setActiveTabId(fallback.activeTabId && restored.some((tab) => tab.id === fallback.activeTabId)
+            ? fallback.activeTabId
+            : restored[0]?.id ?? null);
+        }
+      } catch { /* ignore malformed storage events */ }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // when all tabs are closed, go back to the library
   const prevTabCount = useRef(tabs.length);
@@ -978,7 +1157,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
       settings, updateSettings, resetSettings,
-      tabs, recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
+      tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace,
+      recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
       bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory,
       setBookmarks: setVisibleBookmarks, setHistory: setVisibleHistory,
@@ -986,7 +1166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, closedTabEntries, activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace, closedTabEntries, activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
