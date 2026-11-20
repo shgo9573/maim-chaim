@@ -11,6 +11,8 @@ import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 import { groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
+import ReaderDirectLinkMenu from './ReaderDirectLinkMenu';
+import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -705,6 +707,26 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
 
   const curLine = lines.find((l) => l.lineIndex === topLine);
   const refLabel = curLine?.heRef || '';
+  const contextMenuLine = contextMenu
+    ? lines.find((line) => line.lineIndex === contextMenu.line)
+    : undefined;
+  const directLinkMenuItems = contextMenu
+    ? getReaderDirectLinkMenuItems({
+        line: contextMenu.line,
+        sectionWordCount: stripTags(contextMenuLine?.content || '')
+          .trim()
+          .split(/\s+/u)
+          .filter(Boolean).length,
+        selection: contextMenu.text.trim()
+          ? {
+              text: contextMenu.text,
+              line: contextMenu.selectionLine,
+              from: contextMenu.from,
+              to: contextMenu.to,
+            }
+          : null,
+      })
+    : [];
 
   const addMarkAt = (lineIndex: number) => {
     const line = lines.find((item) => item.lineIndex === lineIndex);
@@ -1249,14 +1271,25 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             >
               <Copy size={15} /> העתק טקסט נבחר
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
-              onClick={() => void copy(buildDeepLink({ book: String(tab.bookId), title, line: contextMenu.line }), 'הקישור לשורה הועתק')}
-            >
-              <Link2 size={15} /> העתק קישור לשורה
-            </button>
+            <ReaderDirectLinkMenu
+              items={directLinkMenuItems}
+              onCopy={(item) => {
+                const url = buildDeepLink({
+                  book: String(tab.bookId),
+                  title,
+                  line: item.line,
+                  ...(item.from !== undefined && item.to !== undefined
+                    ? { from: item.from, to: item.to }
+                    : {}),
+                });
+                const message = item.id === 'section'
+                  ? 'הקישור למקטע הועתק'
+                  : item.id === 'section-mark'
+                    ? 'הקישור עם הדגשת המקטע הועתק'
+                    : 'הקישור עם הדגשת הטקסט הועתק';
+                void copy(url, message);
+              }}
+            />
             <button
               type="button"
               role="menuitem"
