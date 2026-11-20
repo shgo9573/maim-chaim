@@ -9,6 +9,7 @@ import {
   tabsAfter,
   tabsAfterClosable,
   tabsOtherThan,
+  tabsOtherThanClosable,
   tabsToCloseAll,
 } from '../../src/utils/tabContextMenu';
 
@@ -96,6 +97,23 @@ test('tabs after the current tab follow the stored tab order', () => {
 
 test('other tabs exclude only the selected tab', () => {
   assert.deepEqual(tabsOtherThan(tabs, 'search-1').map((tab) => tab.id), ['book-1', 'daf-1']);
+});
+
+test('close other tabs preserves every pinned tab', () => {
+  const pinnedSearch: Tab = { ...searchTab, isPinned: true };
+  const pinnedDaf: Tab = { ...dafTab, isPinned: true };
+  const mixedTabs = [bookTab, pinnedSearch, pinnedDaf];
+  assert.deepEqual(tabsOtherThanClosable(mixedTabs, 'book-1').map((tab) => tab.id), []);
+  assert.deepEqual(tabsOtherThanClosable([bookTab, pinnedSearch, dafTab], 'book-1').map((tab) => tab.id), ['daf-1']);
+});
+
+test('context menu closes the whole selected group when the clicked tab is selected', () => {
+  const selectedRtl = getTabContextMenuActions(tabs, 'search-1', 'he', ['book-1', 'search-1']);
+  const selectedLtr = getTabContextMenuActions(tabs, 'search-1', 'en', ['book-1', 'search-1']);
+  const unselected = getTabContextMenuActions(tabs, 'search-1', 'he', ['book-1', 'daf-1']);
+  assert.equal(selectedRtl.find((action) => action.id === 'close')?.label, 'סגור 2 כרטיסיות');
+  assert.equal(selectedLtr.find((action) => action.id === 'close')?.label, 'Close 2 tabs');
+  assert.equal(unselected.find((action) => action.id === 'close')?.label, 'סגור לשונית');
 });
 
 test('context menu uses RTL/LTR direction for the close-after label', () => {

@@ -12,7 +12,7 @@ import { placeReaderContextMenu } from '../utils/readerContextMenu';
 import {
   getTabContextMenuActions,
   tabsAfterClosable,
-  tabsOtherThan,
+  tabsOtherThanClosable,
   tabsToCloseAll,
   type TabContextMenuActionId,
 } from '../utils/tabContextMenu';
@@ -120,15 +120,20 @@ export default function ReadingScreen() {
       dismissTabContextMenu(false);
       togglePinTab(tab.id);
     } else if (action === 'close') {
+      const closingIds = selectedTabIds.includes(tab.id) && selectedTabIds.length > 1
+        ? selectedTabIds
+        : [tab.id];
       dismissTabContextMenu(false);
-      closeTab(tab.id);
+      closeTabs(closingIds);
+      setSelectedTabIds([]);
     } else if (action === 'close-all') {
       dismissTabContextMenu(false);
       setConfirmCloseAll(true);
     } else if (action === 'close-others') {
-      const closing = tabsOtherThan(tabs, tab.id);
+      const closing = tabsOtherThanClosable(tabs, tab.id);
       dismissTabContextMenu(false);
       closeTabs(closing.map((item) => item.id));
+      setSelectedTabIds([]);
     } else if (action === 'close-after') {
       const closing = tabsAfterClosable(tabs, tab.id);
       dismissTabContextMenu(false);
@@ -387,7 +392,7 @@ export default function ReadingScreen() {
           }}
           className="rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl"
         >
-          {getTabContextMenuActions(tabs, tabMenu.tabId, lang).map((action) => (
+          {getTabContextMenuActions(tabs, tabMenu.tabId, lang, selectedTabIds).map((action) => (
             <div key={action.id}>
               {(action.id === 'duplicate' || action.id === 'open-tabs') && (
                 <div role="separator" className="my-1 border-t border-outline-variant" />

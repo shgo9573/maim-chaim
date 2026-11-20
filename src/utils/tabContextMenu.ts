@@ -81,15 +81,23 @@ export function tabsOtherThan(tabs: readonly Tab[], tabId: string): Tab[] {
   return tabs.filter((tab) => tab.id !== tabId);
 }
 
+/** Returns the other tabs that Otzaria's close-others action is allowed to close. */
+export function tabsOtherThanClosable(tabs: readonly Tab[], tabId: string): Tab[] {
+  return tabs.filter((tab) => tab.id !== tabId && !tab.isPinned);
+}
+
 export function getTabContextMenuActions(
   tabs: readonly Tab[],
   tabId: string,
   language: 'he' | 'en',
+  selectedTabIds: readonly string[] = [],
 ): TabContextMenuAction[] {
   const tab = tabs.find((item) => item.id === tabId);
   if (!tab) return [];
 
   const english = language === 'en';
+  const selectedCount = selectedTabIds.filter((id) => tabs.some((item) => item.id === id)).length;
+  const closesSelection = selectedCount > 1 && selectedTabIds.includes(tabId);
   const after = tabsAfterClosable(tabs, tabId);
   return [
     {
@@ -98,7 +106,12 @@ export function getTabContextMenuActions(
         ? (english ? 'Unpin tab' : 'בטל הצמדת כרטיסיה')
         : (english ? 'Pin tab' : 'הצמד כרטיסיה'),
     },
-    { id: 'close', label: english ? 'Close tab' : 'סגור לשונית' },
+    {
+      id: 'close',
+      label: closesSelection
+        ? (english ? `Close ${selectedCount} tabs` : `סגור ${selectedCount} כרטיסיות`)
+        : (english ? 'Close tab' : 'סגור לשונית'),
+    },
     {
       id: 'close-all',
       label: english ? 'Close all tabs' : 'סגור את כל הלשוניות',
