@@ -10,6 +10,8 @@
 @source "./components/AdminStats.tsx";
 @source "./components/BookSidebar.tsx";
 @source "./components/BookViewer.tsx";
+@source "./components/ReaderContextIconRow.tsx";
+@source "./components/ReaderDirectLinkMenu.tsx";
 @source "./components/CalendarZmanim.tsx";
 @source "./components/CommentaryPanel.tsx";
 @source "./components/DailyNotifications.tsx";

@@ -75,3 +75,18 @@ export function getReaderDirectLinkMenuItems(
 
   return items;
 }
+
+
+export type ReaderDirectLinkIconKind = 'document' | 'marker' | 'alef';
+
+/** Web icon mapping for Otzaria's link_document, link_marker and link_alef glyphs. */
+export function getReaderDirectLinkIconKind(kind: ReaderDirectLinkKind): ReaderDirectLinkIconKind {
+  switch (kind) {
+    case 'section':
+      return 'document';
+    case 'section-mark':
+      return 'marker';
+    case 'text-mark':
+      return 'alef';
+  }
+}

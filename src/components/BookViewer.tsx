@@ -11,7 +11,7 @@ import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 import { groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
-import ReaderDirectLinkMenu from './ReaderDirectLinkMenu';
+import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 
 const CHUNK = 200;
@@ -1250,30 +1250,26 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             onMouseDown={(event) => event.preventDefault()}
             onKeyDown={handleContextMenuKeyDown}
           >
-            <button
-              ref={firstContextMenuItemRef}
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none motion-reduce:transition-none"
-              onClick={() => {
-                const line = lines.find((item) => item.lineIndex === contextMenu.line);
-                void copy(stripTags(line?.content || '').trim(), 'הפסקה הועתקה');
+            <ReaderContextIconRow
+              firstItemRef={firstContextMenuItemRef}
+              hasSelection={Boolean(contextMenu.text.trim())}
+              onSearchAllBooks={() => {
+                setContextMenu(null);
+                openSearch(contextMenu.text || undefined);
               }}
-            >
-              <Copy size={15} /> העתק את כל הפסקה
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!contextMenu.text}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={() => void copy(contextMenu.text, 'הטקסט הועתק')}
-            >
-              <Copy size={15} /> העתק טקסט נבחר
-            </button>
-            <ReaderDirectLinkMenu
-              items={directLinkMenuItems}
-              onCopy={(item) => {
+              onCopySelection={() => void copy(contextMenu.text, 'הטקסט הועתק')}
+              onAddNote={() => {
+                const line = lines.find((item) => item.lineIndex === contextMenu.line);
+                setNoteDraft({
+                  line: contextMenu.line,
+                  heRef: line?.heRef || '',
+                  selectedText: contextMenu.text,
+                });
+                setNoteText('');
+                setContextMenu(null);
+              }}
+              directLinkItems={directLinkMenuItems}
+              onCopyDirectLink={(item) => {
                 const url = buildDeepLink({
                   book: String(tab.bookId),
                   title,
@@ -1293,6 +1289,17 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             <button
               type="button"
               role="menuitem"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none motion-reduce:transition-none"
+              onClick={() => {
+                const line = lines.find((item) => item.lineIndex === contextMenu.line);
+                void copy(stripTags(line?.content || '').trim(), 'הפסקה הועתקה');
+              }}
+            >
+              <Copy size={15} /> העתק את כל הפסקה
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               disabled={!contextMenu.text}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => void copyTextAsLink({
@@ -1307,17 +1314,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
 
             <div role="separator" className="my-1 border-t border-outline-variant" />
 
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
-              onClick={() => {
-                setContextMenu(null);
-                openSearch(contextMenu.text || undefined);
-              }}
-            >
-              <Search size={15} /> חיפוש בכל הספרים
-            </button>
+
             <button
               type="button"
               role="menuitem"
@@ -1343,23 +1340,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             >
               <Bookmark size={15} /> הוסף סימניה לקטע זה
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
-              onClick={() => {
-                const line = lines.find((item) => item.lineIndex === contextMenu.line);
-                setNoteDraft({
-                  line: contextMenu.line,
-                  heRef: line?.heRef || '',
-                  selectedText: contextMenu.text,
-                });
-                setNoteText('');
-                setContextMenu(null);
-              }}
-            >
-              <MessageSquareText size={15} /> הוסף הערה אישית
-            </button>
+
             <button
               ref={commentaryMenuTriggerRef}
               type="button"

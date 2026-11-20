@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { getReaderDirectLinkMenuItems } from '../../src/utils/readerDirectLinkMenu';
+import { getReaderDirectLinkIconKind, getReaderDirectLinkMenuItems } from '../../src/utils/readerDirectLinkMenu';
 
 test('direct-link menu always offers a section link and a whole-section highlight', () => {
   assert.deepEqual(
@@ -65,4 +66,17 @@ test('whole-section highlight is disabled when the section has no words', () => 
 test('invalid section lines do not produce direct-link actions', () => {
   assert.deepEqual(getReaderDirectLinkMenuItems({ line: 0, sectionWordCount: 4 }), []);
   assert.deepEqual(getReaderDirectLinkMenuItems({ line: Number.NaN, sectionWordCount: 4 }), []);
+});
+
+
+test('direct-link choices retain distinct icon roles matching Otzaria link glyphs', () => {
+  assert.equal(getReaderDirectLinkIconKind('section'), 'document');
+  assert.equal(getReaderDirectLinkIconKind('section-mark'), 'marker');
+  assert.equal(getReaderDirectLinkIconKind('text-mark'), 'alef');
+});
+
+test('reader context-menu components are registered for Tailwind source scanning', () => {
+  const css = readFileSync(new URL('../../src/index.css', import.meta.url), 'utf8');
+  assert.match(css, /@source "\.\/components\/ReaderContextIconRow\.tsx";/);
+  assert.match(css, /@source "\.\/components\/ReaderDirectLinkMenu\.tsx";/);
 });
