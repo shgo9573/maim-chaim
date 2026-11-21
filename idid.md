@@ -2734,3 +2734,43 @@ Commits חדשים ב־main שנבדקו:
 - קבצים המיועדים לשינוי: `src/components/MoreScreen.tsx`; בדיקת רגרסיה חדשה ב-`test/frontend/bookmarksPresentation.test.ts`; תיעוד זה ב-`idid.md`.
 - בדיקות נדרשות: בדיקת רגרסיה ל-hierarchy ולמדדי התפריט, typecheck, test:frontend ו-build ב-CI. אין סביבת דפדפן מקומית זמינה בריצת GitHub בלבד; אין לטעון לבדיקה חזותית בדפדפן.
 
+
+
+
+### מימוש בפועל — התאמת שורות הסימניות ותפריט ההקשר למקור
+
+#### שינויי UI
+- commit קוד ב-main: `37ae02d9199bdccf8cb6fa68d96746c6726bf497` — `התאם את שורות הסימניות ותפריט ההקשר למקור`.
+- `src/components/MoreScreen.tsx` — שונה רק רכיב `Bookmarks()` וה-imports הנדרשים:
+  - נוספה תיבת אייקון מובילה 40×40 עם `primaryContainer`, פינות 8px ואייקון `BookOpen` בגודל 20px. זהו מיפוי כללי בלבד; במקור האייקון הוא `bookFormatIcon`, אך למודל `BookmarkItem` באתר אין `fileType`.
+  - שורת הסימניה עברה מפינות 16px לפינות 8px, ריווח קומפקטי יותר, רקע hover עדין ומסגרת focus.
+  - הכותרת הותאמה ל-16px מודגש בצבע primary; תיאור/קטע הטקסט לצבע onSurfaceVariant ובגודל 14px; זמן ההוספה נשאר אך הוצנע.
+  - כפתור המחיקה קיבל אזור לחיצה 40×40 ואייקון 20px.
+  - הוסר כפתור שלוש הנקודות הוויזואלי שאינו קיים בשורת הסימניה במקור. פעולת תפריט ההקשר לא הוסרה: right-click, מקש ContextMenu/Shift+F10 ו-long press נשארו פעילים; ההחרגה של long press עודכנה רק כדי להסיר הפניה לכפתור שהוסר.
+  - תפריט ההקשר הותאם למדדי המקור: רוחב מינימלי 150px, פינות 8px, ריפוד אנכי 8px, פריטים בגובה מינימלי 36px, ריווח אופקי 12px ואייקונים 18px. מיקום בגבולות viewport, Escape, focus וניווט מקלדת נשארו כפי שהיו.
+  - פעולות פתיחת הספר, עריכת התיאור והמחיקה וה-callbacks שלהן לא שונו. לא שונו נתונים, API, Backend או אחסון.
+- נוסף `test/frontend/bookmarksPresentation.test.ts` עם שלוש בדיקות רגרסיה: היררכיית שורה ואייקון, מדדי תפריט המקור, ושימור דרכי פתיחת תפריט ההקשר ללא כפתור overflow.
+- `src/components/BookmarksView.tsx` לא נערך: הוא לא נמצא כרכיב המחובר למסך הסימניות הפעיל; המסך בפועל הוא `Bookmarks()` בתוך `MoreScreen.tsx`.
+
+#### בדיקות ופריסה אוטומטית
+- GitHub Actions: [Deploy Beta — run 44929077547](https://github.com/shgo9573/maim-chaim/actions/runs/44929077547), commit `37ae02d9199bdccf8cb6fa68d96746c6726bf497`: `completed / success`.
+- Typecheck project: success.
+- Typecheck frontend: success.
+- Frontend tests: **120 עברו, 0 נכשלו**. שלוש בדיקות המצגת החדשות נכללו בריצה.
+- Build Beta frontend: success (Vite 7.3.2).
+- Configure SSH: success.
+- Deploy only to the Beta directory: success; מנגנון הפריסה האוטומטית הקיים השלים ל-`/beta/`.
+- לא בוצעה פריסה ידנית או גישה/שינוי ישיר בשרת או ב-DNS.
+- לא בוצעה בדיקת דפדפן ידנית או צילום מסך. לכן אין לטעון שאומתו בפועל RTL/LTR, hover, touch או מראה בכל רוחב מסך; האימות בריצה זו הוא בדיקות סטטיות, typecheck, tests, build ופריסה.
+
+#### מפת ענפים ומצב באגים בסיום
+- `main`: `37ae02d9199bdccf8cb6fa68d96746c6726bf497` — commit UI נבדק ב-CI ונפרס אוטומטית ל-Beta.
+- `arena/9b3e1906-maim-chaim`: `ee8a38c72d1e70461bc1750376660a9d15ea93a9` — נבדק, ללא שינוי.
+- `arena/9c1ba425-maim-chaim`: `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d` — נבדק, ללא שינוי.
+- `Otzaria/otzaria:dev`: `acb6759c59134f57be693a042ae36dd4f6c00f06` — מקור לקריאה בלבד; ללא commits חדשים.
+- הענף האחרון לפי תאריך HEAD: main.
+- `newbugs.md`: נקרא ב-main ובשני ענפי arena. דיווח חלונית חיפוש הכרטיסיות נשאר פתוח; הקובץ חסר בשני ענפי arena. לא נערך `newbugs.md`.
+- פערים חזותיים שנותרו במסך הסימניות: אייקון סוג הספר אינו זהה ל-`bookFormatIcon` עד ש-`BookmarkItem` יחשוף סוג קובץ; לא בוצעה בדיקה חזותית בדפדפן.
+- פערים פונקציונליים להעברה למשימות הפיתוח: חיפוש וכינויים, מיון לפי קטגוריה/תאריך, קיבוץ, סימניות מרוכזות, שמירת/פתיחת קבוצה, שינוי שם ומחיקת קבוצה — קיימים במקור אך לא הושלמו באתר. לא נוספו כפתורי דמה.
+- לא נערכו מסכי חיפוש, שאילתות, payloads, API, מנוע החיפוש או שירות החיפוש. לא נערך PDF.
+
