@@ -347,7 +347,7 @@ function Bookmarks() {
             role="menu"
             aria-label={`אפשרויות סימניה: ${menuBookmark.bookTitle}`}
             dir="rtl"
-            className="fixed z-[121] min-w-[150px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border border-outline-variant bg-surface-2 py-2 text-sm text-on-surface shadow-lg motion-reduce:transition-none"
+            className="fixed z-[121] min-w-[150px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg bg-surface-2 py-2 text-sm text-on-surface shadow-md motion-reduce:transition-none"
             style={{
               left: menuPosition?.left ?? contextMenu.x,
               top: menuPosition?.top ?? contextMenu.y,

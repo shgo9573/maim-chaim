@@ -17,7 +17,7 @@ test('bookmark rows follow Otzaria list density and icon hierarchy', () => {
 
 test('bookmark context menu uses the source menu metrics', () => {
   assert.ok(bookmarks.includes('min-w-[150px]'));
-  assert.ok(bookmarks.includes('rounded-lg border border-outline-variant bg-surface-2 py-2'));
+  assert.ok(bookmarks.includes('rounded-lg bg-surface-2 py-2'));
   assert.ok(bookmarks.includes('min-h-9 w-full'));
   assert.ok(bookmarks.includes('<PenLine size={18} /> : <Trash2 size={18} />'));
 });
