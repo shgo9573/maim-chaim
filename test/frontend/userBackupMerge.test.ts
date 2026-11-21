@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeUserBackupCollections } from '../../src/services/userStore';
+import { mergeUserBackupCollections, normalizeStoredUserSettings } from '../../src/services/userStore';
 
 function emptyUser() {
   return {
@@ -33,6 +33,18 @@ function emptyUser() {
     settings: {} as Record<string, any>,
   };
 }
+
+test('stored user settings are restored from the persisted record', () => {
+  const settings = {
+    theme: 'dark',
+    personalNotes: [{ id: 'note-1', bookId: 1, line: 3, text: 'חידוש' }],
+    hiddenHistoryIds: ['hidden-1'],
+  };
+
+  assert.deepEqual(normalizeStoredUserSettings(settings), settings);
+  assert.deepEqual(normalizeStoredUserSettings(null), {});
+  assert.deepEqual(normalizeStoredUserSettings([]), {});
+});
 
 test('backup merge keeps local preferences and imports missing settings', () => {
   const local = emptyUser();
