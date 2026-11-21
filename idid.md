@@ -2774,3 +2774,27 @@ Commits חדשים ב־main שנבדקו:
 - פערים פונקציונליים להעברה למשימות הפיתוח: חיפוש וכינויים, מיון לפי קטגוריה/תאריך, קיבוץ, סימניות מרוכזות, שמירת/פתיחת קבוצה, שינוי שם ומחיקת קבוצה — קיימים במקור אך לא הושלמו באתר. לא נוספו כפתורי דמה.
 - לא נערכו מסכי חיפוש, שאילתות, payloads, API, מנוע החיפוש או שירות החיפוש. לא נערך PDF.
 
+
+
+
+### דיוק נוסף בתפריט ההקשר — 21 בנובמבר 2026
+
+- בבדיקה חוזרת של `packages/otzaria_context_menu/lib/src/context_menu_rows.dart` נמצא ש-`_AppContextMenuPanel` במקור משתמש ב-`surfaceContainerHigh`, elevation 3 ורדיוס 8px, ללא מסגרת border נפרדת.
+- כדי למנוע סטייה מהמקור, בוצע תיקון UI נוסף ב-`src/components/MoreScreen.tsx`: הוסרה מסגרת ה-outline מתפריט הסימניות והצל הוחלף מ-`shadow-lg` ל-`shadow-md`, תוך שמירת רקע `surface-2`, רוחב 150px, ריפוד 8px ורדיוס 8px.
+- בדיקת `test/frontend/bookmarksPresentation.test.ts` עודכנה לוודא את משטח התפריט ללא border.
+- commit קוד נוסף ב-main: `df09a0d42dad78ae8da11a67c55f082bd146fb12` — `דייק את רקע תפריט הסימניות לפי שכבת התפריט במקור`.
+- GitHub Actions: [Deploy Beta — run 44929334928](https://github.com/shgo9573/maim-chaim/actions/runs/44929334928), commit `df09a0d42dad78ae8da11a67c55f082bd146fb12`: `completed / success`.
+  - Typecheck project: success.
+  - Typecheck frontend: success.
+  - Frontend tests: **120 עברו, 0 נכשלו**.
+  - Build Beta frontend: success.
+  - Configure SSH: success.
+  - Deploy only to the Beta directory: success.
+- לא בוצעה בדיקת דפדפן ידנית; אין לטעון לאימות חזותי בפועל.
+- מפת ענפים לפני commit התיעוד הזה:
+  - `main`: `df09a0d42dad78ae8da11a67c55f082bd146fb12`.
+  - `arena/9b3e1906-maim-chaim`: `ee8a38c72d1e70461bc1750376660a9d15ea93a9`.
+  - `arena/9c1ba425-maim-chaim`: `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`.
+  - מקור `Otzaria/otzaria:dev`: `acb6759c59134f57be693a042ae36dd4f6c00f06`.
+- מנוע החיפוש, שירות החיפוש וחוזי ה-API לא נערכו. PDF לא נערך.
+
