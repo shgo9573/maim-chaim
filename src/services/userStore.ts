@@ -303,6 +303,185 @@ export function updateUserSettings(userId: string, newSettings: Record<string, a
 }
 
 /**
+ * Backup merge helpers.
+ *
+ * The desktop app treats merge as additive: local preferences win, while
+ * missing records are imported. Notes are the exception only when the
+ * incoming copy has a newer updatedAt timestamp.
+ */
+type BackupMergeRecord = Record<string, unknown>;
+
+function asBackupRecord(value: unknown): BackupMergeRecord {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as BackupMergeRecord
+    : {};
+}
+
+function asBackupRecordArray(value: unknown): BackupMergeRecord[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is BackupMergeRecord =>
+        Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+      )
+    : [];
+}
+
+function backupIdKey(item: object): string | null {
+  const id = String((item as BackupMergeRecord).id ?? '').trim();
+  return id ? `id:${id}` : null;
+}
+
+function backupBookmarkKey(item: object): string | null {
+  const row = item as BackupMergeRecord;
+  const bookId = String(row.bookId ?? '').trim();
+  const lineIndex = Number(row.lineIndex);
+  if (bookId && Number.isInteger(lineIndex)) {
+    return `book:${bookId}:line:${lineIndex}`;
+  }
+  return backupIdKey(item);
+}
+
+function backupHistoryKey(item: object): string | null {
+  const row = item as BackupMergeRecord;
+  const bookId = String(row.bookId ?? '').trim();
+  return bookId ? `book:${bookId}` : backupIdKey(item);
+}
+
+function backupSearchKey(item: object): string | null {
+  const row = item as BackupMergeRecord;
+  const query = String(row.query ?? '').trim().replace(/\\s+/g, ' ').toLocaleLowerCase();
+  if (query) {
+    const category = String(row.category ?? '').trim().toLocaleLowerCase();
+    return `query:${query}:category:${category}`;
+  }
+  return backupIdKey(item);
+}
+
+function backupNoteKey(item: object): string | null {
+  const row = item as BackupMergeRecord;
+  const id = String(row.id ?? '').trim();
+  if (id) return `id:${id}`;
+
+  const bookId = String(row.bookId ?? '').trim();
+  const location = String(row.line ?? row.lineNumber ?? row.ref ?? row.heRef ?? '').trim();
+  const content = String(row.text ?? row.noteContent ?? row.content ?? '').trim();
+  return bookId && (location || content)
+    ? `note:${bookId}:${location}:${content}`
+    : null;
+}
+
+function incomingBackupItemIsNewer(
+  current: object,
+  incoming: object,
+  timestampKey: string,
+): boolean {
+  const currentValue = (current as BackupMergeRecord)[timestampKey];
+  const incomingValue = (incoming as BackupMergeRecord)[timestampKey];
+  if (typeof incomingValue !== 'string' && typeof incomingValue !== 'number') return false;
+  const incomingTime = Date.parse(String(incomingValue));
+  if (!Number.isFinite(incomingTime)) return false;
+
+  const currentTime = typeof currentValue === 'string' || typeof currentValue === 'number'
+    ? Date.parse(String(currentValue))
+    : Number.NaN;
+  return !Number.isFinite(currentTime) || incomingTime > currentTime;
+}
+
+function mergeBackupItems<T extends object>(
+  local: readonly T[],
+  incomingValue: unknown,
+  keyOf: (item: T) => string | null,
+  timestampKey?: string,
+): T[] {
+  const merged = [...local];
+  const positions = new Map<string, number>();
+
+  merged.forEach((item, index) => {
+    const key = keyOf(item);
+    if (key && !positions.has(key)) positions.set(key, index);
+  });
+
+  for (const incoming of asBackupRecordArray(incomingValue) as T[]) {
+    const key = keyOf(incoming);
+    if (!key) {
+      merged.push(incoming);
+      continue;
+    }
+
+    const existingIndex = positions.get(key);
+    if (existingIndex === undefined) {
+      positions.set(key, merged.length);
+      merged.push(incoming);
+      continue;
+    }
+
+    if (
+      timestampKey &&
+      incomingBackupItemIsNewer(merged[existingIndex], incoming, timestampKey)
+    ) {
+      merged[existingIndex] = incoming;
+    }
+  }
+
+  return merged;
+}
+
+function mergeBackupSettings(
+  local: Record<string, any>,
+  incoming: Record<string, unknown>,
+): Record<string, any> {
+  // Ordinary preferences stay local in merge mode, matching Otzaria desktop.
+  const merged: Record<string, any> = { ...incoming, ...local };
+
+  if (Array.isArray(local.personalNotes) || Array.isArray(incoming.personalNotes)) {
+    merged.personalNotes = mergeBackupItems(
+      asBackupRecordArray(local.personalNotes),
+      incoming.personalNotes,
+      backupNoteKey,
+      'updatedAt',
+    );
+  }
+
+  if (Array.isArray(local.hiddenHistoryIds) || Array.isArray(incoming.hiddenHistoryIds)) {
+    const localIds = Array.isArray(local.hiddenHistoryIds)
+      ? local.hiddenHistoryIds.filter((value: unknown): value is string => typeof value === 'string')
+      : [];
+    const incomingIds = Array.isArray(incoming.hiddenHistoryIds)
+      ? incoming.hiddenHistoryIds.filter((value): value is string => typeof value === 'string')
+      : [];
+    merged.hiddenHistoryIds = [...new Set([...localIds, ...incomingIds])];
+  }
+
+  if (Array.isArray(local.customStudies) || Array.isArray(incoming.customStudies)) {
+    merged.customStudies = mergeBackupItems(
+      asBackupRecordArray(local.customStudies),
+      incoming.customStudies,
+      backupIdKey,
+      'updatedAt',
+    );
+  }
+
+  return merged;
+}
+
+/**
+ * Pure merge operation shared by backup restore and tests.
+ * Local bookmarks/history win on identity conflicts; notes use updatedAt so a
+ * newer copy can be recovered without overwriting a more recent local edit.
+ */
+export function mergeUserBackupCollections(
+  local: Pick<UserRecord, 'bookmarks' | 'history' | 'searches' | 'notes' | 'settings'>,
+  backupData: Record<string, unknown>,
+): Pick<UserRecord, 'bookmarks' | 'history' | 'searches' | 'notes' | 'settings'> {
+  return {
+    bookmarks: mergeBackupItems(local.bookmarks, backupData.bookmarks, backupBookmarkKey),
+    history: mergeBackupItems(local.history, backupData.history, backupHistoryKey),
+    searches: mergeBackupItems(local.searches || [], backupData.searches, backupSearchKey, 'searchedAt'),
+    notes: mergeBackupItems(local.notes || [], backupData.notes, backupNoteKey, 'updatedAt'),
+    settings: mergeBackupSettings(local.settings || {}, asBackupRecord(backupData.settings)),
+  };
+}
+
+/**
  * Backup and Restore Operations
  */
 export function exportUserBackup(userId: string): Record<string, any> {
@@ -335,33 +514,12 @@ export function importUserBackup(
     user.notes = Array.isArray(backupData.notes) ? backupData.notes : [];
     user.settings = backupData.settings && typeof backupData.settings === 'object' ? backupData.settings : {};
   } else {
-    // Merge bookmarks (dedup by bookId + lineIndex)
-    if (Array.isArray(backupData.bookmarks)) {
-      const existingKeys = new Set(user.bookmarks.map(b => `${b.bookId}_${b.lineIndex}`));
-      for (const bm of backupData.bookmarks) {
-        if (!existingKeys.has(`${bm.bookId}_${bm.lineIndex}`)) {
-          user.bookmarks.push(bm);
-        }
-      }
-    }
-
-    // Merge history (dedup by bookId)
-    if (Array.isArray(backupData.history)) {
-      const existingBooks = new Set(user.history.map(h => String(h.bookId)));
-      for (const h of backupData.history) {
-        if (!existingBooks.has(String(h.bookId))) {
-          user.history.push(h);
-        }
-      }
-    }
-
-    // Merge settings
-    if (backupData.settings && typeof backupData.settings === 'object') {
-      user.settings = {
-        ...(user.settings || {}),
-        ...backupData.settings
-      };
-    }
+    const merged = mergeUserBackupCollections(user, backupData);
+    user.bookmarks = merged.bookmarks;
+    user.history = merged.history;
+    user.searches = merged.searches || [];
+    user.notes = merged.notes || [];
+    user.settings = merged.settings || {};
   }
 
   saveUserRecord(user);
