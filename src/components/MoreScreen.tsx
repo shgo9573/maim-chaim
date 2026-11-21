@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, MoreVertical, PenLine, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
+import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, PenLine, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
 import DailyStudy from './DailyStudy';
 import CalendarZmanim from './CalendarZmanim';
 import TzuratHaDaf from './TzuratHaDaf';
@@ -129,7 +129,7 @@ function Bookmarks() {
     const target = event.target;
     if (
       event.pointerType !== 'touch' ||
-      (target instanceof HTMLElement && target.closest('[data-bookmark-menu-control], [data-bookmark-delete-control]'))
+      (target instanceof HTMLElement && target.closest('[data-bookmark-delete-control]'))
     ) return;
 
     clearLongPress();
@@ -267,7 +267,7 @@ function Bookmarks() {
 
   return (
     <div>
-      <h2 className="mb-4 text-xl font-medium">סימניות</h2>
+      <h2 className="mb-4 flex items-center gap-2 border-b border-outline-variant pb-3 text-lg font-semibold"><Bookmark size={20} className="text-primary" /><span>סימניות</span></h2>
       {bookmarks.length === 0 && (
         <EmptyState icon={<Bookmark size={52} />} title="אין סימניות" hint="לחצו על סמל הסימניה בסרגל הכלים של הספר כדי להוסיף סימניה" />
       )}
@@ -303,47 +303,34 @@ function Bookmarks() {
             event.stopPropagation();
             longPressTriggeredRef.current = false;
           }}
-          className="mb-2 flex items-center gap-2 rounded-2xl border border-outline-variant bg-surface-1 pl-2 transition hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
+          className="mb-2 flex min-w-0 items-center gap-3 rounded-lg border border-outline-variant bg-surface-1 px-3 py-2 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none"
         >
+          <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary-container">
+            <BookOpen size={20} strokeWidth={1.8} />
+          </span>
           <button
             type="button"
             onClick={() => openBook({ id: b.bookId, title: b.bookTitle, categoryPath: b.category }, b.lineIndex)}
-            className="min-w-0 flex-1 px-4 py-3 text-start"
+            className="min-w-0 flex-1 px-1 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
           >
-            <div className="font-bold text-primary">
+            <div className="truncate text-base font-bold text-primary">
               {b.bookTitle} {b.heRef && <span className="text-sm font-normal text-on-variant">– {b.heRef}</span>}
             </div>
             {b.description?.trim() && (
-              <div className="mt-1 text-sm font-medium text-on-surface">{b.description}</div>
+              <div className="mt-0.5 line-clamp-2 text-sm text-on-variant">{b.description}</div>
             )}
-            {b.textSnippet && <div className="truncate text-sm" style={{ fontFamily: '"Frank Ruhl Libre"' }}>{b.textSnippet}</div>}
-            <div className="text-xs text-on-variant">{timeAgo(b.createdAt)}</div>
+            {b.textSnippet && <div className="mt-0.5 line-clamp-2 text-sm text-on-variant" style={{ fontFamily: '"Frank Ruhl Libre"' }}>{b.textSnippet}</div>}
+            <div className="mt-0.5 text-xs text-on-variant/80">{timeAgo(b.createdAt)}</div>
           </button>
           <button
             type="button"
             data-bookmark-delete-control="true"
             onClick={() => void deleteBookmark(b.id)}
-            className="rounded-full p-2 text-on-variant hover:bg-surface-3 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-on-variant transition-colors hover:bg-surface-3 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40 motion-reduce:transition-none"
             title="מחק"
             aria-label={`מחק סימניה של ${b.bookTitle}`}
           >
-            <Trash2 size={18} />
-          </button>
-          <button
-            type="button"
-            data-bookmark-menu-control="true"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              openContextMenu(b.id, rect.left, rect.bottom, event.currentTarget);
-            }}
-            className="rounded-full p-2 text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            title="אפשרויות סימניה"
-            aria-label={`אפשרויות סימניה של ${b.bookTitle}`}
-            aria-haspopup="menu"
-            aria-expanded={contextMenu?.bookmarkId === b.id}
-          >
-            <MoreVertical size={18} />
+            <Trash2 size={20} />
           </button>
         </div>
       ))}
@@ -360,7 +347,7 @@ function Bookmarks() {
             role="menu"
             aria-label={`אפשרויות סימניה: ${menuBookmark.bookTitle}`}
             dir="rtl"
-            className="fixed z-[121] min-w-[190px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-2xl motion-reduce:transition-none"
+            className="fixed z-[121] min-w-[150px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border border-outline-variant bg-surface-2 py-2 text-sm text-on-surface shadow-lg motion-reduce:transition-none"
             style={{
               left: menuPosition?.left ?? contextMenu.x,
               top: menuPosition?.top ?? contextMenu.y,
@@ -376,9 +363,9 @@ function Bookmarks() {
                 type="button"
                 role="menuitem"
                 onClick={() => runContextMenuAction(action.id)}
-                className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-start transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary motion-reduce:transition-none ${action.destructive ? 'text-error hover:bg-error/10 focus:bg-error/10' : 'hover:bg-surface-3 focus:bg-surface-3'}`}
+                className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-start text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary motion-reduce:transition-none ${action.destructive ? 'text-error hover:bg-error/10 focus:bg-error/10' : 'hover:bg-surface-3 focus:bg-surface-3'}`}
               >
-                {action.id === 'edit-description' ? <PenLine size={16} /> : <Trash2 size={16} />}
+                {action.id === 'edit-description' ? <PenLine size={18} /> : <Trash2 size={18} />}
                 {action.label}
               </button>
             ))}
