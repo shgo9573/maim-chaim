@@ -3,6 +3,12 @@ import path from 'path';
 import crypto from 'crypto';
 import { updateBookmarkDescriptionInList } from '../utils/bookmarkContextMenu.js';
 
+export function normalizeStoredUserSettings(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : {};
+}
+
 export interface UserRecord {
   userId: string;
   email: string | null;
@@ -110,7 +116,8 @@ export function getUserRecord(userId: string): UserRecord {
         bookmarks: Array.isArray(data.bookmarks) ? data.bookmarks : [],
         history: Array.isArray(data.history) ? data.history : [],
         searches: Array.isArray(data.searches) ? data.searches : [],
-        notes: Array.isArray(data.notes) ? data.notes : []
+        notes: Array.isArray(data.notes) ? data.notes : [],
+        settings: normalizeStoredUserSettings(data.settings)
       };
     } catch (err: any) {
       console.error(`[UserStore] Error reading file for ${userId}:`, err.message);
@@ -125,7 +132,8 @@ export function getUserRecord(userId: string): UserRecord {
     bookmarks: [],
     history: [],
     searches: [],
-    notes: []
+    notes: [],
+    settings: {}
   };
 
   saveUserRecord(newRecord);
