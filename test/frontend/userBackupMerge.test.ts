@@ -139,6 +139,23 @@ test('bookmarks and history are deduplicated by their actual content identity', 
   assert.deepEqual(merged.history.map((item) => item.id), ['local-history', 'backup-other-book']);
 });
 
+test('search identities normalize repeated whitespace and letter case', () => {
+  const local = emptyUser();
+  local.searches = [
+    { id: 'local-search', query: '  Shma   Berachot ', category: 'All', searchedAt: '2026-06-01T10:00:00.000Z' },
+  ];
+
+  const merged = mergeUserBackupCollections(local, {
+    searches: [
+      { id: 'backup-duplicate', query: 'shma berachot', category: 'all', searchedAt: '2026-05-01T10:00:00.000Z' },
+      { id: 'backup-new', query: 'another query', category: 'all', searchedAt: '2026-05-02T10:00:00.000Z' },
+    ],
+  });
+
+  assert.equal(merged.searches?.length, 2);
+  assert.equal(merged.searches?.find((item) => item.query.includes('Shma'))?.id, 'local-search');
+});
+
 test('hidden history IDs are unioned so an import does not unhide removed entries', () => {
   const local = emptyUser();
   local.settings.hiddenHistoryIds = ['hidden-local', 'shared'];
