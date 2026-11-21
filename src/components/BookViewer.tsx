@@ -13,6 +13,7 @@ import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/re
 import { groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
 import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
+import { getInitialReaderRange } from '../utils/readerPagination';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -341,9 +342,9 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       }
       return () => { cancelled = true; };
     }
-    const start = Math.max(1, target - 60);
+    const { start, end } = getInitialReaderRange(target);
     api
-      .content(tab.bookId, start, target + CHUNK)
+      .content(tab.bookId, start, end)
       .then((r) => {
         if (cancelled) return;
         setTotal(r.totalLines);
@@ -353,7 +354,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         setLines(r.lines);
         if (tab.jump) setSelected(safeTarget);
         const last = r.lines[r.lines.length - 1]?.lineIndex ?? 0;
-        if ((r.totalLines > 0 && last >= r.totalLines) || (!r.totalLines && r.lines.length < target + CHUNK - start + 1)) {
+        if ((r.totalLines > 0 && last >= r.totalLines) || (!r.totalLines && r.lines.length < end - start + 1)) {
           reachedEndRef.current = true;
           setEndReached(true);
         }
