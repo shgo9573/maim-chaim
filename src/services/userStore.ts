@@ -348,7 +348,7 @@ function backupHistoryKey(item: object): string | null {
 
 function backupSearchKey(item: object): string | null {
   const row = item as BackupMergeRecord;
-  const query = String(row.query ?? '').trim().replace(/\\s+/g, ' ').toLocaleLowerCase();
+  const query = String(row.query ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
   if (query) {
     const category = String(row.category ?? '').trim().toLocaleLowerCase();
     return `query:${query}:category:${category}`;
