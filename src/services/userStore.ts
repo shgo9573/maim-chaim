@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { updateBookmarkDescriptionInList } from '../utils/bookmarkContextMenu.js';
+import { validateUserBackup } from '../utils/userBackup.js';
 
 export function normalizeStoredUserSettings(value: unknown): Record<string, any> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -513,6 +514,9 @@ export function importUserBackup(
   backupData: any,
   mode: 'merge' | 'replace' = 'merge'
 ): UserRecord {
+  const validation = validateUserBackup(backupData, mode);
+  if (!validation.valid) throw new TypeError(validation.error);
+
   const user = getUserRecord(userId);
 
   if (mode === 'replace') {
