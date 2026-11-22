@@ -943,7 +943,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
             </div>
           )}
           {listContextMenuActions.map((action) => (
-            <div key={action.id}>
+            <div key={action.id} role="none">
               {isCommentaryContextMenu && action.id === 'open-commentary' && (
                 <div role="separator" className="my-1 border-t border-outline-variant" />
               )}

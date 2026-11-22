@@ -9,9 +9,9 @@ const menu = source.slice(menuStart, menuEnd);
 
 test('commentary context menu puts the two implemented source quick actions in the icon row', () => {
   assert.ok(menuStart >= 0 && menuEnd > menuStart, 'commentary context menu is present');
+  assert.ok(source.includes("action.id === 'search-selection' || action.id === 'copy-selection'"));
   assert.ok(menu.includes('aria-label="פעולות מהירות"'));
   assert.ok(menu.includes("action.id === 'search-selection'"));
-  assert.ok(menu.includes("action.id === 'copy-selection'"));
   assert.ok(menu.includes('<Library size={18} strokeWidth={1.8} />'));
   assert.ok(menu.includes('<Copy size={18} strokeWidth={1.8} />'));
   assert.ok(menu.includes('min-w-12 max-w-24'));
@@ -34,7 +34,8 @@ test('commentary header is omitted while personal-note menus keep their existing
   assert.ok(menu.includes("contextMenu.kind === 'personal-note' ? 'הערה אישית' : 'עריכת הערה'"));
 });
 
-test('quick actions and list items still call the existing action handler', () => {
+test('quick actions and list items retain their existing callbacks and menu semantics', () => {
   assert.equal((menu.match(/runContextMenuAction\(action.id\)/g) || []).length, 2);
   assert.ok(source.includes('getCommentaryContextMenuActions({'));
+  assert.ok(menu.includes('role="none"'));
 });
