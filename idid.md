@@ -2798,3 +2798,37 @@ Commits חדשים ב־main שנבדקו:
   - מקור `Otzaria/otzaria:dev`: `acb6759c59134f57be693a042ae36dd4f6c00f06`.
 - מנוע החיפוש, שירות החיפוש וחוזי ה-API לא נערכו. PDF לא נערך.
 
+## ריצת פיתוח בוקר — 22 בנובמבר 2026 — השלמת קישורי הפניה בשורת הקורא
+
+### בקרת גרסאות, ענפים ודיווחי באגים לפני מימוש
+- תחום הריצה: פיתוח פונקציונלי של הקורא והניווט, תוך השלמת פער אמיתי בתפריט ההקשר של שורת טקסט. לא בוצעה עבודה חזותית בלבד.
+- מאגר יעד: `shgo9573/maim-chaim`; כל העמודים נשלפו דרך GitHub API עם `per_page=100`: עמוד 1 החזיר 3 ענפים, עמוד 2 ריק.
+- מפת ענפים לפני המימוש:
+  - `main`: `800a968cf5598643b12c036a2d1ddf97bf6bc91c`, HEAD מ-2026-11-21 17:20:21 UTC.
+  - `arena/9b3e1906-maim-chaim`: `ee8a38c72d1e70461bc1750376660a9d15ea93a9`, HEAD מ-2026-11-06 02:21:56 UTC.
+  - `arena/9c1ba425-maim-chaim`: `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`, HEAD מ-2026-11-06 02:34:08 UTC.
+- מאז ה-SHA האחרון שתועד ב-idid עבור main (`df09a0d42dad78ae8da11a67c55f082bd146fb12)) נוסף commit אחד בלבד: `800a968cf5598643b12c036a2d1ddf97bf6bc91c`, עדכון תיעוד. לא נמצא commit קוד חדש בענף main. שני ענפי arena לא השתנו.
+- מקור לקריאה בלבד `Otzaria/otzaria:dev`: HEAD `cee59520a8e6d35d5350b8f51cde322d4b4b99cf`, מ-2026-11-21 22:06:03 UTC. מאז ה-SHA הקודם שתועד (`acb6759c59134f57be693a042ae36dd4f6c00f06)) נוספו 149 commits. נסרקו רשימת הקבצים וה-commits החדשים; לא הועתקו שינויים ממנוע החיפוש.
+- תגליות מקור נוספות מתוך 149 ה-commits: `lib/library/view/library_browser.dart` ו-`test/library/view/library_search_result_links_test.dart` מוסיפים קישורי קטגוריה/מחבר בתוצאות איתור בספרייה; `lib/navigation/view/reading_tab_strip.dart`, `lib/tabs/reading_screen.dart` ו-`lib/navigation/view/main_window_screen.dart` מרחיבים זרימות טאבים/ניווט; `lib/book_common/utils/link_anchor_markers.dart`, `lib/widgets/commentary/panel_anchor_links.dart`, `lib/user_content_import/services/user_link_ref_resolver.dart` ו-`lib/text_book/view/page_shape/simple_text_viewer.dart` מרחיבים קישורים ועוגני טקסט; נוסף tooltip לשולחן העבודה הפעיל. שינויים ב-`lib/search/**` וב-`lib/semantic_search/**` נשארים מחוץ לתחום ולא נגעתי בהם.
+- `newbugs.md` נקרא בנפרד מתוך HEAD של כל שלושת הענפים:
+  - `main`: נמצא ונקרא. הדיווח הפתוח: חיפוש בכרטיסיות מזיז את כל התצוגה שמאלה ומסתיר את סרגל הצד. חומרה/צעדי שחזור מפורטים לא נרשמו בקובץ. הדיווח נשאר פתוח; לא אומת תיקון בדפדפן.
+  - שני ענפי arena: הקובץ אינו קיים (404) בכל אחד מהם.
+  - הענף האחרון לפי תאריך HEAD הוא `main`. לא שונה `newbugs.md`.
+- אין שינוי בענפי arena או במאגר המקור.
+
+### תגליות חדשות לפני המימוש — קישורי הפניה בקורא
+- מקור: `Otzaria/otzaria:dev`, HEAD `cee59520a8e6d35d5350b8f51cde322d4b4b99cf`.
+- קבצי מקור שנבדקו:
+  - `lib/services/target_line_links_service.dart`: מפריד קישורים של שורת יעד ל-`commentaries`, `references` ו-`anchored`; קישורי טווח/עוגן אינם פריטי תפריט. טעינה עצלה, cache מוגבל, retry אחרי כשל ו-refresh stream.
+  - `lib/text_book/view/page_shape/simple_text_viewer.dart`: בתפריט שורה ראשית קיימים פריטים נפרדים `מפרשים` ו-`קישורים`; תת-התפריט `קישורים` מציג הפניות שאינן תלויות-טקסט, פותח יעד בלחיצה ומציג preview לתוכן הקישור בריחוף. קישורים מעוגנים נשארים בתוך הטקסט ולא מופיעים שוב ברשימת התפריט.
+  - `lib/models/link_types.dart`: סוגי טקסט תלויי-מפרש כוללים COMMENTARY, SUPER_COMMENTARY, TARGUM, MIDRASH, PARSHANUT, DIBUR_HAMATCHIL, ELUCIDATION, EXPLICATION ו-FOOTNOTES; סוג SOURCE הוא מקור וירטואלי. יתר סוגי ההפניה הלא-מעוגנים נכנסים ל-`references`.
+  - `lib/widgets/misc/link_context_menu_entry.dart`: פריט קישור מציג מראה מקום, פותח יעד, ומספק חלונית preview.
+- מצב האתר לפני המימוש:
+  - `src/services/seforimDatabase.ts:getBookLinksFromDb` כבר קורא קישורים בשני הכיוונים, אך מסנן אותם ל-`isPureComm` בלבד; השדה `allLinks` זהה לרשימת המפרשים. קישורי REFERENCE/QUOTATION/MESORAT_HASHAS/EIN_MISHPAT וסוגי הפניה אחרים אינם מוחזרים.
+  - `server.ts` ו-`src/api.ts` חושפים `/api/books/:id/links?line=`; החוזה הנוכחי הוא קישורי מפרשים בלבד.
+  - `src/components/BookViewer.tsx` מציג תת-תפריט יחיד `מפרשים על שורה זו`, המבוסס על `response.links`; אין תת-תפריט `קישורים` נפרד.
+  - קיימת פתיחת ספר לפי כותרת, אך קישור כותרת מותר לפתיחה רק כאשר יש התאמה יחידה מדויקת בקטלוג; יעד חסר/כפול/מוחרג חייב להישאר מושבת ולא לפתוח ספר שגוי.
+- פער שנבחר: להחזיר את קישורי ההפניה הלא-מעוגנים מה-DB כתוספת נפרדת לתשובת links, ולהציג אותם בתת-תפריט ייעודי בקורא. זה שינוי API של קישורים בלבד, לא API של חיפוש. לא משנים את מנוע החיפוש או חוזי החיפוש.
+- תכנון מימוש: לסנן סוגי קשר לפי חלוקת המקור; לא לכלול SOURCE ו-inline ranges (`start/end`); להוסיף שדה additive `references` בלי לשנות את משמעות `links` או `allLinks` הקיימים; להציג מראה מקום/סוג/תצוגת טקסט קצרה; לפתוח את היעד בכרטיסייה חדשה רק לאחר התאמה יחידה לקטלוג; לטפל בטעינה, כשל, retry, ריק, ביטול, Escape ומיקוד מקלדת. אין שינוי סכמת DB או נתוני משתמש.
+- בדיקות נדרשות: unit tests לסיווג סוגי קשר, סינון inline ranges, deduplication, מראה מקום ותצוגת preview; typecheck מלא ו-frontend; כל בדיקות frontend; build; CI ופריסה אוטומטית. בדיקת דפדפן ידנית תסומן כחסרה אם אין סביבה מתאימה.
+
