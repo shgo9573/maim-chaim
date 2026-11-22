@@ -53,6 +53,7 @@ interface Ctx {
 
   settings: ReaderSettings;
   updateSettings: (p: Partial<ReaderSettings>) => void;
+  replaceSettings: (p: Partial<ReaderSettings>) => void;
   resetSettings: () => Promise<void>;
 
   tabs: Tab[];
@@ -545,7 +546,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const replaceSettings = useCallback((p: Partial<ReaderSettings>) => {
+    window.clearTimeout(saveTimer.current);
+    const next = { ...DEFAULT_SETTINGS, ...p } as ReaderSettings;
+    setSettings(next);
+    save('otz_settings', next);
+  }, []);
+
   const resetSettings = useCallback(async () => {
+    window.clearTimeout(saveTimer.current);
     setSettings({ ...DEFAULT_SETTINGS });
     save('otz_settings', DEFAULT_SETTINGS);
     try {
@@ -1156,7 +1165,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Ctx>(
     () => ({
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
-      settings, updateSettings, resetSettings,
+      settings, updateSettings, replaceSettings, resetSettings,
       tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace,
       recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
@@ -1166,7 +1175,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, resetSettings, tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace, closedTabEntries, activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, replaceSettings, resetSettings, tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace, closedTabEntries, activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
