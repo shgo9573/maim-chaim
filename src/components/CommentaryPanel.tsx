@@ -6,7 +6,7 @@ import { useApp } from '../store';
 import type { ID, LinksResponse, CommentaryLink } from '../types';
 import { highlight, normalizeHe, processHtml, snippetAround, stripTags, type TextOpts } from '../utils/text';
 import { Spinner } from './ui';
-import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, ClipboardPaste, Copy, Filter, ListChecks, MoreVertical, PenLine, Scissors, Search, Trash2, X, AlignJustify } from 'lucide-react';
+import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, ClipboardPaste, Copy, Eraser, FilePlus2, FileText, Filter, Library, ListChecks, MoreVertical, PenLine, Scissors, Search, Trash2, X, AlignJustify } from 'lucide-react';
 import { findUniqueCommentaryBook, getCommentaryContextMenuActions, hasNikudOrTeamim, removeNikudAndTeamim, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
 import { getPersonalNoteContextMenuActions, type PersonalNoteContextMenuActionId } from '../utils/personalNoteContextMenu';
 import { getPersonalNoteEditorContextMenuActions, type PersonalNoteEditorContextMenuActionId } from '../utils/personalNoteEditorContextMenu';
@@ -535,6 +535,36 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     );
   };
 
+  const contextMenuActions = contextMenu
+    ? contextMenu.kind === 'personal-note'
+      ? getPersonalNoteContextMenuActions(contextMenu.noteText || '')
+      : contextMenu.kind === 'personal-note-editor'
+        ? getPersonalNoteEditorContextMenuActions({
+            hasSelection: (contextMenu.selectionEnd ?? 0) > (contextMenu.selectionStart ?? 0),
+            hasText: (contextMenu.noteText || '').length > 0,
+          })
+        : getCommentaryContextMenuActions({
+            hasSelection: Boolean(contextMenu.selectedText),
+            hasNikudSelection: hasNikudOrTeamim(contextMenu.selectedText),
+            hasParagraph: Boolean(contextMenu.paragraphText),
+            hasCommentary: Boolean(contextMenu.sourceBook),
+            canOpenInBackground: Boolean(
+              library && findUniqueCommentaryBook(library.books, contextMenu.sourceBook),
+            ),
+          })
+    : [];
+  const isCommentaryContextMenu = contextMenu?.kind === 'commentary';
+  const quickContextMenuActions = isCommentaryContextMenu
+    ? contextMenuActions.filter(
+        (action) => action.id === 'search-selection' || action.id === 'copy-selection',
+      )
+    : [];
+  const listContextMenuActions = isCommentaryContextMenu
+    ? contextMenuActions.filter(
+        (action) => action.id !== 'search-selection' && action.id !== 'copy-selection',
+      )
+    : contextMenuActions;
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
       <div className="flex items-center gap-1 border-b border-outline-variant px-2 py-1.5">
@@ -869,59 +899,85 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
             position: 'fixed',
             left: contextMenuPosition?.left ?? contextMenu.x,
             top: contextMenuPosition?.top ?? contextMenu.y,
-            width: 264,
+            width: isCommentaryContextMenu ? 'max-content' : 264,
+            minWidth: isCommentaryContextMenu ? 150 : undefined,
             maxWidth: contextMenuPosition?.maxWidth ?? 'calc(100vw - 16px)',
             maxHeight: contextMenuPosition?.maxHeight ?? 'calc(100vh - 16px)',
             overflowY: 'auto',
             boxSizing: 'border-box',
             zIndex: 12000,
           }}
-          className="rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl"
+          className={isCommentaryContextMenu
+            ? 'rounded-lg bg-surface-1 p-2 text-on-surface shadow-md'
+            : 'rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl'}
         >
-          <div className="px-3 py-2 text-xs font-semibold text-on-variant">
-            {contextMenu.kind === 'personal-note'
-              ? 'הערה אישית'
-              : contextMenu.kind === 'personal-note-editor'
-                ? 'עריכת הערה'
-                : contextMenu.sourceBook}
-          </div>
-          {(contextMenu.kind === 'personal-note'
-            ? getPersonalNoteContextMenuActions(contextMenu.noteText || '')
-            : contextMenu.kind === 'personal-note-editor'
-              ? getPersonalNoteEditorContextMenuActions({
-                  hasSelection: (contextMenu.selectionEnd ?? 0) > (contextMenu.selectionStart ?? 0),
-                  hasText: (contextMenu.noteText || '').length > 0,
-                })
-              : getCommentaryContextMenuActions({
-                hasSelection: Boolean(contextMenu.selectedText),
-                hasNikudSelection: hasNikudOrTeamim(contextMenu.selectedText),
-                hasParagraph: Boolean(contextMenu.paragraphText),
-                hasCommentary: Boolean(contextMenu.sourceBook),
-                canOpenInBackground: Boolean(
-                  library && findUniqueCommentaryBook(library.books, contextMenu.sourceBook),
-                ),
-              })).map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              role="menuitem"
-              disabled={action.disabled}
-              onClick={() => void runContextMenuAction(action.id)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
+          {contextMenu.kind !== 'commentary' && (
+            <div className="px-3 py-2 text-xs font-semibold text-on-variant">
+              {contextMenu.kind === 'personal-note' ? 'הערה אישית' : 'עריכת הערה'}
+            </div>
+          )}
+          {isCommentaryContextMenu && (
+            <div
+              role="group"
+              aria-label="פעולות מהירות"
+              dir="rtl"
+              className="flex w-full items-start justify-center gap-1 overflow-x-auto px-1 py-0.5"
             >
-              {action.id === 'search-selection'
-                ? <Search size={15} className="shrink-0" />
-                : action.id === 'cut-selection'
-                  ? <Scissors size={15} className="shrink-0" />
-                  : action.id === 'paste'
-                    ? <ClipboardPaste size={15} className="shrink-0" />
-                    : action.id === 'select-all'
-                      ? <ListChecks size={15} className="shrink-0" />
-                      : action.id.startsWith('copy-')
-                        ? <Copy size={15} className="shrink-0" />
-                        : <BookOpen size={15} className="shrink-0" />}
-              <span className="min-w-0 flex-1">{action.label}</span>
-            </button>
+              {quickContextMenuActions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  role="menuitem"
+                  aria-label={action.label}
+                  title={action.label}
+                  disabled={action.disabled}
+                  onClick={() => void runContextMenuAction(action.id)}
+                  className="flex min-w-12 max-w-24 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[11px] leading-4 text-on-surface hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {action.id === 'search-selection'
+                    ? <Library size={18} strokeWidth={1.8} />
+                    : <Copy size={18} strokeWidth={1.8} />}
+                  <span>{action.id === 'search-selection' ? 'חיפוש' : 'העתקה'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {listContextMenuActions.map((action) => (
+            <div key={action.id}>
+              {isCommentaryContextMenu && action.id === 'open-commentary' && (
+                <div role="separator" className="my-1 border-t border-outline-variant" />
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={action.disabled}
+                onClick={() => void runContextMenuAction(action.id)}
+                className={isCommentaryContextMenu
+                  ? 'flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-0 text-start text-sm font-normal transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40'
+                  : 'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40'}
+              >
+                {isCommentaryContextMenu
+                  ? action.id === 'copy-selection-without-nikud'
+                    ? <Eraser size={18} className="shrink-0" />
+                    : action.id === 'copy-paragraph'
+                      ? <FileText size={18} className="shrink-0" />
+                      : action.id === 'open-commentary-background'
+                        ? <FilePlus2 size={18} className="shrink-0" />
+                        : <BookOpen size={18} className="shrink-0" />
+                  : action.id === 'search-selection'
+                    ? <Search size={15} className="shrink-0" />
+                    : action.id === 'cut-selection'
+                      ? <Scissors size={15} className="shrink-0" />
+                      : action.id === 'paste'
+                        ? <ClipboardPaste size={15} className="shrink-0" />
+                        : action.id === 'select-all'
+                          ? <ListChecks size={15} className="shrink-0" />
+                          : action.id.startsWith('copy-')
+                            ? <Copy size={15} className="shrink-0" />
+                            : <BookOpen size={15} className="shrink-0" />}
+                <span className="min-w-0 flex-1">{action.label}</span>
+              </button>
+            </div>
           ))}
         </div>,
         document.body,
