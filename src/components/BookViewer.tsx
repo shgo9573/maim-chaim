@@ -168,8 +168,15 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAutoRun, setBookSearchAutoRun] = useState(false);
   const [topLine, setTopLine] = useState(tab.line);
+  const resolveReferenceBook = (item: (typeof referenceMenuItems)[number]) => {
+    const books = library?.books ?? [];
+    if (item.bookId != null) {
+      return books.find((book) => String(book.id) === String(item.bookId)) ?? null;
+    }
+    return findUniqueReaderCommentaryBook(books, item.title);
+  };
   const firstAvailableReferenceKey = referenceMenuItems.find((item) => {
-    const book = findUniqueReaderCommentaryBook(library?.books ?? [], item.title);
+    const book = resolveReferenceBook(item);
     return !libraryLoading && Boolean(book) && !isExcludedBook(book);
   })?.key;
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
@@ -1553,7 +1560,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                   </div>
                 )}
                 {commentaryMenuStatus === 'loaded' && referenceMenuItems.map((item) => {
-                  const targetBook = findUniqueReaderCommentaryBook(library?.books ?? [], item.title);
+                  const targetBook = resolveReferenceBook(item);
                   const unavailableReason = libraryLoading
                     ? 'טוען את פרטי הספרייה'
                     : !targetBook

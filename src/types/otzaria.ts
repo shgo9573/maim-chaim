@@ -42,6 +42,7 @@ export interface TocNode {
 }
 
 export interface CommentaryLink {
+  targetBookId?: number | string;
   sourceBook: string;
   category: string;
   line: number;

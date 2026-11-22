@@ -51,6 +51,7 @@ export interface TocEntry {
 }
 
 export interface CommentaryLink {
+  targetBookId?: ID;
   sourceBook: string;
   category: string;
   line: number;

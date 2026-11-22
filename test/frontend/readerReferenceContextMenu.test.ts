@@ -14,7 +14,9 @@ const link = (
   category = 'REFERENCE',
   text = '<b>מראה מקום</b> וקטע מקושר',
   dibburHamatchil = 'ברכות ב ע״א',
+  targetBookId?: number | string,
 ): CommentaryLink => ({
+  ...(targetBookId == null ? {} : { targetBookId }),
   sourceBook,
   line,
   category,
@@ -46,6 +48,11 @@ test('reference classification matches Otzaria dependent-text and virtual-source
   assert.equal(isReaderDependentTextLink('MIDRASH'), true);
   assert.equal(isReaderDependentTextLink('REFERENCE'), false);
   assert.equal(isReaderReferenceLink('SOURCE'), false);
+  assert.equal(isReaderReferenceLink('מקור'), false);
+  assert.equal(isReaderReferenceLink('הפניה'), true);
+  assert.equal(isReaderReferenceLink('אחר'), true);
+  assert.equal(isReaderReferenceLink('FOOTNOTE'), false);
+  assert.equal(isReaderReferenceLink('ELLUCIDATION'), false);
   assert.equal(isReaderReferenceLink('REFERENCE'), true);
   assert.equal(isReaderReferenceLink('QUOTATION'), true);
   assert.equal(isReaderReferenceLink('MESORAT_HASHAS'), true);
@@ -65,6 +72,19 @@ test('reference labels use the Hebrew names from Otzaria link types', () => {
   assert.equal(readerConnectionTypeLabel('EIN_MISHPAT'), 'עין משפט');
   assert.equal(readerConnectionTypeLabel('REFERENCE'), 'עיון');
   assert.equal(readerConnectionTypeLabel('קישור אישי'), 'קישור אישי');
+  assert.equal(readerConnectionTypeLabel('הפניה'), 'עיון');
+  assert.equal(readerConnectionTypeLabel('NONE'), 'לא מסווג');
+  assert.equal(readerConnectionTypeLabel('EIN_MISHPAT_/_NER_MITSVAH'), 'עין משפט');
+});
+
+test('same-title references remain distinct when the database supplies different target IDs', () => {
+  const items = groupReaderReferenceLinks([
+    link('ספר זהה', 12, 'REFERENCE', 'יעד א', '', 101),
+    link('ספר זהה', 12, 'REFERENCE', 'יעד ב', '', 202),
+  ]);
+
+  assert.equal(items.length, 2);
+  assert.deepEqual(items.map((item) => item.bookId), [101, 202]);
 });
 
 test('reference menu keeps first-seen target, filters invalid lines, and includes a safe text preview', () => {

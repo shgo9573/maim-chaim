@@ -1135,6 +1135,7 @@ export function getBookLinksFromDb(
 
     let linkRows: Array<{
       id: number;
+      targetBookId: number | string;
       connectionType?: string;
       targetBookTitle: string;
       targetText: unknown;
@@ -1159,6 +1160,7 @@ export function getBookLinksFromDb(
       // orientation does not hide valid links when the current line is the target.
       linkRows = queryAll<{
         id: number;
+        targetBookId: number | string;
         connectionType?: string;
         targetBookTitle: string;
         targetText: unknown;
@@ -1168,7 +1170,7 @@ export function getBookLinksFromDb(
         linkEnd?: unknown;
         orderIndex?: number;
       }>([
-        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType, ' + linkStartExpr + ' AS linkStart, ' + linkEndExpr + ' AS linkEnd,',
+        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType, b.id AS targetBookId, ' + linkStartExpr + ' AS linkStart, ' + linkEndExpr + ' AS linkEnd,',
         '       b.title AS targetBookTitle, ' + lineTextExpr('tl') + ' AS targetText,',
         '       tl.lineIndex AS targetLineIndex, tl.heRef AS targetHeRef, b.orderIndex',
         'FROM link l',
@@ -1178,7 +1180,7 @@ export function getBookLinksFromDb(
         lineTextJoin('tl'),
         'WHERE l.sourceLineId = ?',
         'UNION ALL',
-        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType, ' + linkStartExpr + ' AS linkStart, ' + linkEndExpr + ' AS linkEnd,',
+        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType, b.id AS targetBookId, ' + linkStartExpr + ' AS linkStart, ' + linkEndExpr + ' AS linkEnd,',
         '       b.title AS targetBookTitle, ' + lineTextExpr('tl') + ' AS targetText,',
         '       tl.lineIndex AS targetLineIndex, tl.heRef AS targetHeRef, b.orderIndex',
         'FROM link l',
@@ -1197,6 +1199,7 @@ export function getBookLinksFromDb(
         : 'NULL';
       linkRows = queryAll<{
         id: number;
+        targetBookId: number | string;
         connectionType?: string;
         targetBookTitle: string;
         targetText: unknown;
@@ -1273,6 +1276,7 @@ export function getBookLinksFromDb(
     };
 
     const toApiLink = (r: (typeof decodedRows)[number]) => ({
+      targetBookId: r.targetBookId,
       sourceBook: r.targetBookTitle,
       category: r.connectionType || 'מפרש',
       line: r.targetLineIndex,
@@ -1286,8 +1290,9 @@ export function getBookLinksFromDb(
     const references: CommentaryLink[] = decodedRows
       .filter(r => !isPureCommentary(r) && isReaderReferenceLink(r.connectionType, r.linkStart, r.linkEnd))
       .map(r => ({
+        targetBookId: r.targetBookId,
         sourceBook: r.targetBookTitle,
-        category: r.connectionType || 'קישור',
+        category: r.connectionType || 'OTHER',
         line: r.targetLineIndex,
         text: r.targetText,
         dibburHamatchil: r.targetHeRef || undefined,
