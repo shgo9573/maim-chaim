@@ -2995,3 +2995,11 @@ Commits חדשים ב־main שנבדקו:
 - לא נערכו קבצים מחוץ ל-`shgo9573/maim-chaim`; מקור Otzaria וענפי arena נותרו לקריאה בלבד.
 - באג חיפוש הכרטיסיות והיעלמות סרגל הצד נשאר פתוח; לא שונה במסגרת ריצה זו.
 - להמשך משימת ה-UI: להשוות את שורת האייקונים ותתי-התפריטים כאשר צוות הפיתוח משלים את פעולות הערה/קישור/מפרשים/קישורים, ואז להשלים השוואת מיקום, hover, focus, touch ומסך צר בצילום מסך אמיתי.
+
+
+### עדכון סופי לאחר השלמת CI/פריסה — 22.11.2026 17:33Z
+
+- ריצת GitHub Actions `45049777716` הסתיימה: `failure` בשלב הפריסה בלבד.
+- `npm run lint` — עבר; `npm run typecheck:frontend` — עבר; `npm run test:frontend` — 137/137 עברו; `vite build --base=/beta/` — עבר.
+- שלב `Deploy only to the Beta directory` נכשל לאחר timeout בחיבור SSH לפורט 22 (`ssh: connect to host ... port 22: Connection timed out`; rsync exit code 255). לכן לא אומתה פריסה מוצלחת.
+- לא בוצעה פריסה ידנית, לא נגעו בשרת או ב-DNS, ולא שונו secrets או הגדרות deployment. נדרש טיפול בגישת הרשת/SSH של מנגנון הפריסה הקיים מחוץ למשימת UI.
