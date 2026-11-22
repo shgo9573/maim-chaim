@@ -7,6 +7,7 @@ import { CANONICAL_BOOKS } from '../data/otzariaLibraryData.js';
 import { buildComprehensiveCatalog } from '../data/catalogGenerator.js';
 import { sysLogger } from './logger.js';
 import { sortCommentariesByGeneration } from '../utils/generationOrder.js';
+import { isReaderReferenceLink } from '../utils/readerReferenceContextMenu.js';
 import { stripNikud } from '../utils/gematria.js';
 import { buildHebrewSearchRegex, extractSearchSnippet } from '../utils/searchHelpers.js';
 
@@ -1063,6 +1064,7 @@ export function getBookLinksFromDb(
   links: CommentaryLink[];
   allLinks: CommentaryLink[];
   availableCommentators: string[];
+  references: CommentaryLink[];
 } | null {
   if (!isSeforimDbAvailable()) return null;
   if (isExcludedBook(bookId)) return null;
@@ -1094,7 +1096,8 @@ export function getBookLinksFromDb(
         line: lineIndex,
         links: [],
         allLinks: [],
-        availableCommentators: []
+        availableCommentators: [],
+        references: []
       };
       bookLinksCache.set(cacheKey, emptyRes);
       return emptyRes;
@@ -1118,6 +1121,10 @@ export function getBookLinksFromDb(
     }
 
     const quoteIdentifier = (column: string) => '"' + column.replace(/"/g, '""') + '"';
+    const linkStartColumn = linkCols.find(c => /^start(?:Index)?$/i.test(c));
+    const linkEndColumn = linkCols.find(c => /^end(?:Index)?$/i.test(c));
+    const linkStartExpr = linkStartColumn ? 'l.' + quoteIdentifier(linkStartColumn) : 'NULL';
+    const linkEndExpr = linkEndColumn ? 'l.' + quoteIdentifier(linkEndColumn) : 'NULL';
     const lineTextExpr = (alias: string) => useSplitContent
       ? alias + 'c.' + quoteIdentifier(splitContentCol!)
       : alias + '.' + quoteIdentifier(inlineContentCol!);
@@ -1133,6 +1140,8 @@ export function getBookLinksFromDb(
       targetText: unknown;
       targetLineIndex: number;
       targetHeRef: string | null;
+      linkStart?: unknown;
+      linkEnd?: unknown;
       orderIndex?: number;
     }> = [];
 
@@ -1155,9 +1164,11 @@ export function getBookLinksFromDb(
         targetText: unknown;
         targetLineIndex: number;
         targetHeRef: string | null;
+        linkStart?: unknown;
+        linkEnd?: unknown;
         orderIndex?: number;
       }>([
-        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType,',
+        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType, ' + linkStartExpr + ' AS linkStart, ' + linkEndExpr + ' AS linkEnd,',
         '       b.title AS targetBookTitle, ' + lineTextExpr('tl') + ' AS targetText,',
         '       tl.lineIndex AS targetLineIndex, tl.heRef AS targetHeRef, b.orderIndex',
         'FROM link l',
@@ -1167,7 +1178,7 @@ export function getBookLinksFromDb(
         lineTextJoin('tl'),
         'WHERE l.sourceLineId = ?',
         'UNION ALL',
-        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType,',
+        'SELECT l.id, ' + connectionTypeExpr + ' AS connectionType, ' + linkStartExpr + ' AS linkStart, ' + linkEndExpr + ' AS linkEnd,',
         '       b.title AS targetBookTitle, ' + lineTextExpr('tl') + ' AS targetText,',
         '       tl.lineIndex AS targetLineIndex, tl.heRef AS targetHeRef, b.orderIndex',
         'FROM link l',
@@ -1191,6 +1202,8 @@ export function getBookLinksFromDb(
         targetText: unknown;
         targetLineIndex: number;
         targetHeRef: string | null;
+        linkStart?: unknown;
+        linkEnd?: unknown;
         orderIndex?: number;
       }>([
         'SELECT l.id, ' + legacyConnectionTypeExpr + ' AS connectionType,',
@@ -1219,54 +1232,63 @@ export function getBookLinksFromDb(
     const sourceRef = sourceLine.heRef || '';
     const otherBooksRegex = /שמות|ויקרא|במדבר|דברים|יהושע|שופטים|שמואל|מלכים|ישעיה|ירמיה|יחזקאל|תהילים|משלי|איוב/i;
 
-    const links: CommentaryLink[] = linkRows
-      .map(r => ({ ...r, targetText: decodeStoredLineContent(r.targetText, useSplitContent) }))
-      .filter(r => {
-        // 1. Must be a pure commentary/translation, not unrelated citations (like Talmud Yerushalmi, Zohar, etc.)
-        const connType = (r.connectionType || '').toUpperCase();
-        const isPureComm =
-          connType === 'COMMENTARY' ||
-          connType === 'TARGUM' ||
-          connType === 'מפרש' ||
-          connType === 'תרגום' ||
-          connType === 'פירוש' ||
-          r.targetBookTitle.includes(`על ${bookTitleClean}`) ||
-          r.targetBookTitle.includes('על התורה') ||
-          r.targetBookTitle.includes('על תורה');
+    const decodedRows = linkRows.map(r => ({
+      ...r,
+      targetText: decodeStoredLineContent(r.targetText, useSplitContent),
+    }));
 
-        if (!isPureComm) return false;
+    const isPureCommentary = (r: (typeof decodedRows)[number]) => {
+      const connType = (r.connectionType || '').toUpperCase();
+      return connType === 'COMMENTARY' ||
+        connType === 'TARGUM' ||
+        connType === 'מפרש' ||
+        connType === 'תרגום' ||
+        connType === 'פירוש' ||
+        r.targetBookTitle.includes('על ' + bookTitleClean) ||
+        r.targetBookTitle.includes('על התורה') ||
+        r.targetBookTitle.includes('על תורה');
+    };
 
-        // 2. Exclude cross-references mentioning other books/chapters
-        if (r.targetHeRef) {
-          const ref = r.targetHeRef;
-          if (bookTitleClean === 'בראשית' && otherBooksRegex.test(ref) && !ref.includes('בראשית')) {
-            return false;
-          }
-          if (bookTitleClean === 'שמות' && /בראשית|ויקרא|במדבר|דברים/i.test(ref) && !ref.includes('שמות')) {
-            return false;
-          }
-          if (sourceRef) {
-            const chMatch = sourceRef.match(/,\s*([א-ת]+)\s*,/);
-            if (chMatch) {
-              const curChapter = chMatch[1];
-              const targetChMatch = ref.match(/,\s*([א-ת]+)\s*,/);
-              if (targetChMatch && targetChMatch[1] !== curChapter && ref.includes(book.title)) {
-                return false;
-              }
+    const isCommentaryLink = (r: (typeof decodedRows)[number]) => {
+      if (!isPureCommentary(r)) return false;
+
+      // Exclude cross-references mentioning other books/chapters from the commentary list.
+      if (r.targetHeRef) {
+        const ref = r.targetHeRef;
+        if (bookTitleClean === 'בראשית' && otherBooksRegex.test(ref) && !ref.includes('בראשית')) {
+          return false;
+        }
+        if (bookTitleClean === 'שמות' && /בראשית|ויקרא|במדבר|דברים/i.test(ref) && !ref.includes('שמות')) {
+          return false;
+        }
+        if (sourceRef) {
+          const chMatch = sourceRef.match(/,\s*([א-ת]+)\s*,/);
+          if (chMatch) {
+            const curChapter = chMatch[1];
+            const targetChMatch = ref.match(/,\s*([א-ת]+)\s*,/);
+            if (targetChMatch && targetChMatch[1] !== curChapter && ref.includes(book.title)) {
+              return false;
             }
           }
         }
-        return true;
-      })
-      .map(r => ({
-        sourceBook: r.targetBookTitle,
-        category: r.connectionType || 'מפרש',
-        line: r.targetLineIndex,
-        text: r.targetText,
-        dibburHamatchil: r.targetHeRef || undefined,
-        isLineMatch: true,
-        orderIndex: r.orderIndex
-      }));
+      }
+      return true;
+    };
+
+    const toApiLink = (r: (typeof decodedRows)[number]): CommentaryLink => ({
+      sourceBook: r.targetBookTitle,
+      category: r.connectionType || 'מפרש',
+      line: r.targetLineIndex,
+      text: r.targetText,
+      dibburHamatchil: r.targetHeRef || undefined,
+      isLineMatch: true,
+      orderIndex: r.orderIndex,
+    });
+
+    const links: CommentaryLink[] = decodedRows.filter(isCommentaryLink).map(toApiLink);
+    const references: CommentaryLink[] = decodedRows
+      .filter(r => !isPureCommentary(r) && isReaderReferenceLink(r.connectionType, r.linkStart, r.linkEnd))
+      .map(toApiLink);
 
     const sortedLinks = sortCommentariesByGeneration(links);
     const availableCommentators = Array.from(new Set(sortedLinks.map(l => l.sourceBook)));
@@ -1279,6 +1301,7 @@ export function getBookLinksFromDb(
       dafLabel: validDafLabel,
       links: sortedLinks,
       allLinks: sortedLinks,
+      references,
       availableCommentators
     };
 
@@ -1451,6 +1474,7 @@ export async function getBookLinksFromDbAsync(
   links: CommentaryLink[];
   allLinks: CommentaryLink[];
   availableCommentators: string[];
+  references: CommentaryLink[];
 } | null> {
   if (!isSeforimDbAvailable()) return null;
   if (isExcludedBook(bookId)) return null;

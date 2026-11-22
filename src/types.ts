@@ -65,6 +65,7 @@ export interface LinksResponse {
   dafLabel?: string;
   links: CommentaryLink[];
   allLinks?: CommentaryLink[];
+  references?: CommentaryLink[];
   availableCommentators?: string[];
 }
 

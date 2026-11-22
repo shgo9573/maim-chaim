@@ -10,7 +10,8 @@ import { EmptyState, IconBtn, Spinner } from './ui';
 import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
-import { groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
+import { findUniqueReaderCommentaryBook, groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
+import { groupReaderReferenceLinks } from '../utils/readerReferenceContextMenu';
 import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
@@ -148,7 +149,7 @@ function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLEleme
 }
 
 export default function BookViewer({ tab }: { tab: BookTab }) {
-  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, openBookByTitle, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
+  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, openBookByTitle, openBookInNewTab, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
   const [lines, setLines] = useState<ContentLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -160,6 +161,8 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [commentaryMenuExpanded, setCommentaryMenuExpanded] = useState(false);
   const [commentaryMenuStatus, setCommentaryMenuStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [commentaryMenuItems, setCommentaryMenuItems] = useState<ReturnType<typeof groupReaderCommentaryLinks>>([]);
+  const [referenceMenuExpanded, setReferenceMenuExpanded] = useState(false);
+  const [referenceMenuItems, setReferenceMenuItems] = useState<ReturnType<typeof groupReaderReferenceLinks>>([]);
   const [noteDraft, setNoteDraft] = useState<ReaderNoteDraft | null>(null);
   const [noteText, setNoteText] = useState('');
   const [bookSearchQuery, setBookSearchQuery] = useState('');
@@ -184,6 +187,9 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const firstContextMenuItemRef = useRef<HTMLButtonElement>(null);
   const commentaryMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const commentaryMenuFirstItemRef = useRef<HTMLButtonElement>(null);
+  const referenceMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const referenceMenuFirstItemRef = useRef<HTMLButtonElement>(null);
+  const focusReferenceMenuItemRef = useRef(false);
   const commentaryMenuRequestRef = useRef(0);
   const focusCommentaryMenuItemRef = useRef(false);
   const touchTimerRef = useRef<number | null>(null);
@@ -222,11 +228,22 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   }, [contextMenu, commentaryMenuExpanded, commentaryMenuStatus, commentaryMenuItems]);
 
   useEffect(() => {
+    if (!contextMenu || !referenceMenuExpanded || !focusReferenceMenuItemRef.current || commentaryMenuStatus === 'loading') return;
+    const frame = window.requestAnimationFrame(() => {
+      referenceMenuFirstItemRef.current?.focus();
+      focusReferenceMenuItemRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [contextMenu, referenceMenuExpanded, commentaryMenuStatus, referenceMenuItems]);
+
+  useEffect(() => {
     commentaryMenuRequestRef.current += 1;
     setContextMenu(null);
     setCommentaryMenuExpanded(false);
+    setReferenceMenuExpanded(false);
     setCommentaryMenuStatus('idle');
     setCommentaryMenuItems([]);
+    setReferenceMenuItems([]);
     setNoteDraft(null);
     setNoteText('');
     setBookSearchAutoRun(false);
@@ -877,10 +894,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const requestId = ++commentaryMenuRequestRef.current;
     setCommentaryMenuStatus('loading');
     setCommentaryMenuItems([]);
+    setReferenceMenuItems([]);
     try {
       const response = await api.links(tab.bookId, line);
       if (requestId !== commentaryMenuRequestRef.current) return;
       setCommentaryMenuItems(groupReaderCommentaryLinks(response.links ?? []));
+      setReferenceMenuItems(groupReaderReferenceLinks(response.references ?? []));
       setCommentaryMenuStatus('loaded');
     } catch {
       if (requestId !== commentaryMenuRequestRef.current) return;
@@ -894,6 +913,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       setCommentaryMenuExpanded(false);
       return;
     }
+    setReferenceMenuExpanded(false);
     setCommentaryMenuExpanded(true);
     if (commentaryMenuStatus === 'idle' || commentaryMenuStatus === 'error') {
       void loadReaderCommentaryLinks(contextMenu.line);
@@ -905,11 +925,31 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     window.requestAnimationFrame(() => commentaryMenuTriggerRef.current?.focus());
   };
 
+  const toggleReaderReferenceMenu = () => {
+    if (!contextMenu) return;
+    if (referenceMenuExpanded) {
+      setReferenceMenuExpanded(false);
+      return;
+    }
+    setCommentaryMenuExpanded(false);
+    setReferenceMenuExpanded(true);
+    if (commentaryMenuStatus === 'idle' || commentaryMenuStatus === 'error') {
+      void loadReaderCommentaryLinks(contextMenu.line);
+    }
+  };
+
+  const closeReaderReferenceMenu = () => {
+    setReferenceMenuExpanded(false);
+    window.requestAnimationFrame(() => referenceMenuTriggerRef.current?.focus());
+  };
+
   const closeReaderContextMenu = () => {
     commentaryMenuRequestRef.current += 1;
     setCommentaryMenuExpanded(false);
+    setReferenceMenuExpanded(false);
     setCommentaryMenuStatus('idle');
     setCommentaryMenuItems([]);
+    setReferenceMenuItems([]);
     setContextMenu(null);
     window.requestAnimationFrame(() => scRef.current?.focus({ preventScroll: true }));
   };
@@ -919,6 +959,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       event.preventDefault();
       if (commentaryMenuExpanded) {
         closeReaderCommentaryMenu();
+        return;
+      }
+      if (referenceMenuExpanded) {
+        closeReaderReferenceMenu();
         return;
       }
       closeReaderContextMenu();
@@ -1437,6 +1481,110 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                       <BookOpen size={15} />
                       <span className="min-w-0 flex-1 truncate">{item.title}</span>
                       {item.count > 1 && <span className="text-xs text-on-variant">×{item.count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <button
+              ref={referenceMenuTriggerRef}
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={referenceMenuExpanded}
+              aria-controls={'reader-reference-context-submenu-' + tab.id}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                event.preventDefault();
+                if (referenceMenuExpanded) {
+                  closeReaderReferenceMenu();
+                  return;
+                }
+                focusReferenceMenuItemRef.current = true;
+                toggleReaderReferenceMenu();
+              }}
+              onClick={toggleReaderReferenceMenu}
+            >
+              <Link2 size={15} />
+              <span className="flex-1">קישורים</span>
+              <ChevronDown size={14} className={'transition-transform motion-reduce:transition-none ' + (referenceMenuExpanded ? 'rotate-180' : '')} />
+            </button>
+            {referenceMenuExpanded && (
+              <div
+                id={'reader-reference-context-submenu-' + tab.id}
+                role="group"
+                aria-label="קישורים לשורה זו"
+                dir="rtl"
+                className="mr-3 mt-1 flex flex-col border-r border-outline-variant pr-2"
+              >
+                {commentaryMenuStatus === 'loading' && (
+                  <div role="presentation" aria-live="polite" className="px-3 py-2 text-xs text-on-variant">
+                    טוען קישורים…
+                  </div>
+                )}
+                {commentaryMenuStatus === 'error' && (
+                  <>
+                    <div role="presentation" aria-live="polite" className="px-3 py-2 text-xs text-error">
+                      לא ניתן לטעון קישורים לשורה זו
+                    </div>
+                    <button
+                      ref={referenceMenuFirstItemRef}
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                      onClick={() => void loadReaderCommentaryLinks(contextMenu.line)}
+                    >
+                      נסה שוב
+                    </button>
+                  </>
+                )}
+                {commentaryMenuStatus === 'loaded' && referenceMenuItems.length === 0 && (
+                  <div role="presentation" className="px-3 py-2 text-xs text-on-variant">
+                    אין קישורים לקטע זה
+                  </div>
+                )}
+                {commentaryMenuStatus === 'loaded' && referenceMenuItems.map((item) => {
+                  const targetBook = findUniqueReaderCommentaryBook(library?.books ?? [], item.title);
+                  const unavailableReason = libraryLoading
+                    ? 'טוען את פרטי הספרייה'
+                    : !targetBook
+                      ? 'לא ניתן לפתוח: שם הספר אינו ייחודי בקטלוג או שהספר אינו זמין'
+                      : isExcludedBook(targetBook)
+                        ? EXCLUDED_BOOK_NOTICE
+                        : '';
+                  const referenceLabel = item.reference || ('שורה ' + item.line);
+                  return (
+                    <button
+                      key={item.key}
+                      ref={targetBook && !unavailableReason ? referenceMenuFirstItemRef : undefined}
+                      type="button"
+                      role="menuitem"
+                      disabled={Boolean(unavailableReason)}
+                      title={unavailableReason || item.preview || item.title}
+                      aria-label={item.title + ', ' + item.categoryLabel + ', ' + referenceLabel}
+                      className="flex w-full items-start gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={() => {
+                        if (!targetBook || unavailableReason) return;
+                        setContextMenu(null);
+                        setCommentaryMenuExpanded(false);
+                        setReferenceMenuExpanded(false);
+                        openBookInNewTab(targetBook, item.line);
+                      }}
+                    >
+                      <Link2 size={15} className="mt-0.5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{item.title}</span>
+                        <span className="block text-xs text-on-variant">
+                          {item.categoryLabel} · {referenceLabel}
+                        </span>
+                        {item.preview && (
+                          <span className="mt-0.5 block line-clamp-2 text-xs text-on-variant">
+                            {item.preview}
+                          </span>
+                        )}
+                      </span>
                     </button>
                   );
                 })}

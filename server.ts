@@ -750,7 +750,7 @@ app.get('/api/books/:id/toc', async (req, res) => {
   }
 });
 
-// Commentary links endpoint from seforim.db or remote Otzaria server
+// Commentary and reference links endpoint from seforim.db or remote Otzaria server
 app.get('/api/books/:id/links', async (req, res) => {
   try {
     const rawId = req.params.id;
@@ -775,6 +775,7 @@ app.get('/api/books/:id/links', async (req, res) => {
       line: lineIndex,
       links: [],
       allLinks: [],
+      references: [],
       availableCommentators: []
     });
   } catch (err: any) {
