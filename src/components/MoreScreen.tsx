@@ -3,6 +3,7 @@ import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, 
 import DailyStudy from './DailyStudy';
 import CalendarZmanim from './CalendarZmanim';
 import TzuratHaDaf from './TzuratHaDaf';
+import BackupRestorePanel from './BackupRestorePanel';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { useApp } from '../store';
@@ -1019,76 +1020,7 @@ function Gematria() {
 }
 
 function Backup() {
-  const { toast, setBookmarks, setHistory, refreshUser, updateSettings } = useApp();
-  const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'merge' | 'replace'>('merge');
-  const file = useRef<HTMLInputElement>(null);
-
-  const download = async () => {
-    setBusy(true);
-    try {
-      const blob = await api.backup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `otzaria_backup_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const restore = async (f: File) => {
-    setBusy(true);
-    try {
-      const data = JSON.parse(await f.text());
-      const r = await api.restore(data, mode);
-      if (r.bookmarks) setBookmarks(r.bookmarks);
-      if (r.history) setHistory(r.history);
-      if (r.settings && Object.keys(r.settings).length) updateSettings(r.settings);
-      refreshUser();
-      toast('הנתונים שוחזרו בהצלחה');
-    } catch (e) {
-      toast((e as Error).message || 'קובץ הגיבוי אינו תקין');
-    } finally {
-      setBusy(false);
-      if (file.current) file.current.value = '';
-    }
-  };
-
-  return (
-    <div>
-      <h2 className="mb-4 text-xl font-medium">גיבוי ושחזור</h2>
-      <div className="mb-4 rounded-3xl border border-outline-variant bg-surface-1 p-5">
-        <div className="mb-1 font-medium">יצירת גיבוי</div>
-        <p className="mb-3 text-sm text-on-variant">הורדת קובץ JSON הכולל סימניות, היסטוריה והגדרות.</p>
-        <Btn variant="filled" onClick={download} disabled={busy}>
-          <Download size={16} /> הורד גיבוי
-        </Btn>
-      </div>
-      <div className="rounded-3xl border border-outline-variant bg-surface-1 p-5">
-        <div className="mb-1 font-medium">שחזור מגיבוי</div>
-        <p className="mb-3 text-sm text-on-variant">בחרו קובץ גיבוי ואופן שחזור.</p>
-        <div className="mb-3 flex items-center gap-3">
-          <Select
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'merge', label: 'מיזוג עם הנתונים הקיימים' },
-              { value: 'replace', label: 'החלפת הנתונים הקיימים' },
-            ]}
-          />
-        </div>
-        <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} />
-        <Btn variant="tonal" onClick={() => file.current?.click()} disabled={busy}>
-          <Upload size={16} /> בחר קובץ לשחזור
-        </Btn>
-      </div>
-    </div>
-  );
+  return <BackupRestorePanel />;
 }
 
 export function Feedback() {
