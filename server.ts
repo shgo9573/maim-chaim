@@ -36,6 +36,7 @@ import {
   updateBookmarkDescription,
   recordFeedback
 } from './src/services/userStore.js';
+import { validateUserBackup } from './src/utils/userBackup.js';
 import { normalizeBookmarkDescription } from './src/utils/bookmarkContextMenu.js';
 import {
   isSeforimDbAvailable,
@@ -2410,14 +2411,19 @@ app.get('/api/user/backup', (req, res) => {
 app.post('/api/user/restore', (req, res) => {
   try {
     const userId = (req as any).userId;
-    const { backupData, mode } = req.body;
-    if (!backupData || typeof backupData !== 'object') {
-      return res.status(400).json({ error: 'Invalid backup data' });
+    const { backupData, mode } = req.body || {};
+    if (mode !== 'merge' && mode !== 'replace') {
+      return res.status(400).json({ error: 'Invalid restore mode', message: 'אופן השחזור אינו תקין.' });
+    }
+
+    const validation = validateUserBackup(backupData, mode);
+    if (!validation.valid) {
+      return res.status(400).json({ error: 'Invalid backup data', message: validation.error });
     }
 
     const safeBackup = filterUserBookCollections(backupData);
     const updatedUser = filterUserBookCollections(
-      importUserBackup(userId, safeBackup, mode === 'replace' ? 'replace' : 'merge')
+      importUserBackup(userId, safeBackup, mode)
     );
     res.json({
       success: true,
