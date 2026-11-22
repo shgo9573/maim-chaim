@@ -168,6 +168,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAutoRun, setBookSearchAutoRun] = useState(false);
   const [topLine, setTopLine] = useState(tab.line);
+  const firstAvailableReferenceKey = referenceMenuItems.find((item) => {
+    const book = findUniqueReaderCommentaryBook(library?.books ?? [], item.title);
+    return !libraryLoading && Boolean(book) && !isExcludedBook(book);
+  })?.key;
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 900);
   const [sidebarTab, setSidebarTab] = useState<'toc' | 'search'>('toc');
   const [searchSeed, setSearchSeed] = useState(0);
@@ -773,9 +777,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       : selectionOverride;
     commentaryMenuRequestRef.current += 1;
     setCommentaryMenuExpanded(false);
+    setReferenceMenuExpanded(false);
     setCommentaryMenuStatus('idle');
     setCommentaryMenuItems([]);
+    setReferenceMenuItems([]);
     focusCommentaryMenuItemRef.current = false;
+    focusReferenceMenuItemRef.current = false;
     setSelMenu(null);
     setContextMenu({
       x,
@@ -1558,7 +1565,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                   return (
                     <button
                       key={item.key}
-                      ref={targetBook && !unavailableReason ? referenceMenuFirstItemRef : undefined}
+                      ref={item.key === firstAvailableReferenceKey ? referenceMenuFirstItemRef : undefined}
                       type="button"
                       role="menuitem"
                       disabled={Boolean(unavailableReason)}

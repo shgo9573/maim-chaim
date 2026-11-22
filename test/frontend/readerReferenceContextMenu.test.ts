@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { CommentaryLink } from '../../src/types';
 import {
   groupReaderReferenceLinks,
+  isReaderDependentTextLink,
   isReaderReferenceLink,
   readerConnectionTypeLabel,
 } from '../../src/utils/readerReferenceContextMenu';
@@ -41,6 +42,9 @@ test('reference classification matches Otzaria dependent-text and virtual-source
     assert.equal(isReaderReferenceLink(type), false, type);
   }
 
+  assert.equal(isReaderDependentTextLink('SUPER_COMMENTARY'), true);
+  assert.equal(isReaderDependentTextLink('MIDRASH'), true);
+  assert.equal(isReaderDependentTextLink('REFERENCE'), false);
   assert.equal(isReaderReferenceLink('SOURCE'), false);
   assert.equal(isReaderReferenceLink('REFERENCE'), true);
   assert.equal(isReaderReferenceLink('QUOTATION'), true);

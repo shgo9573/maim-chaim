@@ -34,6 +34,7 @@ const HEBREW_DEPENDENT_TYPES = new Set([
 
 const TYPE_ALIASES: Record<string, string> = {
   SUPERCOMMENTARY: 'SUPER_COMMENTARY',
+  FOOTNOTE: 'FOOTNOTES',
   MISHNAHINTALMUD: 'MISHNAH_IN_TALMUD',
   RELATEDPASSAGE: 'RELATED_PASSAGE',
   QUOTATIONAUTO: 'QUOTATION_AUTO',
@@ -70,16 +71,19 @@ function normalizeConnectionType(category: string | undefined): string {
 
 /** Matches Otzaria's reader split: dependent-text links are commentaries;
  * unanchored non-dependent links are references; SOURCE is virtual. */
+export function isReaderDependentTextLink(category: string | undefined): boolean {
+  const raw = (category ?? '').trim();
+  return HEBREW_DEPENDENT_TYPES.has(raw) || DEPENDENT_TEXT_TYPES.has(normalizeConnectionType(raw));
+}
+
 export function isReaderReferenceLink(
   category: string | undefined,
   start?: unknown,
   end?: unknown,
 ): boolean {
   if (start != null || end != null) return false;
-  const raw = (category ?? '').trim();
-  if (HEBREW_DEPENDENT_TYPES.has(raw)) return false;
-  const type = normalizeConnectionType(raw);
-  return type !== 'SOURCE' && !DEPENDENT_TEXT_TYPES.has(type);
+  const type = normalizeConnectionType(category);
+  return type !== 'SOURCE' && !isReaderDependentTextLink(category);
 }
 
 export function readerConnectionTypeLabel(category: string | undefined): string {

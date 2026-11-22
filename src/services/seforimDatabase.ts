@@ -7,7 +7,7 @@ import { CANONICAL_BOOKS } from '../data/otzariaLibraryData.js';
 import { buildComprehensiveCatalog } from '../data/catalogGenerator.js';
 import { sysLogger } from './logger.js';
 import { sortCommentariesByGeneration } from '../utils/generationOrder.js';
-import { isReaderReferenceLink } from '../utils/readerReferenceContextMenu.js';
+import { isReaderDependentTextLink, isReaderReferenceLink } from '../utils/readerReferenceContextMenu.js';
 import { stripNikud } from '../utils/gematria.js';
 import { buildHebrewSearchRegex, extractSearchSnippet } from '../utils/searchHelpers.js';
 
@@ -1238,13 +1238,10 @@ export function getBookLinksFromDb(
     }));
 
     const isPureCommentary = (r: (typeof decodedRows)[number]) => {
-      const connType = (r.connectionType || '').toUpperCase();
-      return connType === 'COMMENTARY' ||
-        connType === 'TARGUM' ||
-        connType === 'מפרש' ||
-        connType === 'תרגום' ||
-        connType === 'פירוש' ||
-        r.targetBookTitle.includes('על ' + bookTitleClean) ||
+      if (isReaderDependentTextLink(r.connectionType)) return true;
+      // Keep the legacy title heuristic only when the database has no connection type.
+      if (r.connectionType?.trim()) return false;
+      return r.targetBookTitle.includes('על ' + bookTitleClean) ||
         r.targetBookTitle.includes('על התורה') ||
         r.targetBookTitle.includes('על תורה');
     };
@@ -1275,7 +1272,7 @@ export function getBookLinksFromDb(
       return true;
     };
 
-    const toApiLink = (r: (typeof decodedRows)[number]): CommentaryLink => ({
+    const toApiLink = (r: (typeof decodedRows)[number]) => ({
       sourceBook: r.targetBookTitle,
       category: r.connectionType || 'מפרש',
       line: r.targetLineIndex,
@@ -1288,7 +1285,14 @@ export function getBookLinksFromDb(
     const links: CommentaryLink[] = decodedRows.filter(isCommentaryLink).map(toApiLink);
     const references: CommentaryLink[] = decodedRows
       .filter(r => !isPureCommentary(r) && isReaderReferenceLink(r.connectionType, r.linkStart, r.linkEnd))
-      .map(toApiLink);
+      .map(r => ({
+        sourceBook: r.targetBookTitle,
+        category: r.connectionType || 'קישור',
+        line: r.targetLineIndex,
+        text: r.targetText,
+        dibburHamatchil: r.targetHeRef || undefined,
+        isLineMatch: true,
+      }));
 
     const sortedLinks = sortCommentariesByGeneration(links);
     const availableCommentators = Array.from(new Set(sortedLinks.map(l => l.sourceBook)));
