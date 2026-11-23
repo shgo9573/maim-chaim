@@ -258,15 +258,18 @@ export default function ReadingScreen() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-end bg-surface-1">
-        <div ref={stripRef} className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto px-1 pt-1.5" style={{ scrollbarWidth: 'thin' }}>
+      <div className="flex h-8 shrink-0 items-end border-b border-outline-variant/50 bg-surface-1 sm:h-10">
+        <div ref={stripRef} className="flex h-full min-w-0 flex-1 items-end gap-0 overflow-x-auto px-1" style={{ scrollbarWidth: 'thin' }}>
           {tabs.map((t) => {
             const isActive = active?.id === t.id;
             const isSelected = selectedTabIds.includes(t.id);
+            const displayTitle = t.kind === 'search' ? (t.query || (lang === 'en' ? 'Search' : 'חיפוש')) : t.title;
             return (
               <div
                 key={t.id}
                 data-tab={t.id}
+                data-active={isActive}
+                data-selected={isSelected}
                 draggable
                 onDragStart={(event) => {
                   if ((event.target as HTMLElement).closest('[data-tab-control]')) {
@@ -346,8 +349,8 @@ export default function ReadingScreen() {
                   clearLongPress();
                   longPressTriggeredRef.current = false;
                 }}
-                className={`relative group flex h-9 min-w-[120px] max-w-[220px] shrink-0 items-center gap-1 rounded-t-xl pr-3 pl-1 text-sm transition-colors ${draggedTabId === t.id ? 'opacity-40' : ''} ${dropTarget?.tabId === t.id ? 'bg-primary/10' : ''} ${
-                  isActive ? 'bg-surface text-on-surface shadow-[0_-1px_0_var(--c-outline-variant)]' : isSelected ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/30' : 'text-on-variant hover:bg-surface-3'
+                className={`reader-tab group relative flex h-full min-w-[60px] max-w-[140px] shrink-0 flex-[0_1_140px] items-center gap-0 rounded-t-lg text-sm transition-colors ${draggedTabId === t.id ? 'opacity-[.35]' : ''} ${
+                  isActive ? 'bg-surface text-on-surface font-semibold' : isSelected ? 'bg-sec-container text-on-sec-container ring-1 ring-inset ring-outline-variant' : 'text-on-variant hover:bg-surface-3'
                 }`}
               >
                 <button
@@ -392,12 +395,12 @@ export default function ReadingScreen() {
                     const rect = event.currentTarget.getBoundingClientRect();
                     openTabContextMenu(t.id, lang === 'en' ? rect.left : Math.max(8, rect.right - 240), rect.bottom, event.currentTarget);
                   }}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-start"
-                  title={t.kind === 'search' ? t.query : t.title}
+                  className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-start"
+                  title={displayTitle}
                 >
-                  {t.isPinned && <Pin size={12} className="shrink-0 text-primary" aria-hidden="true" />}
-                  {t.kind === 'search' && <SearchIcon size={15} className="shrink-0" />}
-                  <span className="truncate">{t.kind === 'search' ? `${lang === 'en' ? 'Search' : 'חיפוש'}${t.query ? `: ${t.query}` : ''}` : t.title}</span>
+                  {t.isPinned && <Pin size={14} strokeWidth={1.5} fill="currentColor" className="shrink-0 text-primary" aria-hidden="true" />}
+                  {t.kind === 'search' && <SearchIcon size={14} className="shrink-0" />}
+                  <span className="min-w-0 truncate">{displayTitle}</span>
                 </button>
                 {dropTarget?.tabId === t.id && draggedTabId !== t.id && (
                   <span
@@ -408,11 +411,11 @@ export default function ReadingScreen() {
                 <button
                   data-tab-control="true"
                   onClick={() => closeTab(t.id)}
-                  className="rounded-full p-1 text-on-variant opacity-70 hover:bg-surface-3 hover:opacity-100"
+                  className="reader-tab-close shrink-0 rounded-full text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                   aria-label={lang === 'en' ? 'Close tab' : 'סגור לשונית'}
                   title={lang === 'en' ? 'Close tab' : 'סגור לשונית'}
                 >
-                  <X size={14} />
+                  <X size={12} />
                 </button>
               </div>
             );
@@ -424,7 +427,7 @@ export default function ReadingScreen() {
           <button
             type="button"
             onClick={() => setConfirmCloseAll(true)}
-            className="group mb-1 ml-1.5 mr-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-outline bg-surface-2 px-2 text-[11px] font-semibold text-primary shadow-sm transition duration-150 hover:bg-surface-3 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="group mx-1 inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-outline bg-surface-2 px-2 text-[11px] font-semibold text-primary shadow-sm transition duration-150 hover:bg-surface-3 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             title={lang === 'en' ? 'Close all tabs' : 'סגור את כל הלשוניות'}
             aria-label={lang === 'en' ? 'Close all tabs' : 'סגור את כל הלשוניות'}
           >

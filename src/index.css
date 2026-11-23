@@ -192,3 +192,64 @@ mark.hl {
   border-top-color: var(--c-primary);
   animation: spin 0.8s linear infinite;
 }
+
+
+/* Reading tabs — visual metrics aligned with Otzaria's custom title-bar tabs. */
+.reader-tab {
+  container-type: inline-size;
+}
+
+.reader-tab::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 6px;
+  width: 1px;
+  height: 24px;
+  background: var(--c-outline-variant);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.reader-tab[data-active="true"]::before,
+.reader-tab[data-selected="true"]::before,
+.reader-tab:hover::before,
+.reader-tab:has(+ .reader-tab[data-active="true"])::before,
+.reader-tab:has(+ .reader-tab:hover)::before {
+  opacity: 0;
+}
+
+.reader-tab-close {
+  width: 25px;
+  height: 25px;
+  display: inline-flex;
+  flex: 0 0 25px;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.reader-tab[data-active="true"] .reader-tab-close,
+.reader-tab:hover .reader-tab-close,
+.reader-tab:focus-within .reader-tab-close {
+  opacity: 1;
+}
+
+@container (min-width: 80px) {
+  .reader-tab-close {
+    opacity: 1;
+  }
+}
+
+@media (hover: none) {
+  .reader-tab-close {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-tab-close {
+    transition: none;
+  }
+}
