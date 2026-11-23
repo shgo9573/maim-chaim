@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bookmark, BookOpen, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, X, Copy, ScrollText } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bookmark, BookOpen, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, TextQuote, X, Copy, ScrollText } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { BookItem, BookTab, ContentLine, TocEntry } from '../types';
@@ -14,6 +14,7 @@ import { parseReaderLinkTarget, readerLinkCanOpenInBackground } from '../utils/r
 import { findTocLine } from '../utils/studyLinks';
 import { findUniqueReaderCommentaryBook, groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
 import { groupReaderReferenceLinks } from '../utils/readerReferenceContextMenu';
+import { findAcronymMatches, getReaderWordAtPoint, isLikelyAcronym, summarizeAcronymMeaning } from '../utils/readerAcronymLookup';
 import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
@@ -95,6 +96,7 @@ interface ReaderContextMenu {
   from: number;
   to: number;
   linkUrl?: string;
+  word: string;
 }
 
 interface ReaderNoteDraft {
@@ -179,6 +181,8 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [commentaryMenuItems, setCommentaryMenuItems] = useState<ReturnType<typeof groupReaderCommentaryLinks>>([]);
   const [referenceMenuExpanded, setReferenceMenuExpanded] = useState(false);
   const [referenceMenuItems, setReferenceMenuItems] = useState<ReturnType<typeof groupReaderReferenceLinks>>([]);
+  const [acronymMenuExpanded, setAcronymMenuExpanded] = useState(false);
+  const [acronymMeaningDialog, setAcronymMeaningDialog] = useState<{ acronym: string; meaning: string } | null>(null);
   const [noteDraft, setNoteDraft] = useState<ReaderNoteDraft | null>(null);
   const [noteText, setNoteText] = useState('');
   const [notePreview, setNotePreview] = useState<ReaderNotePreviewState | null>(null);
@@ -235,6 +239,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const commentaryMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const commentaryMenuFirstItemRef = useRef<HTMLButtonElement>(null);
   const referenceMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const acronymMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const referenceMenuFirstItemRef = useRef<HTMLButtonElement>(null);
   const focusReferenceMenuItemRef = useRef(false);
   const commentaryMenuRequestRef = useRef(0);
@@ -808,6 +813,13 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const contextMenuLine = contextMenu
     ? lines.find((line) => line.lineIndex === contextMenu.line)
     : undefined;
+  // מילון ראשי תיבות — לפי המקור: הטקסט המסומן קודם, ובלי בחירה המילה שתחת לנקודת הלחיצה.
+  const acronymLookupText = contextMenu
+    ? (contextMenu.text.trim() || contextMenu.word.trim())
+    : '';
+  const acronymEntries = contextMenu && isLikelyAcronym(acronymLookupText)
+    ? findAcronymMatches(acronymLookupText)
+    : [];
   const directLinkMenuItems = contextMenu
     ? getReaderDirectLinkMenuItems({
         line: contextMenu.line,
@@ -1010,6 +1022,8 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     focusCommentaryMenuItemRef.current = false;
     focusReferenceMenuItemRef.current = false;
     setSelMenu(null);
+    setAcronymMenuExpanded(false);
+    const hasSelectionText = Boolean(selection?.text?.trim());
     setContextMenu({
       x,
       y,
@@ -1019,6 +1033,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       from: selection?.from ?? 0,
       to: selection?.to ?? 0,
       ...(linkUrl ? { linkUrl } : {}),
+      word: hasSelectionText ? '' : getReaderWordAtPoint(x, y),
     });
   };
 
@@ -1187,10 +1202,22 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     window.requestAnimationFrame(() => referenceMenuTriggerRef.current?.focus());
   };
 
+  const toggleReaderAcronymMenu = () => {
+    setCommentaryMenuExpanded(false);
+    setReferenceMenuExpanded(false);
+    setAcronymMenuExpanded((current) => !current);
+  };
+
+  const closeReaderAcronymMenu = () => {
+    setAcronymMenuExpanded(false);
+    window.requestAnimationFrame(() => acronymMenuTriggerRef.current?.focus());
+  };
+
   const closeReaderContextMenu = () => {
     commentaryMenuRequestRef.current += 1;
     setCommentaryMenuExpanded(false);
     setReferenceMenuExpanded(false);
+    setAcronymMenuExpanded(false);
     setCommentaryMenuStatus('idle');
     setCommentaryMenuItems([]);
     setReferenceMenuItems([]);
@@ -1201,6 +1228,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const handleContextMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      if (acronymMenuExpanded) {
+        closeReaderAcronymMenu();
+        return;
+      }
       if (commentaryMenuExpanded) {
         closeReaderCommentaryMenu();
         return;
@@ -1904,6 +1935,60 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 })}
               </div>
             )}
+
+            {acronymEntries.length > 0 && (
+              <>
+                <div role="separator" className="my-1 border-t border-outline-variant" />
+                <button
+                  ref={acronymMenuTriggerRef}
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="menu"
+                  aria-expanded={acronymMenuExpanded}
+                  aria-controls={'reader-acronym-context-submenu-' + tab.id}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                    event.preventDefault();
+                    toggleReaderAcronymMenu();
+                  }}
+                  onClick={toggleReaderAcronymMenu}
+                >
+                  <TextQuote size={15} />
+                  <span className="flex-1">פתיחת ראשי תיבות</span>
+                  <ChevronDown size={14} className={'transition-transform motion-reduce:transition-none ' + (acronymMenuExpanded ? 'rotate-180' : '')} />
+                </button>
+                {acronymMenuExpanded && (
+                  <div
+                    id={'reader-acronym-context-submenu-' + tab.id}
+                    role="group"
+                    aria-label="פירושי ראשי תיבות"
+                    dir="rtl"
+                    className="mr-3 mt-1 flex flex-col border-r border-outline-variant pr-2"
+                  >
+                    {acronymEntries.map((entry) => (
+                      <button
+                        key={entry.acronym}
+                        type="button"
+                        role="menuitem"
+                        title={entry.meaning}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                        onClick={() => {
+                          setContextMenu(null);
+                          setAcronymMenuExpanded(false);
+                          setAcronymMeaningDialog({ acronym: entry.acronym, meaning: entry.meaning });
+                        }}
+                      >
+                        <BookOpen size={15} />
+                        <span className="min-w-0 flex-1 truncate">
+                          {entry.acronym} - {summarizeAcronymMeaning(entry.meaning)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1983,6 +2068,58 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 onClick={saveContextNote}
               >
                 שמור הערה
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {acronymMeaningDialog && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setAcronymMeaningDialog(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setAcronymMeaningDialog(null);
+            }
+          }}
+        >
+          <section
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reader-acronym-title"
+            className="w-full max-w-md rounded-2xl border border-outline-variant bg-surface p-4 shadow-2xl"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h2 id="reader-acronym-title" className="text-base font-semibold">{acronymMeaningDialog.acronym}</h2>
+                <p className="mt-1 text-xs text-on-variant">ראשי תיבות</p>
+              </div>
+              <button
+                type="button"
+                autoFocus
+                className="rounded-full p-1.5 text-on-variant hover:bg-surface-3"
+                aria-label="סגור"
+                onClick={() => setAcronymMeaningDialog(null)}
+              >
+                <X size={17} />
+              </button>
+            </div>
+            <p className="text-sm leading-relaxed text-on-surface">{acronymMeaningDialog.meaning}</p>
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-full bg-primary px-4 py-2 text-sm font-medium text-on-primary hover:brightness-95"
+                onClick={() => {
+                  void copy(acronymMeaningDialog.acronym + ' — ' + acronymMeaningDialog.meaning, 'הפירוש הועתק');
+                  setAcronymMeaningDialog(null);
+                }}
+              >
+                העתק פירוש
               </button>
             </div>
           </section>
