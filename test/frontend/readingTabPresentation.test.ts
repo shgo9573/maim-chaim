@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const readingScreen = readFileSync(new URL('../../src/components/ReadingScreen.tsx', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../../src/index.css', import.meta.url), 'utf8');
+const tabSearch = readFileSync(new URL('../../src/components/TabSearch.tsx', import.meta.url), 'utf8');
 
 test('רצועת הטאבים שומרת על מידות ואייקונים הקרובים למקור אוצריא', () => {
   assert.match(readingScreen, /max-w-\[140px\]/);
@@ -27,4 +28,6 @@ test('כפתור הסגירה מתאים לריחוף, מיקוד, מגע ורו
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(readingScreen, /data-active=\{isActive\}/);
   assert.match(readingScreen, /data-selected=\{isSelected\}/);
+  assert.match(tabSearch, /className="shrink-0"/);
+  assert.doesNotMatch(tabSearch, /className="mb-1 shrink-0"/);
 });

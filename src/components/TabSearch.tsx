@@ -263,7 +263,7 @@ export default function TabSearch({
     : null;
 
   return (
-    <div ref={wrapper} className="mb-1 shrink-0">
+    <div ref={wrapper} className="shrink-0">
       <button
         ref={button}
         type="button"
