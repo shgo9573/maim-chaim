@@ -13,7 +13,7 @@ import {
   takeRecentlyClosedTab,
   type RecentlyClosedTabEntry,
 } from './utils/recentlyClosedTabs';
-import { duplicateTabWithId, planTabClose, tabsToCloseAll } from './utils/tabContextMenu';
+import { duplicateTabWithId, moveTabInOrder, planTabClose, tabsToCloseAll } from './utils/tabContextMenu';
 import {
   cloneWorkspaceTabs,
   createWorkspaceId,
@@ -69,6 +69,7 @@ interface Ctx {
   recentlyClosedTabs: Tab[];
   activeTabId: string | null;
   setActiveTab: (id: string) => void;
+  reorderTab: (sourceId: string, targetId: string, position: 'before' | 'after') => void;
   togglePinTab: (id: string) => void;
   closeTab: (id: string) => void;
   closeTabs: (ids: string[]) => void;
@@ -569,6 +570,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setActiveTabId(id);
     setScreen('reading');
   }, [setScreen]);
+
+  const reorderTab = useCallback((sourceId: string, targetId: string, position: 'before' | 'after') => {
+    setTabs((current) => moveTabInOrder(current, sourceId, targetId, position));
+  }, []);
 
   const togglePinTab = useCallback((id: string) => {
     setTabs((current) => current.map((tab) =>
@@ -1167,7 +1172,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       screen, setScreen, library, libraryLoading, libraryError, reloadLibrary: loadLibrary,
       settings, updateSettings, replaceSettings, resetSettings,
       tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace,
-      recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
+      recentlyClosedTabs: listRecentlyClosedTabs(closedTabEntries), activeTabId, setActiveTab, reorderTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch,
       recentSearches, recordSearch, removeRecentSearch, clearRecentSearches,
       bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory,
       setBookmarks: setVisibleBookmarks, setHistory: setVisibleHistory,
@@ -1175,7 +1180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       account, setAccount, signOut,
       toast, toastMsg, dialog, setDialog,
     }),
-    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, replaceSettings, resetSettings, tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace, closedTabEntries, activeTabId, setActiveTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
+    [screen, setScreen, library, libraryLoading, libraryError, loadLibrary, settings, updateSettings, replaceSettings, resetSettings, tabs, workspaces, activeWorkspaceId, createWorkspace, renameWorkspace, deleteWorkspace, switchWorkspace, togglePinWorkspace, saveWorkspaceSnapshot, moveTabsToWorkspace, closedTabEntries, activeTabId, setActiveTab, reorderTab, togglePinTab, closeTab, closeTabs, duplicateTab, closeAllTabs, restoreClosedTab, clearRecentlyClosedTabs, updateTab, openTzuratHaDaf, openBook, openBookInNewTab, openBookInBackground, openBooksInReadingTabs, openBookInActiveTab, openBookByTitle, openSearch, recentSearches, recordSearch, removeRecentSearch, clearRecentSearches, bookmarks, history, refreshUser, addBookmark, removeBookmark, saveHistory, clearHistory, setVisibleBookmarks, setVisibleHistory, removeHistoryItem, notes, saveNote, deleteNote, account, signOut, toast, toastMsg, dialog],
   );
 
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
