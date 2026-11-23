@@ -26,6 +26,9 @@ test('כפתור הסגירה מתאים לריחוף, מיקוד, מגע ורו
   assert.match(styles, /@container \(min-width: 80px\)/);
   assert.match(styles, /@media \(hover: none\)/);
   assert.match(styles, /prefers-reduced-motion/);
+  assert.match(styles, /color-mix\(in srgb, var\(--c-on-surface\) 8%, transparent\)/);
+  assert.match(readingScreen, /h-\[calc\(100%-3px\)\]/);
+  assert.match(readingScreen, /sm:h-\[calc\(100%-4px\)\]/);
   assert.match(readingScreen, /data-active=\{isActive\}/);
   assert.match(readingScreen, /data-selected=\{isSelected\}/);
   assert.match(tabSearch, /className="shrink-0"/);

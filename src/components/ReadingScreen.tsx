@@ -349,8 +349,8 @@ export default function ReadingScreen() {
                   clearLongPress();
                   longPressTriggeredRef.current = false;
                 }}
-                className={`reader-tab group relative flex h-full min-w-[60px] max-w-[140px] shrink-0 flex-[0_1_140px] items-center gap-0 rounded-t-lg text-sm transition-colors ${draggedTabId === t.id ? 'opacity-[.35]' : ''} ${
-                  isActive ? 'bg-surface text-on-surface font-semibold' : isSelected ? 'bg-sec-container text-on-sec-container ring-1 ring-inset ring-outline-variant' : 'text-on-variant hover:bg-surface-3'
+                className={`reader-tab group relative flex h-[calc(100%-3px)] min-w-[60px] max-w-[140px] shrink-0 flex-[0_1_140px] sm:h-[calc(100%-4px)] items-center gap-0 rounded-t-lg text-sm transition-colors ${draggedTabId === t.id ? 'opacity-[.35]' : ''} ${
+                  isActive ? 'bg-surface text-on-surface font-semibold' : isSelected ? 'bg-sec-container text-on-sec-container ring-1 ring-inset ring-outline-variant' : 'text-on-variant'
                 }`}
               >
                 <button

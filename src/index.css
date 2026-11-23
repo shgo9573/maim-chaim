@@ -230,6 +230,10 @@ mark.hl {
   transition: opacity 150ms ease;
 }
 
+.reader-tab:not([data-active="true"]):not([data-selected="true"]):hover {
+  background-color: color-mix(in srgb, var(--c-on-surface) 8%, transparent);
+}
+
 .reader-tab[data-active="true"] .reader-tab-close,
 .reader-tab:hover .reader-tab-close,
 .reader-tab:focus-within .reader-tab-close {
