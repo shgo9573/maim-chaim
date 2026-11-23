@@ -45,7 +45,7 @@ export function buildHistoryTimeline(
     return haystack.includes(needle);
   };
 
-  const entries: Array<HistoryTimelineEntry & { order: number }> = [];
+  const entries: HistoryTimelineEntry[] = [];
 
   if (filter !== 'searches') {
     history.forEach((item, index) => {
@@ -55,7 +55,6 @@ export function buildHistoryTimeline(
         key: `book:${item.id}`,
         timestamp: parseTimestamp(item.lastReadAt),
         item,
-        order: index,
       });
     });
   }
@@ -68,12 +67,10 @@ export function buildHistoryTimeline(
         key: `search:${item.query}`,
         timestamp: parseTimestamp(item.searchedAt),
         item,
-        order: history.length + index,
       });
     });
   }
 
-  return entries
-    .sort((a, b) => b.timestamp - a.timestamp || a.order - b.order)
-    .map(({ order: _order, ...entry }) => entry);
+  // ECMAScript sorting is stable, so equal timestamps keep their source order.
+  return entries.sort((a, b) => b.timestamp - a.timestamp);
 }
