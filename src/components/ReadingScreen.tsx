@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen, ChevronDown, Copy, Folder, Pin, Search as SearchIcon, X } from 'lucide-react';
 import { useApp } from '../store';
@@ -25,6 +25,7 @@ export default function ReadingScreen() {
     recentlyClosedTabs,
     activeTabId,
     setActiveTab,
+    reorderTab,
     closeTab,
     closeTabs,
     duplicateTab,
@@ -45,6 +46,8 @@ export default function ReadingScreen() {
   const [menuPosition, setMenuPosition] = useState<ReturnType<typeof placeReaderContextMenu> | null>(null);
   const [openTabsExpanded, setOpenTabsExpanded] = useState(false);
   const [selectedTabIds, setSelectedTabIds] = useState<string[]>([]);
+  const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ tabId: string; position: 'before' | 'after' } | null>(null);
   const lang = settings.interfaceLanguage || 'he';
   const closableTabs = tabsToCloseAll(tabs);
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -55,6 +58,13 @@ export default function ReadingScreen() {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
   const longPressTriggeredRef = useRef(false);
+
+  const getTabDropPosition = (event: ReactDragEvent<HTMLDivElement>): 'before' | 'after' => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const visualStartHalf = event.clientX < rect.left + rect.width / 2;
+    const isBefore = lang === 'en' ? visualStartHalf : !visualStartHalf;
+    return isBefore ? 'before' : 'after';
+  };
 
   const clearLongPress = () => {
     if (touchTimerRef.current !== null) {
@@ -257,6 +267,42 @@ export default function ReadingScreen() {
               <div
                 key={t.id}
                 data-tab={t.id}
+                draggable
+                onDragStart={(event) => {
+                  if ((event.target as HTMLElement).closest('[data-tab-control]')) {
+                    event.preventDefault();
+                    return;
+                  }
+                  clearLongPress();
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', t.id);
+                  setDraggedTabId(t.id);
+                  setDropTarget(null);
+                }}
+                onDragOver={(event) => {
+                  if (!draggedTabId || draggedTabId === t.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  setDropTarget({ tabId: t.id, position: getTabDropPosition(event) });
+                }}
+                onDragLeave={(event) => {
+                  const nextTarget = event.relatedTarget;
+                  if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                    setDropTarget((current) => current?.tabId === t.id ? null : current);
+                  }
+                }}
+                onDrop={(event) => {
+                  if (!draggedTabId) return;
+                  event.preventDefault();
+                  const sourceId = event.dataTransfer.getData('text/plain') || draggedTabId;
+                  if (sourceId !== t.id) reorderTab(sourceId, t.id, getTabDropPosition(event));
+                  setDraggedTabId(null);
+                  setDropTarget(null);
+                }}
+                onDragEnd={() => {
+                  setDraggedTabId(null);
+                  setDropTarget(null);
+                }}
                 onMouseDown={(e) => {
                   if (e.button === 1) {
                     e.preventDefault();
@@ -300,7 +346,7 @@ export default function ReadingScreen() {
                   clearLongPress();
                   longPressTriggeredRef.current = false;
                 }}
-                className={`group flex h-9 min-w-[120px] max-w-[220px] shrink-0 items-center gap-1 rounded-t-xl pr-3 pl-1 text-sm transition-colors ${
+                className={`relative group flex h-9 min-w-[120px] max-w-[220px] shrink-0 items-center gap-1 rounded-t-xl pr-3 pl-1 text-sm transition-colors ${draggedTabId === t.id ? 'opacity-40' : ''} ${dropTarget?.tabId === t.id ? 'bg-primary/10' : ''} ${
                   isActive ? 'bg-surface text-on-surface shadow-[0_-1px_0_var(--c-outline-variant)]' : isSelected ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/30' : 'text-on-variant hover:bg-surface-3'
                 }`}
               >
@@ -332,6 +378,15 @@ export default function ReadingScreen() {
                   }}
                   aria-pressed={isSelected}
                   onKeyDown={(event) => {
+                    if (event.altKey && event.shiftKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+                      event.preventDefault();
+                      const currentIndex = tabs.findIndex((tab) => tab.id === t.id);
+                      const moveForward = lang === 'en' ? event.key === 'ArrowRight' : event.key === 'ArrowLeft';
+                      const delta = moveForward ? 1 : -1;
+                      const target = tabs[currentIndex + delta];
+                      if (target) reorderTab(t.id, target.id, delta > 0 ? 'after' : 'before');
+                      return;
+                    }
                     if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) return;
                     event.preventDefault();
                     const rect = event.currentTarget.getBoundingClientRect();
@@ -344,6 +399,12 @@ export default function ReadingScreen() {
                   {t.kind === 'search' && <SearchIcon size={15} className="shrink-0" />}
                   <span className="truncate">{t.kind === 'search' ? `${lang === 'en' ? 'Search' : 'חיפוש'}${t.query ? `: ${t.query}` : ''}` : t.title}</span>
                 </button>
+                {dropTarget?.tabId === t.id && draggedTabId !== t.id && (
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute inset-y-1 z-20 w-[3px] rounded-full bg-primary ${dropTarget.position === 'before' ? 'start-0' : 'end-0'}`}
+                  />
+                )}
                 <button
                   data-tab-control="true"
                   onClick={() => closeTab(t.id)}
