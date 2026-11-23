@@ -160,6 +160,10 @@ export interface ReaderSettings {
   /** default reader panel widths are percentages of the available reader width */
   commentaryPanelWidth?: number;
   navigationPanelWidth?: number;
+  /** Global reading TOC expansion depth: 0 = all, 1 = collapsed, null = source default. */
+  tocExpansionLevel?: number | null;
+  /** Automatically open the current reading path in the TOC. */
+  tocAutoExpand?: boolean;
   commentaryOpenByDefault?: boolean;
   /** optional per-book overrides, used only when perBookSettingsEnabled is on */
   perBookLayoutSettings?: Record<string, {
@@ -212,6 +216,8 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   chofetzChaimScheduleType: 'world_three_times',
   commentaryPanelWidth: 19,
   navigationPanelWidth: 16,
+  tocExpansionLevel: null,
+  tocAutoExpand: true,
   commentaryOpenByDefault: true,
   showLineRefs: false,
 };
