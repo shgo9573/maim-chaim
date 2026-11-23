@@ -5,6 +5,7 @@ import { listRecentlyClosedTabs, rememberRecentlyClosedTab } from '../../src/uti
 import {
   duplicateTabWithId,
   getTabContextMenuActions,
+  moveTabInOrder,
   planTabClose,
   tabsAfter,
   tabsAfterClosable,
@@ -150,4 +151,30 @@ test('close all and close-after skip pinned tabs, and close all disables when ev
     getTabContextMenuActions(onlyPinned, 'search-1', 'he').find((action) => action.id === 'close-all')?.disabled,
     true,
   );
+});
+
+
+test('drag reorder moves tabs before and after a target in stored order', () => {
+  assert.deepEqual(moveTabInOrder(tabs, 'book-1', 'daf-1', 'before').map((tab) => tab.id), [
+    'search-1', 'book-1', 'daf-1',
+  ]);
+  assert.deepEqual(moveTabInOrder(tabs, 'daf-1', 'book-1', 'after').map((tab) => tab.id), [
+    'book-1', 'daf-1', 'search-1',
+  ]);
+  assert.deepEqual(moveTabInOrder(tabs, 'daf-1', 'book-1', 'before').map((tab) => tab.id), [
+    'daf-1', 'book-1', 'search-1',
+  ]);
+});
+
+test('drag reorder preserves tab data and leaves the order unchanged for invalid targets', () => {
+  const moved = moveTabInOrder(tabs, 'search-1', 'daf-1', 'after');
+  assert.equal(moved[2], searchTab);
+  assert.equal(moved[2].id, 'search-1');
+  assert.equal((moved[2] as typeof searchTab).query, 'מילה');
+  assert.deepEqual(moveTabInOrder(tabs, 'missing', 'daf-1', 'before').map((tab) => tab.id), [
+    'book-1', 'search-1', 'daf-1',
+  ]);
+  assert.deepEqual(moveTabInOrder(tabs, 'book-1', 'book-1', 'after').map((tab) => tab.id), [
+    'book-1', 'search-1', 'daf-1',
+  ]);
 });
