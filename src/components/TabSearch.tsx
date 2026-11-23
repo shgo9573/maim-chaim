@@ -40,6 +40,10 @@ export default function TabSearch({
   const openMatches = filterOpenTabs(tabs, query, language);
   const closedMatches = filterOpenTabs(recentlyClosedTabs, query, language);
   const totalMatches = openMatches.length + closedMatches.length;
+  // The portal mounts only once a position has been calculated, so focusing must
+  // key on that state and not on `open` alone: the [open] effect fires while the
+  // input still does not exist and the focus call would be a silent no-op.
+  const popupMounted = open && position != null;
 
   useLayoutEffect(() => {
     if (!open) {
@@ -65,7 +69,7 @@ export default function TabSearch({
   }, [open, english]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!popupMounted) return;
     input.current?.focus();
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
@@ -88,7 +92,7 @@ export default function TabSearch({
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [popupMounted]);
 
   useEffect(() => {
     setHighlighted((current) => current >= totalMatches ? totalMatches - 1 : current);
