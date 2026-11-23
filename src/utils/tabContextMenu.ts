@@ -60,6 +60,27 @@ export function planTabClose(
   };
 }
 
+export type TabDropPosition = 'before' | 'after';
+
+/** Moves one tab relative to another without changing the tab objects or their IDs. */
+export function moveTabInOrder(
+  tabs: readonly Tab[],
+  sourceId: string,
+  targetId: string,
+  position: TabDropPosition,
+): Tab[] {
+  const sourceIndex = tabs.findIndex((tab) => tab.id === sourceId);
+  const targetIndex = tabs.findIndex((tab) => tab.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return [...tabs];
+
+  const next = [...tabs];
+  const [moving] = next.splice(sourceIndex, 1);
+  const targetIndexAfterRemoval = targetIndex - (sourceIndex < targetIndex ? 1 : 0);
+  const insertionIndex = targetIndexAfterRemoval + (position === 'after' ? 1 : 0);
+  next.splice(insertionIndex, 0, moving);
+  return next;
+}
+
 export function duplicateTabWithId(tab: Tab, id: string): Tab {
   return { ...tab, id, isPinned: false } as Tab;
 }
