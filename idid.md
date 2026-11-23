@@ -3116,8 +3116,8 @@ Commits חדשים ב־main שנבדקו:
 - היקף המימוש הנוכחי: גרירה בתוך רצועת הטאבים בחלון הנוכחי. גרירה בין חלונות, גרירת חלונית מפוצלת, גלילה אוטומטית בקצה הרצועה ופתיחה זמנית של טאב לאחר השהיה עדיין לא מומשו באתר; אין לסמן את כל מערכת הגרירה כתואמת במלואה.
 
 ### בדיקות ופריסה אוטומטית
-- workflow `Deploy Beta`, run `45120451652` (`https://github.com/shgo9573/maim-chaim/actions/runs/45120451652`): `npm ci --ignore-scripts`, `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend` ובניית Beta — כולם הושלמו בהצלחה.
-- בשלב כתיבת הרשומה, שלב `Deploy only to the Beta directory` עדיין היה `in_progress`; אין עדיין אישור שהקבצים הועתקו ליעד. Configure SSH הצליח. לא בוצעה פריסה ידנית ולא נגעתי בשרת או ב-DNS.
+- workflow `Deploy Beta`, run `45120451652` (`https://github.com/shgo9573/maim-chaim/actions/runs/45120451652`): `npm ci --ignore-scripts`, `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend` ובניית Beta — כולם הושלמו בהצלחה. סיכום בדיקות: 148 עברו, 0 נכשלו.
+- שלב `Deploy only to the Beta directory` הסתיים בכישלון ב-2026-11-23 05:55:24 UTC: `ssh: connect to host *** port 22: Connection timed out`, ולאחריו `rsync error ... code 255`. Configure SSH הצליח; חסם הפריסה הוא חיבור SSH ליעד. לא בוצעה פריסה ידנית ולא נגעתי בשרת או ב-DNS.
 - לא בוצעה בדיקת דפדפן אינטראקטיבית/מובייל. לכן חיווי המיקום, התנהגות drag-and-drop ב-RTL, תמיכה במגע ושימור הגלילה עדיין דורשים אימות בפועל.
 - `npm run build` לא הופעל בנפרד; workflow בנה באמצעות `npm run sync:vilna-html` ו-`npx vite build --base=/beta/`.
 
@@ -3137,3 +3137,5 @@ Commits חדשים ב־main שנבדקו:
 - מקור `Otzaria/otzaria:dev`: `e1118b15a8e6d0b61ce848fb4be3619436d3076d` — זהה ל-SHA הקודם; המקור נשאר לקריאה בלבד.
 - מנוע החיפוש, שירות החיפוש וחוזי ה-API שלו לא נערכו. לא נערכו Backend, DB, שרת או DNS.
 - הצעד הבא בבוקר: להרחיב את גרירת הטאבים למגע ולגלילה אוטומטית רק לאחר אימות UX, או לעבור לפער קריאה/ניווט אחר אם אין סביבת דפדפן; במקביל להשאיר פתוח את באג פריסת חיפוש הטאבים עד שחזור בדפדפן.
+
+- תיקון branch map לאחר סיום הריצה: קוד האתר נשאר ב-commit `c1e8f7d07fa53e5119517af72b6cb273ec5cd5d8`; ה-HEAD של main התקדם מאז רק ב-commit תיעוד `8b19961dd7d99b1aa2587ea2900c5fab57a074fd`. שני ענפי arena נשארו באותם SHA. הפריסה האוטומטית הופעלה אך לא הושלמה בגלל timeout ב-SSH.
