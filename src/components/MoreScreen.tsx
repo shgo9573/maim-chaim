@@ -14,6 +14,7 @@ import { filterAndSortPersonalNotes, type PersonalNotesSortOrder } from '../util
 import { t as translate } from '../i18n';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 import { getBookmarkContextMenuActions, normalizeBookmarkDescription, type BookmarkContextMenuActionId } from '../utils/bookmarkContextMenu';
+import { buildHistoryTimeline, type HistoryTimelineFilter } from '../utils/historyTimeline';
 
 type Tool = 'daily' | 'calendar' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
 
@@ -951,31 +952,193 @@ function NotesView() {
 }
 
 function HistoryView() {
-  const { history, clearHistory, openBook, removeHistoryItem } = useApp();
+  const {
+    history,
+    recentSearches,
+    clearHistory,
+    clearRecentSearches,
+    openBook,
+    openSearch,
+    removeHistoryItem,
+    removeRecentSearch,
+  } = useApp();
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<HistoryTimelineFilter>('all');
+  const entries = useMemo(
+    () => buildHistoryTimeline(history, recentSearches, filter, query),
+    [history, recentSearches, filter, query],
+  );
+
+  const clearReadingHistory = () => {
+    if (history.length > 0 && window.confirm('למחוק את כל היסטוריית הקריאה?')) {
+      void clearHistory();
+    }
+  };
+  const clearSearchHistory = () => {
+    if (recentSearches.length > 0 && window.confirm('למחוק את כל החיפושים האחרונים?')) {
+      clearRecentSearches();
+    }
+  };
+
+  const filterOptions: { value: HistoryTimelineFilter; label: string; count: number }[] = [
+    { value: 'all', label: 'הכול', count: history.length + recentSearches.length },
+    { value: 'books', label: 'קריאה', count: history.length },
+    { value: 'searches', label: 'חיפושים', count: recentSearches.length },
+  ];
+
+  const emptyTitle = query.trim()
+    ? 'לא נמצאו תוצאות'
+    : filter === 'books'
+      ? 'אין היסטוריית קריאה'
+      : filter === 'searches'
+        ? 'אין חיפושים אחרונים'
+        : 'ההיסטוריה ריקה';
+
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-medium">היסטוריית קריאה</h2>
-        {history.length > 0 && (
-          <Btn variant="outlined" onClick={clearHistory}>
-            <Trash2 size={15} /> נקה היסטוריה
-          </Btn>
-        )}
-      </div>
-      {history.length === 0 && <EmptyState icon={<History size={52} />} title="ההיסטוריה ריקה" />}
-      {history.map((h) => (
-        <div key={h.id} className="mb-2 flex items-center gap-2 rounded-2xl border border-outline-variant bg-surface-1 pl-2 transition hover:bg-surface-3">
-          <button onClick={() => openBook({ id: h.bookId, title: h.bookTitle, categoryPath: h.category }, h.lastPosition)} className="min-w-0 flex-1 px-4 py-3 text-start">
-            <div className="font-bold text-primary">{h.bookTitle}</div>
-            <div className="text-sm text-on-variant">
-              {h.lastSection || `שורה ${h.lastPosition ?? 1}`} · {timeAgo(h.lastReadAt)}
-            </div>
-          </button>
-          <button onClick={() => removeHistoryItem(h)} className="rounded-full p-2 text-on-variant hover:bg-surface-3 hover:text-error" title="הסר">
-            <Trash2 size={18} />
-          </button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-3">
+        <h2 className="flex items-center gap-2 text-xl font-medium">
+          <History size={20} className="text-primary" />
+          היסטוריה
+        </h2>
+        <div className="flex flex-wrap items-center gap-2">
+          {history.length > 0 && (
+            <button
+              type="button"
+              onClick={clearReadingHistory}
+              className="rounded-lg px-3 py-2 text-xs text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              נקה קריאה
+            </button>
+          )}
+          {recentSearches.length > 0 && (
+            <button
+              type="button"
+              onClick={clearSearchHistory}
+              className="rounded-lg px-3 py-2 text-xs text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              נקה חיפושים
+            </button>
+          )}
         </div>
-      ))}
+      </div>
+
+      <div className="mb-4 space-y-3">
+        <div className="relative">
+          <Search size={17} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-on-variant" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="חיפוש בהיסטוריית הקריאה והחיפושים..."
+            aria-label="חיפוש בהיסטוריה"
+            className="h-11 w-full rounded-xl border border-outline-variant bg-surface-1 pr-10 pl-10 text-sm outline-none transition focus:border-primary focus:bg-surface"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-on-variant hover:bg-surface-3"
+              aria-label="נקה חיפוש"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
+        <div role="group" aria-label="סינון סוג ההיסטוריה" className="flex flex-wrap gap-2">
+          {filterOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+              className={`rounded-full border px-3 py-1.5 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                filter === option.value
+                  ? 'border-primary bg-primary-container text-on-primary-container'
+                  : 'border-outline-variant bg-surface-1 text-on-variant hover:bg-surface-3'
+              }`}
+            >
+              {option.label} ({option.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {entries.length === 0 ? (
+        <EmptyState
+          icon={<History size={52} />}
+          title={emptyTitle}
+          hint={query.trim() ? 'נסה לשנות את מילות החיפוש או את הסינון.' : 'ספרים שקראת וחיפושים שביצעת יופיעו כאן.'}
+        />
+      ) : (
+        <div className="space-y-2">
+          {entries.map((entry) => (
+            <div
+              key={entry.key}
+              className="flex min-w-0 items-center gap-2 rounded-2xl border border-outline-variant bg-surface-1 pl-2 transition hover:bg-surface-3"
+            >
+              {entry.kind === 'book' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openBook(
+                      { id: entry.item.bookId, title: entry.item.bookTitle, categoryPath: entry.item.category },
+                      entry.item.lastPosition,
+                    )}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                  >
+                    <BookOpen size={19} className="shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-bold text-primary">{entry.item.bookTitle}</span>
+                      <span className="block truncate text-sm text-on-variant">
+                        {entry.item.category ? `${entry.item.category} · ` : ''}
+                        {entry.item.lastSection || `שורה ${entry.item.lastPosition ?? 1}`}
+                        {' · '}
+                        {timeAgo(entry.item.lastReadAt)}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void removeHistoryItem(entry.item)}
+                    className="rounded-full p-2 text-on-variant hover:bg-surface-3 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+                    title="הסר מההיסטוריה"
+                    aria-label={`הסר את ${entry.item.bookTitle} מההיסטוריה`}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => openSearch(entry.item.query)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                  >
+                    <Search size={19} className="shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-primary">{entry.item.query}</span>
+                      <span className="block text-sm text-on-variant">
+                        חיפוש אחרון · {timeAgo(entry.item.searchedAt)}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRecentSearch(entry.item.query)}
+                    className="rounded-full p-2 text-on-variant hover:bg-surface-3 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error/40"
+                    title="הסר חיפוש"
+                    aria-label={`הסר את החיפוש ${entry.item.query}`}
+                  >
+                    <Trash2 size={17} />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
