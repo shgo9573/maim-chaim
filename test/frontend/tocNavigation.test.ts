@@ -79,3 +79,20 @@ test('a matching branch remains navigable without loading unrelated siblings', (
   const rows = flattenVisibleToc(filtered, getTocExpansionForLevel(filtered, 0));
   assert.deepEqual(rows.map((row) => row.node.entry.index), [10, 11]);
 });
+
+
+test('a single wrapper chain is excluded from the depth menu', () => {
+  const singleRoot = buildTocTree([
+    { title: 'שורש', index: 0, level: 1 },
+    { title: 'פרק', index: 1, level: 2 },
+    { title: 'סעיף', index: 2, level: 3 },
+  ]);
+  assert.equal(getTocTreeDepth(singleRoot), 1);
+  assert.deepEqual([...getTocExpansionForLevel(singleRoot, 1)], [0, 1]);
+});
+
+test('TOC depth search applies the same normalized 220ms filter target', () => {
+  const filtered = filterTocTree(tree(), normalizeHe('תת סעיף'), normalizeHe);
+  const rows = flattenVisibleToc(filtered, getTocExpansionForLevel(filtered, 0));
+  assert.deepEqual(rows.map((row) => row.node.entry.index), [1, 2, 3]);
+});

@@ -47,6 +47,7 @@ export default function BookSidebar({
 }) {
   const { settings, updateSettings } = useApp();
   const [filter, setFilter] = useState('');
+  const [appliedFilter, setAppliedFilter] = useState('');
   const [q, setQ] = useState('');
   const [results, setResults] = useState<SearchResultItem[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -61,6 +62,8 @@ export default function BookSidebar({
   const expandMenuRef = useRef<HTMLDivElement>(null);
   const expandMenuItemsRef = useRef<HTMLDivElement>(null);
   const expandTriggerRef = useRef<HTMLButtonElement>(null);
+  const manualTocScrollRef = useRef(false);
+  const manualTocScrollTimerRef = useRef<number | null>(null);
 
   const autoExpand = settings.tocAutoExpand !== false;
   const expansionLevel = typeof settings.tocExpansionLevel === 'number'
@@ -72,7 +75,13 @@ export default function BookSidebar({
     setQ('');
     setCursor(-1);
     setFilter('');
+    setAppliedFilter('');
     setManualExpansion({});
+    manualTocScrollRef.current = false;
+    if (manualTocScrollTimerRef.current !== null) {
+      window.clearTimeout(manualTocScrollTimerRef.current);
+      manualTocScrollTimerRef.current = null;
+    }
     setHighlightedTocIndex(null);
     setExpandMenuOpen(false);
   }, [bookId]);
@@ -115,7 +124,20 @@ export default function BookSidebar({
     return next;
   }, [baseExpansion, autoExpand, currentIdx, tree, manualExpansion]);
 
-  const normalizedFilter = useMemo(() => normalizeHe(filter.trim()), [filter]);
+  const normalizedInputFilter = useMemo(() => normalizeHe(filter.trim()), [filter]);
+  useEffect(() => {
+    if (!normalizedInputFilter) {
+      setAppliedFilter('');
+      setHighlightedTocIndex(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setAppliedFilter(normalizedInputFilter);
+      setHighlightedTocIndex(null);
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [normalizedInputFilter]);
+  const normalizedFilter = appliedFilter;
   const filteredTree = useMemo(
     () => normalizedFilter ? filterTocTree(tree, normalizedFilter, normalizeHe) : tree,
     [tree, normalizedFilter],
@@ -153,11 +175,39 @@ export default function BookSidebar({
   });
   const virtualRows = tocVirtualizer.getVirtualItems();
 
+  const handleTocScroll = () => {
+    manualTocScrollRef.current = true;
+    if (manualTocScrollTimerRef.current !== null) {
+      window.clearTimeout(manualTocScrollTimerRef.current);
+    }
+    manualTocScrollTimerRef.current = window.setTimeout(() => {
+      manualTocScrollRef.current = false;
+      manualTocScrollTimerRef.current = null;
+    }, 350);
+  };
+
+  useEffect(() => () => {
+    if (manualTocScrollTimerRef.current !== null) {
+      window.clearTimeout(manualTocScrollTimerRef.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (!normalizedFilter || highlightedTocIndex === null) return;
     const targetIndex = rows.findIndex((row) => row.node.entry.index === highlightedTocIndex);
     if (targetIndex >= 0) tocVirtualizer.scrollToIndex(targetIndex, { align: 'auto' });
   }, [normalizedFilter, highlightedTocIndex, rows, tocVirtualizer]);
+
+  useEffect(() => {
+    if (normalizedFilter || activeTocIndex === null || manualTocScrollRef.current) return;
+    const targetIndex = rows.findIndex((row) => row.node.entry.index === activeTocIndex);
+    if (targetIndex < 0) return;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    tocVirtualizer.scrollToIndex(targetIndex, {
+      align: 'auto',
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
+  }, [activeTocIndex, normalizedFilter, rows, tocVirtualizer]);
 
   useEffect(() => {
     if (!expandMenuOpen) return;
@@ -315,7 +365,7 @@ export default function BookSidebar({
                 className="h-9 w-full rounded-full border border-outline-variant bg-surface pr-9 pl-3 text-sm outline-none focus:border-primary"
               />
             </div>
-            {hasExpandableNodes && (
+            {hasExpandableNodes && !normalizedFilter && (
               <div ref={expandMenuRef} className="relative shrink-0">
                 <button
                   ref={expandTriggerRef}
@@ -393,6 +443,7 @@ export default function BookSidebar({
             aria-label="תוכן העניינים"
             className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-4"
             dir="rtl"
+            onScroll={handleTocScroll}
           >
             {!toc && !tocError && <Spinner />}
             {tocError && <div className="p-3 text-sm text-error">{tocError}</div>}

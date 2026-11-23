@@ -211,13 +211,18 @@ export function getVisibleActiveTocIndex(
 
 /** Maximum visible hierarchy depth, counting the first row as level one. */
 export function getTocTreeDepth(nodes: TocTreeNode[]): number {
+  let visibleRoots = nodes;
+  while (visibleRoots.length === 1 && visibleRoots[0].children.length > 0) {
+    visibleRoots = visibleRoots[0].children;
+  }
+
   let maximum = 0;
-  const visit = (items: TocTreeNode[]) => {
+  const visit = (items: TocTreeNode[], depth: number) => {
     for (const node of items) {
-      maximum = Math.max(maximum, node.depth + 1);
-      visit(node.children);
+      maximum = Math.max(maximum, depth);
+      visit(node.children, depth + 1);
     }
   };
-  visit(nodes);
+  visit(visibleRoots, 1);
   return maximum;
 }
