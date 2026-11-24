@@ -77,6 +77,11 @@ export function getTabAutoScrollDelta(clientX: number, left: number, right: numb
   return 0;
 }
 
+/** Maps a finger movement to the physical scroll direction of an RTL/LTR tab strip. */
+export function getTabTouchScrollDelta(deltaX: number, language: 'he' | 'en'): number {
+  return language === 'he' ? deltaX : -deltaX;
+}
+
 /** Moves one tab relative to another without changing the tab objects or their IDs. */
 export function moveTabInOrder(
   tabs: readonly Tab[],

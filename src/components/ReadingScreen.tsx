@@ -12,6 +12,7 @@ import { placeReaderContextMenu } from '../utils/readerContextMenu';
 import {
   getTabAutoScrollDelta,
   getTabDropPositionAt,
+  getTabTouchScrollDelta,
   getTabContextMenuActions,
   tabsAfterClosable,
   tabsOtherThanClosable,
@@ -60,6 +61,8 @@ export default function ReadingScreen() {
   const touchTimerRef = useRef<number | null>(null);
   const touchArmTimerRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchScrollActiveRef = useRef(false);
+  const touchScrollLastXRef = useRef<number | null>(null);
   const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
   const touchUpHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
   const touchCancelHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
@@ -117,6 +120,8 @@ export default function ReadingScreen() {
     touchPointerIdRef.current = null;
     touchDragArmedRef.current = false;
     touchDragActiveRef.current = false;
+    touchScrollActiveRef.current = false;
+    touchScrollLastXRef.current = null;
   };
 
   const stopAutoScroll = () => {
@@ -497,19 +502,47 @@ export default function ReadingScreen() {
                   touchStartRef.current = { x, y };
                   touchDragArmedRef.current = false;
                   touchDragActiveRef.current = false;
+                  touchScrollActiveRef.current = false;
+                  touchScrollLastXRef.current = x;
                   const moveHandler = (moveEvent: PointerEvent) => {
                     if (moveEvent.pointerId !== pointerId) return;
                     const start = touchStartRef.current;
                     if (!start) return;
-                    const distance = Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y);
+                    const deltaX = moveEvent.clientX - start.x;
+                    const deltaY = moveEvent.clientY - start.y;
+                    const distance = Math.hypot(deltaX, deltaY);
+                    if (touchScrollActiveRef.current) {
+                      moveEvent.preventDefault();
+                      const strip = stripRef.current;
+                      const previousX = touchScrollLastXRef.current ?? moveEvent.clientX;
+                      if (strip) strip.scrollBy({ left: getTabTouchScrollDelta(moveEvent.clientX - previousX, lang), behavior: 'auto' });
+                      touchScrollLastXRef.current = moveEvent.clientX;
+                      return;
+                    }
                     if (!touchDragArmedRef.current && !touchDragActiveRef.current) {
                       if (distance > 10) {
                         clearTouchTimers();
-                        removeTouchMoveHandler();
+                        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                          touchScrollActiveRef.current = true;
+                          longPressTriggeredRef.current = true;
+                          moveEvent.preventDefault();
+                          const strip = stripRef.current;
+                          if (strip) strip.scrollBy({ left: getTabTouchScrollDelta(deltaX, lang), behavior: 'auto' });
+                          touchScrollLastXRef.current = moveEvent.clientX;
+                        } else {
+                          longPressTriggeredRef.current = true;
+                          removeTouchMoveHandler();
+                        }
                       }
                       return;
                     }
                     if (touchDragArmedRef.current && !touchDragActiveRef.current && distance > 8) {
+                      if (Math.abs(deltaX) <= Math.abs(deltaY)) {
+                        clearTouchTimers();
+                        longPressTriggeredRef.current = true;
+                        removeTouchMoveHandler();
+                        return;
+                      }
                       clearTouchTimers();
                       touchDragActiveRef.current = true;
                       dragSourceIdRef.current = t.id;
@@ -563,6 +596,7 @@ export default function ReadingScreen() {
                 className={`reader-tab group relative flex h-[calc(100%-3px)] min-w-[60px] max-w-[140px] shrink-0 flex-[0_1_140px] sm:h-[calc(100%-4px)] items-center gap-0 rounded-t-lg text-sm transition-colors ${draggedTabId === t.id ? 'opacity-[.35]' : ''} ${
                   isActive ? 'bg-surface text-on-surface font-semibold' : isSelected ? 'bg-sec-container text-on-sec-container ring-1 ring-inset ring-outline-variant' : 'text-on-variant'
                 }`}
+                style={{ touchAction: 'pan-y' }}
               >
                 <button
                   onClick={(event) => {

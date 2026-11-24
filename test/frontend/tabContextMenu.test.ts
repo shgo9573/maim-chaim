@@ -5,6 +5,7 @@ import { listRecentlyClosedTabs, rememberRecentlyClosedTab } from '../../src/uti
 import {
   getTabAutoScrollDelta,
   getTabDropPositionAt,
+  getTabTouchScrollDelta,
   duplicateTabWithId,
   getTabContextMenuActions,
   moveTabInOrder,
@@ -197,4 +198,12 @@ test('tab edge auto-scroll is bounded and follows the physical pointer edge', ()
   assert.equal(getTabAutoScrollDelta(241, 0, 200), 0);
   assert.equal(getTabAutoScrollDelta(-40, 0, 200), -8);
   assert.equal(getTabAutoScrollDelta(240, 0, 200), 8);
+});
+
+
+test('horizontal touch scrolling follows the finger in RTL and LTR', () => {
+  assert.equal(getTabTouchScrollDelta(-24, 'he'), -24);
+  assert.equal(getTabTouchScrollDelta(-24, 'en'), 24);
+  assert.equal(getTabTouchScrollDelta(16, 'he'), 16);
+  assert.equal(getTabTouchScrollDelta(16, 'en'), -16);
 });
