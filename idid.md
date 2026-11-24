@@ -3373,3 +3373,8 @@ Commits חדשים ב־main שנבדקו:
 - Commit תיעוד תוצאת CI והודעת הרישוי: `c403ba248a1a7d61d77a6d9f9af660f1a4857840`.
 - HEAD של main לאחר הריצה: `c403ba248a1a7d61d77a6d9f9af660f1a4857840`; ענפי arena לא שונו.
 - נבדקה רשימת GitHub Actions לאחר commit התיעוד: לא נפתחה ריצת Deploy Beta נוספת עבור עדכון התיעוד; ריצת הקוד היחידה שנפתחה היא #77 ונכשלה בשלב ה-typecheck שתואר לעיל.
+
+### השלמת מעקב CI לאחר עדכון הודעת הרישוי
+- עדכון `THIRD_PARTY_NOTICES.md` ב-commit `c403ba248a1a7d61d77a6d9f9af660f1a4857840` הפעיל גם את Deploy Beta run #78 (`45448782747`, https://github.com/shgo9573/maim-chaim/actions/runs/45448782747); גם הוא נכשל באותה שגיאת `MeasurementConverter.tsx` בשלב `Typecheck project`, וכל שלבי ה-Frontend והפריסה דולגו.
+- ה-commit האחרון `9460f736d3f9197bb6d253aadedd709d24b87aca` משנה את `idid.md` בלבד; הוא מוחרג במפורש מ-Deploy Beta באמצעות `paths-ignore: idid.md`, ולא נפתחה עבורו ריצת פריסה נוספת.
+- לכן אין כרגע תוצאת build או פריסה מוצלחת לאימות. יש להעביר את שגיאת הייבוא `LucideIcon` במשימת כלי המידות לאחת ממשימות הפיתוח לפני שניתן יהיה להשלים בדיקות ופריסה אוטומטית.
