@@ -3367,3 +3367,9 @@ Commits חדשים ב־main שנבדקו:
 - GitHub Actions `Deploy Beta` run #77 (`45448430631`, https://github.com/shgo9573/maim-chaim/actions/runs/45448430631) הסתיים `failure` בשלב `Typecheck project` (`npm run lint`). השגיאה: `src/components/MeasurementConverter.tsx(1,45): error TS2305: Module '"react"' has no exported member 'LucideIcon'.` זו תקלה בקובץ כלי המידות שנוסף במשימת הפיתוח הקודמת, מחוץ לתחום משימת UI זו; לא שיניתי אותה.
 - בעקבות כשל ה-typecheck, `typecheck:frontend`, בדיקות Frontend, build, הגדרת SSH ופריסת `/beta/` סומנו `skipped`. מנגנון הפריסה האוטומטית הופעל עם ה-commit אך לא הגיע לשלב הפריסה.
 - `Deploy to Oracle Server` מוגדר `workflow_dispatch` בלבד ולא הופעל. לא בוצעה פריסה ידנית ולא נגעתי בשרת/DNS.
+
+### מזהי commits ומצב הענף לאחר הריצה
+- Commit קוד הממשק: `ec65516bad5b12802283d66ceafaac3f70b6e051`.
+- Commit תיעוד תוצאת CI והודעת הרישוי: `c403ba248a1a7d61d77a6d9f9af660f1a4857840`.
+- HEAD של main לאחר הריצה: `c403ba248a1a7d61d77a6d9f9af660f1a4857840`; ענפי arena לא שונו.
+- נבדקה רשימת GitHub Actions לאחר commit התיעוד: לא נפתחה ריצת Deploy Beta נוספת עבור עדכון התיעוד; ריצת הקוד היחידה שנפתחה היא #77 ונכשלה בשלב ה-typecheck שתואר לעיל.
