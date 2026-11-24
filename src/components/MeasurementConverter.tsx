@@ -24,9 +24,11 @@ const CATEGORY_META: { key: MeasurementCategory; icon: LucideIcon }[] = [
 ];
 
 function createDefaultSelections(): Record<MeasurementCategory, MeasurementSelection> {
-  return Object.fromEntries(
-    MEASUREMENT_CATEGORIES.map((category) => [category, getDefaultMeasurementSelection(category)]),
-  ) as Record<MeasurementCategory, MeasurementSelection>;
+  const defaults = {} as Record<MeasurementCategory, MeasurementSelection>;
+  for (const category of MEASUREMENT_CATEGORIES) {
+    defaults[category] = getDefaultMeasurementSelection(category);
+  }
+  return defaults;
 }
 
 function readSelections(): Record<MeasurementCategory, MeasurementSelection> {
