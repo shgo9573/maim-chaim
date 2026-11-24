@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, PenLine, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
+import { Activity, Bookmark, BookOpen, Calculator, CalendarCheck, CalendarDays, Check, DatabaseBackup, Download, FolderOpen, History, MessageSquare, PenLine, Ruler, ScrollText, Search, Trash2, Upload, X } from 'lucide-react';
 import DailyStudy from './DailyStudy';
 import CalendarZmanim from './CalendarZmanim';
 import TzuratHaDaf from './TzuratHaDaf';
 import BackupRestorePanel from './BackupRestorePanel';
+import MeasurementConverter from './MeasurementConverter';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { useApp } from '../store';
@@ -16,11 +17,13 @@ import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/re
 import { getBookmarkContextMenuActions, normalizeBookmarkDescription, type BookmarkContextMenuActionId } from '../utils/bookmarkContextMenu';
 import { buildHistoryTimeline, type HistoryTimelineFilter } from '../utils/historyTimeline';
 
-type Tool = 'daily' | 'calendar' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
+type Tool = 'daily' | 'calendar' | 'measurements' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
 
 const TOOLS: { key: Tool; label: string; icon: ReactNode }[] = [
   { key: 'daily', label: 'לימוד יומי', icon: <CalendarCheck size={22} /> },
   { key: 'calendar', label: 'לוח וזמנים', icon: <CalendarDays size={22} /> },
+  { key: 'measurements', label: 'מדות ושיעורים', icon: <Ruler size={22} /> },
+
   { key: 'daf', label: 'צורת הדף', icon: <ScrollText size={22} /> },
   { key: 'bookmarks', label: 'סימניות', icon: <Bookmark size={22} /> },
   { key: 'history', label: 'היסטוריה', icon: <History size={22} /> },
@@ -58,6 +61,7 @@ export default function MoreScreen() {
         <div className={`mx-auto p-4 md:p-6 ${tool === 'daf' ? 'h-full max-w-5xl' : tool === 'notes' ? 'h-full max-w-none' : 'max-w-3xl'}`}>
           {tool === 'daily' && <DailyStudy />}
           {tool === 'calendar' && <CalendarZmanim />}
+          {tool === 'measurements' && <MeasurementConverter />}
           {tool === 'daf' && <TzuratHaDaf />}
           {tool === 'bookmarks' && <Bookmarks />}
           {tool === 'history' && <HistoryView />}
