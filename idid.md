@@ -3329,3 +3329,39 @@ Commits חדשים ב־main שנבדקו:
 - לבצע בדיקת דפדפן/מובייל של הכלי, כולל RTL, קלט מספרי, החלפת יחידות והעתקה.
 - לאחר מכן להמשיך לכלי או ליכולת פונקציונלית נוספת שחסרים באתר מול Otzaria/otzaria:dev; אין לעצור לאחר הוספת כלי המידות.
 - מנוע החיפוש, שירות החיפוש, חוזי API/payload, אינדקסים ו-Workers לא נערכו. לא בוצעה עבודת PDF.
+
+
+## ריצת התאמה חזותית — 24 בנובמבר 2026, ערב — אייקוני הקורא ותת־תפריט קישור ישיר
+
+### בקרת מצב ומקורות
+- מאגר יעד: `shgo9573/maim-chaim`, ענף כתיבה יחיד `main`; HEAD לפני השינוי: `54e3528df7784aa3aecb3486189236ac3c337014`.
+- ענפי היעד שנבדקו: `main` (`54e3528df7784aa3aecb3486189236ac3c337014`), `arena/9b3e1906-maim-chaim` (`ee8a38c72d1e70461bc1750376660a9d15ea93a9`), `arena/9c1ba425-maim-chaim` (`c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`).
+- `newbugs.md`: הדיווח הפתוח ב-main על חלונית חיפוש הכרטיסיות שמזיזה את התצוגה ומסתירה את סרגל הצד נשאר פתוח; הקובץ אינו קיים בשני ענפי arena (404). לא שונה קובץ הבאגים.
+- פעילות הקוד האחרונה ב-main עסקה בכלי מידות ושיעורים ובגרירת טאבים במגע (`0cb9694`, `6acf257`, `8c355e2`, `7a5c488`, `7674eef`, `53b31ab`, `4833a96`, `ab4aa71`, `9657719`). התאמת רצועת הטאבים תועדה בריצה הקודמת; בריצה זו נבחר פער glyph ממשי שנותר בשורת פעולות הקורא.
+- מקור: `Otzaria/otzaria:dev`, HEAD `7d569ff01a576991e06c69abcbee37efd4b77a02`. נבדקו `lib/text_book/utils/reader_menu_entries.dart`, `packages/otzaria_context_menu/lib/src/menu_metrics.dart`, `packages/otzaria_context_menu/lib/src/context_menu_rows.dart`, `packages/otzaria_context_menu/lib/src/menu_presentation.dart`, `lib/widgets/misc/direct_link_menu_entries.dart`.
+- בהשוואת מקור `dev` מ-`3a612a22b2bafecd2e26f446ac81c38210cb21d5` ל-HEAD הנוכחי נמצאו 43 commits, אך קובצי שורת האייקונים ומדדי תפריט ההקשר שנבדקו לא השתנו ברצף הזה.
+
+### רכיב המקור המדויק מול רכיב האתר
+- מקור: `buildReaderIconRow` ב-`reader_menu_entries.dart` — סדר הפעולות הוא `library_24_regular` (חיפוש) → `copy_24_regular` (העתקה) → `note_add_24_regular` (הערה) → `OtzariaIcons.link_24_regular` (קישור).
+- מקור: `AppMenuMetrics.create` — גובה שורה 36px, ריפוד אופקי 12px, ריפוד אנכי של הפאנל 8px, מפריד 8px, glyph של 18px, רוחב מינימלי 150px; פינות 8px והגובה/צל ברירת המחדל elevation 3.
+- אתר: `ReaderContextIconRow.tsx` בשימוש מתוך `BookViewer.tsx`; לפני השינוי נעשה שימוש ב-Library/Copy/FilePlus2 של Lucide. `BookViewer.tsx` הציג פאנל ברוחב קבוע 300px, פינות 12px, ריפוד 6px, מסגרת וצל 2xl; תשעת סמלי פעולות התפריט היו 15px.
+- אתר: `ReaderDirectLinkMenu.tsx` הציג תת־תפריט ברוחב קבוע 256px ומינימום 180px, פינות 12px, ריפוד 6px וצל xl, אף ששורות הפעולה כבר היו בגובה 36px.
+
+### ההבדלים שתוקנו
+- הוחלף glyph ההערה `FilePlus2` ב-Fluent `note_add_24_regular` המדויק; גם `Library` ו-`Copy` הוחלפו בנתיבי SVG המדויקים של Fluent UI, כולם 18px וב-`currentColor`.
+- מעטפת תפריט הקורא עברה לרוחב תוכן עם מינימום 150px ומקסימום viewport, פינות 8px, ריפוד אנכי 8px וצל מתון התואם בקירוב ל-elevation 3. תשעת סמלי הפעולות בשורות התפריט הוגדלו מ-15px ל-18px; גובה השורות וריפודן נשארו 36px/12px.
+- תת־תפריט הקישור עבר לרוחב `max-content` עם מינימום 150px ומקסימום 320px; המיקום מחושב לפי המידות שנמדדו בפועל, נשמרת הצמדה לקצה הטריגר ב-RTL/LTR, והחלונית נפתחת מעליו כשאין מקום מתחת. הותאמו גם הפינות, הריפוד והצל למדדי המקור.
+- נוספה `THIRD_PARTY_NOTICES.md` עם הודעת MIT של Microsoft עבור שלושת נתיבי ה-SVG.
+
+### פערים שנשארו במכוון
+- glyphs הייחודיים `OtzariaIcons.link_24_regular`, `link_document_24_regular`, `link_marker_24_regular` ו-`link_alef_24_regular` מגיעים מחבילת `otzaria_icons` (GPL-3.0) ואינם נכסי Web בפרויקט. לא הועתקו; `Link2`, `FileText`, `Highlighter` ו-`Type` נשארו מיפויי Lucide קרובים, וההבדל תועד.
+- תתי־התפריטים של מפרשים וקישורים בקורא עדיין נפתחים בתוך זרימת ה-UI הקיימת ולא כחלוניות `MenuAnchor` נפרדות כמו במקור; לא שונתה התנהגות/לוגיקה במשימת UI זו.
+- לא בוצעה פתיחה בדפדפן או בדיקת צילום מסך/מגע בסביבת העבודה הנוכחית; אין לטעון לאימות חזותי בפועל.
+
+### בדיקות וגבולות
+- נוספו בדיקות render לשמות glyph ולסדר פעולות הקורא, ובדיקות RTL/LTR, רוחב מינימלי, פתיחה מעל הטריגר ו-clamp ל-viewport של תת־תפריט הקישור.
+- בדיקות הפרויקט ו-build לא הורצו מקומית: אין checkout מקומי של המאגר ואין `node_modules` בסביבת העבודה. תוצאות GitHub Actions/Deploy Beta יתועדו לאחר commit.
+- לא שונו callbacks, פעולות, נתונים, הרשאות, אחסון, API, backend, חיפוש, דירוג, מנוע/שירות החיפוש או חוזי חיפוש. לא נערך PDF, לא נכתב למאגר המקור, לא בוצעה פריסה ידנית ולא שונו שרת/DNS.
+
+### CI ופריסה
+- ממתין לריצת GitHub Actions ולתוצאת מנגנון הפריסה האוטומטית הקיים בלבד; אין לסמן הצלחה עד לאימות.

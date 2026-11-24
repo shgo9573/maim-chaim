@@ -2,9 +2,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, FileText, Highlighter, Link2, Type } from 'lucide-react';
 import type { ReaderDirectLinkMenuItem } from '../utils/readerDirectLinkMenu';
-import { getReaderDirectLinkIconKind } from '../utils/readerDirectLinkMenu';
+import { getReaderDirectLinkIconKind, placeReaderDirectLinkMenu } from '../utils/readerDirectLinkMenu';
 
-type MenuPosition = { left: number; top: number; width: number };
+type MenuPosition = { left: number; top: number; maxWidth: number; maxHeight: number };
 
 function DirectLinkOptionIcon({ kind }: { kind: 'document' | 'marker' | 'alef' }) {
   if (kind === 'document') return <FileText size={18} strokeWidth={1.8} />;
@@ -34,28 +34,36 @@ export default function ReaderDirectLinkMenu({
     }
   };
 
+  const updatePosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const menuRect = menuRef.current?.getBoundingClientRect();
+    const size = {
+      width: menuRect?.width ?? Math.min(320, Math.max(0, viewport.width - 16)),
+      height: menuRect?.height ?? Math.min(items.length * 36 + 16, Math.max(0, viewport.height - 16)),
+    };
+    const direction = window.getComputedStyle(trigger).direction === 'rtl' ? 'rtl' : 'ltr';
+    const next = placeReaderDirectLinkMenu(
+      { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
+      size,
+      viewport,
+      direction,
+    );
+    setPosition((current) => {
+      if (current && Math.abs(current.left - next.left) < 0.5 && Math.abs(current.top - next.top) < 0.5 && current.maxWidth === next.maxWidth && current.maxHeight === next.maxHeight) return current;
+      return next;
+    });
+  };
+
   useLayoutEffect(() => {
     if (!expanded) return;
-
-    const updatePosition = () => {
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const width = Math.min(256, Math.max(0, window.innerWidth - 16));
-      const height = Math.min(items.length * 36 + 16, Math.max(0, window.innerHeight - 16));
-      const isRtl = window.getComputedStyle(trigger).direction === 'rtl';
-      const preferredLeft = isRtl ? rect.right - width : rect.left;
-      const maxLeft = Math.max(8, window.innerWidth - width - 8);
-      const left = Math.min(Math.max(8, preferredLeft), maxLeft);
-      const below = rect.bottom + 4;
-      const top = below + height <= window.innerHeight - 8
-        ? below
-        : Math.max(8, rect.top - height - 4);
-      setPosition({ left, top, width });
-    };
-
     updatePosition();
-    const frame = window.requestAnimationFrame(() => firstItemRef.current?.focus());
+    const frame = window.requestAnimationFrame(() => {
+      updatePosition();
+      firstItemRef.current?.focus();
+    });
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
@@ -64,6 +72,12 @@ export default function ReaderDirectLinkMenu({
       window.removeEventListener('scroll', updatePosition, true);
     };
   }, [expanded, items.length]);
+
+  // Remeasure after the intrinsic-width panel mounts to align its actual edge to the trigger.
+  useLayoutEffect(() => {
+    if (!expanded || !position) return;
+    updatePosition();
+  }, [expanded, position?.maxWidth, position?.maxHeight, items.length]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -142,8 +156,16 @@ export default function ReaderDirectLinkMenu({
           role="menu"
           aria-label="העתקת קישור ישיר"
           dir="rtl"
-          style={{ left: position.left, top: position.top, width: position.width }}
-          className="fixed z-[120] flex max-h-[calc(100vh-16px)] min-w-[180px] flex-col overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-xl"
+          style={{
+            left: position.left,
+            top: position.top,
+            width: 'max-content',
+            minWidth: Math.min(150, position.maxWidth),
+            maxWidth: position.maxWidth,
+            maxHeight: position.maxHeight,
+            boxSizing: 'border-box',
+          }}
+          className="fixed z-[120] flex flex-col overflow-y-auto rounded-lg bg-surface-2 py-2 text-sm text-on-surface shadow-md"
           onKeyDown={handleMenuKeyDown}
         >
           {items.map((item, index) => (

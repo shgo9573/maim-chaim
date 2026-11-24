@@ -90,3 +90,30 @@ export function getReaderDirectLinkIconKind(kind: ReaderDirectLinkKind): ReaderD
       return 'alef';
   }
 }
+
+
+export interface ReaderDirectLinkMenuAnchor { left: number; right: number; top: number; bottom: number; }
+export interface ReaderDirectLinkMenuSize { width: number; height: number; }
+export interface ReaderDirectLinkMenuViewport { width: number; height: number; }
+export interface ReaderDirectLinkMenuPosition { left: number; top: number; maxWidth: number; maxHeight: number; }
+
+/** Places the content-sized direct-link submenu with Otzaria's 150px minimum, 8px inset and 4px anchor gap. */
+export function placeReaderDirectLinkMenu(
+  anchor: ReaderDirectLinkMenuAnchor,
+  menu: ReaderDirectLinkMenuSize,
+  viewport: ReaderDirectLinkMenuViewport,
+  direction: 'rtl' | 'ltr',
+): ReaderDirectLinkMenuPosition {
+  const inset = 8;
+  const gap = 4;
+  const maxWidth = Math.max(0, Math.min(320, viewport.width - inset * 2));
+  const maxHeight = Math.max(0, viewport.height - inset * 2);
+  const width = Math.min(Math.max(150, menu.width), maxWidth);
+  const height = Math.min(Math.max(0, menu.height), maxHeight);
+  const preferredLeft = direction === 'rtl' ? anchor.right - width : anchor.left;
+  const maxLeft = Math.max(inset, viewport.width - width - inset);
+  const left = Math.min(Math.max(inset, preferredLeft), maxLeft);
+  const below = anchor.bottom + gap;
+  const top = below + height <= viewport.height - inset ? below : Math.max(inset, anchor.top - height - gap);
+  return { left, top, maxWidth, maxHeight };
+}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { getReaderDirectLinkIconKind, getReaderDirectLinkMenuItems } from '../../src/utils/readerDirectLinkMenu';
+import { getReaderDirectLinkIconKind, getReaderDirectLinkMenuItems, placeReaderDirectLinkMenu } from '../../src/utils/readerDirectLinkMenu';
 
 test('direct-link menu always offers a section link and a whole-section highlight', () => {
   assert.deepEqual(
@@ -79,4 +79,32 @@ test('reader context-menu components are registered for Tailwind source scanning
   const css = readFileSync(new URL('../../src/index.css', import.meta.url), 'utf8');
   assert.match(css, /@source "\.\/components\/ReaderContextIconRow\.tsx";/);
   assert.match(css, /@source "\.\/components\/ReaderDirectLinkMenu\.tsx";/);
+});
+
+
+test('direct-link submenu uses its measured intrinsic width and keeps the trigger edge in RTL/LTR', () => {
+  const anchor = { left: 350, right: 390, top: 100, bottom: 124 };
+  const size = { width: 180, height: 100 };
+  const viewport = { width: 600, height: 600 };
+  assert.deepEqual(placeReaderDirectLinkMenu(anchor, size, viewport, 'rtl'), { left: 210, top: 128, maxWidth: 320, maxHeight: 584 });
+  assert.deepEqual(placeReaderDirectLinkMenu(anchor, size, viewport, 'ltr'), { left: 350, top: 128, maxWidth: 320, maxHeight: 584 });
+});
+
+test('direct-link submenu opens above when needed and clamps to a narrow viewport', () => {
+  const placement = placeReaderDirectLinkMenu(
+    { left: 270, right: 310, top: 250, bottom: 270 },
+    { width: 300, height: 180 },
+    { width: 320, height: 300 },
+    'rtl',
+  );
+  assert.deepEqual(placement, { left: 10, top: 66, maxWidth: 304, maxHeight: 284 });
+});
+
+test('direct-link submenu retains the source minimum width without exceeding a very narrow viewport', () => {
+  const regular = placeReaderDirectLinkMenu({ left: 200, right: 240, top: 20, bottom: 44 }, { width: 90, height: 72 }, { width: 400, height: 500 }, 'ltr');
+  const narrow = placeReaderDirectLinkMenu({ left: 20, right: 40, top: 20, bottom: 44 }, { width: 90, height: 72 }, { width: 120, height: 300 }, 'rtl');
+  assert.equal(regular.left, 200);
+  assert.equal(regular.maxWidth, 320);
+  assert.equal(narrow.maxWidth, 104);
+  assert.equal(narrow.maxHeight, 284);
 });

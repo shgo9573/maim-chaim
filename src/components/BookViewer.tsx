@@ -1304,8 +1304,8 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             role="menu"
             aria-label="פעולות על טקסט בספר"
             dir="rtl"
-            className="fixed z-[111] flex w-[min(300px,calc(100vw-16px))] max-h-[calc(100vh-16px)] flex-col overflow-y-auto rounded-xl border border-outline-variant bg-surface-2 p-1.5 text-sm text-on-surface shadow-2xl"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
+            className="fixed z-[111] flex w-max min-w-[150px] max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] box-border flex-col overflow-y-auto rounded-lg bg-surface-2 py-2 text-sm text-on-surface shadow-md"
+            style={{ left: contextMenu.x, top: contextMenu.y, minWidth: 'min(150px, calc(100vw - 16px))' }}
             onMouseDown={(event) => event.preventDefault()}
             onKeyDown={handleContextMenuKeyDown}
           >
@@ -1354,7 +1354,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 void copy(stripTags(line?.content || '').trim(), 'הפסקה הועתקה');
               }}
             >
-              <Copy size={15} /> העתק את כל הפסקה
+              <Copy size={18} /> העתק את כל הפסקה
             </button>
             <button
               type="button"
@@ -1368,10 +1368,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 to: contextMenu.to,
               })}
             >
-              <Link2 size={15} /> העתק טקסט כקישור
+              <Link2 size={18} /> העתק טקסט כקישור
             </button>
 
-            <div role="separator" className="my-1 border-t border-outline-variant" />
+            <div role="separator" className="my-[3.5px] border-t border-outline-variant" />
 
 
             <button
@@ -1383,10 +1383,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 openBookSearch(contextMenu.text, Boolean(contextMenu.text.trim()));
               }}
             >
-              <TextSearch size={15} /> חיפוש בספר
+              <TextSearch size={18} /> חיפוש בספר
             </button>
 
-            <div role="separator" className="my-1 border-t border-outline-variant" />
+            <div role="separator" className="my-[3.5px] border-t border-outline-variant" />
 
             <button
               type="button"
@@ -1397,7 +1397,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 addMarkAt(contextMenu.line);
               }}
             >
-              <Bookmark size={15} /> הוסף סימניה לקטע זה
+              <Bookmark size={18} /> הוסף סימניה לקטע זה
             </button>
 
             <button
@@ -1420,7 +1420,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
               }}
               onClick={toggleReaderCommentaryMenu}
             >
-              <MessageSquareText size={15} />
+              <MessageSquareText size={18} />
               <span className="flex-1">מפרשים על שורה זו</span>
               <ChevronDown size={14} className={`transition-transform motion-reduce:transition-none ${commentaryMenuExpanded ? 'rotate-180' : ''}`} />
             </button>
@@ -1442,7 +1442,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                     openCommentaryForLine(contextMenu.line);
                   }}
                 >
-                  <PanelRightOpen size={15} /> הצג את חלונית המפרשים
+                  <PanelRightOpen size={18} /> הצג את חלונית המפרשים
                 </button>
                 {commentaryMenuStatus === 'loading' && (
                   <div role="presentation" aria-live="polite" className="px-3 py-2 text-xs text-on-variant">
@@ -1492,7 +1492,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                         openBookByTitle(item.title, item.line);
                       }}
                     >
-                      <BookOpen size={15} />
+                      <BookOpen size={18} />
                       <span className="min-w-0 flex-1 truncate">{item.title}</span>
                       {item.count > 1 && <span className="text-xs text-on-variant">×{item.count}</span>}
                     </button>
@@ -1521,7 +1521,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
               }}
               onClick={toggleReaderReferenceMenu}
             >
-              <Link2 size={15} />
+              <Link2 size={18} />
               <span className="flex-1">קישורים</span>
               <ChevronDown size={14} className={'transition-transform motion-reduce:transition-none ' + (referenceMenuExpanded ? 'rotate-180' : '')} />
             </button>
@@ -1587,7 +1587,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                         openBookInNewTab(targetBook, item.line);
                       }}
                     >
-                      <Link2 size={15} className="mt-0.5 shrink-0" />
+                      <Link2 size={18} className="mt-0.5 shrink-0" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{item.title}</span>
                         <span className="block text-xs text-on-variant">
