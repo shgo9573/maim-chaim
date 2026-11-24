@@ -75,7 +75,7 @@ export function getTabAutoScrollDelta(clientX: number, left: number, right: numb
   if (clientX < left + edge) return -step;
   if (clientX > right - edge) return step;
   return 0;
-
+}
 
 /** Moves one tab relative to another without changing the tab objects or their IDs. */
 export function moveTabInOrder(
