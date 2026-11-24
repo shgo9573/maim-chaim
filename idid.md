@@ -3364,4 +3364,6 @@ Commits חדשים ב־main שנבדקו:
 - לא שונו callbacks, פעולות, נתונים, הרשאות, אחסון, API, backend, חיפוש, דירוג, מנוע/שירות החיפוש או חוזי חיפוש. לא נערך PDF, לא נכתב למאגר המקור, לא בוצעה פריסה ידנית ולא שונו שרת/DNS.
 
 ### CI ופריסה
-- ממתין לריצת GitHub Actions ולתוצאת מנגנון הפריסה האוטומטית הקיים בלבד; אין לסמן הצלחה עד לאימות.
+- GitHub Actions `Deploy Beta` run #77 (`45448430631`, https://github.com/shgo9573/maim-chaim/actions/runs/45448430631) הסתיים `failure` בשלב `Typecheck project` (`npm run lint`). השגיאה: `src/components/MeasurementConverter.tsx(1,45): error TS2305: Module '"react"' has no exported member 'LucideIcon'.` זו תקלה בקובץ כלי המידות שנוסף במשימת הפיתוח הקודמת, מחוץ לתחום משימת UI זו; לא שיניתי אותה.
+- בעקבות כשל ה-typecheck, `typecheck:frontend`, בדיקות Frontend, build, הגדרת SSH ופריסת `/beta/` סומנו `skipped`. מנגנון הפריסה האוטומטית הופעל עם ה-commit אך לא הגיע לשלב הפריסה.
+- `Deploy to Oracle Server` מוגדר `workflow_dispatch` בלבד ולא הופעל. לא בוצעה פריסה ידנית ולא נגעתי בשרת/DNS.

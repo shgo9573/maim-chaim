@@ -2,7 +2,7 @@
 
 ## Microsoft Fluent UI System Icons
 
-Copyright (c) Microsoft Corporation.
+Copyright (c) 2020 Microsoft Corporation.
 
 The 24px regular SVG path data for the reader actions `library`, `copy`, and
 `note_add` is derived from the Microsoft Fluent UI System Icons project:
@@ -16,7 +16,7 @@ Licensed under the MIT License:
 
 MIT License
 
-Copyright (c) Microsoft Corporation
+Copyright (c) 2020 Microsoft Corporation
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
