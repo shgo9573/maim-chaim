@@ -3,6 +3,8 @@ import test from 'node:test';
 import type { Tab } from '../../src/types';
 import { listRecentlyClosedTabs, rememberRecentlyClosedTab } from '../../src/utils/recentlyClosedTabs';
 import {
+  getTabAutoScrollDelta,
+  getTabDropPositionAt,
   duplicateTabWithId,
   getTabContextMenuActions,
   moveTabInOrder,
@@ -177,4 +179,22 @@ test('drag reorder preserves tab data and leaves the order unchanged for invalid
   assert.deepEqual(moveTabInOrder(tabs, 'book-1', 'book-1', 'after').map((tab) => tab.id), [
     'book-1', 'search-1', 'daf-1',
   ]);
+});
+
+
+test('tab drop side follows the visual start in RTL and LTR', () => {
+  assert.equal(getTabDropPositionAt(20, 0, 100, 'en'), 'before');
+  assert.equal(getTabDropPositionAt(80, 0, 100, 'en'), 'after');
+  assert.equal(getTabDropPositionAt(20, 0, 100, 'he'), 'after');
+  assert.equal(getTabDropPositionAt(80, 0, 100, 'he'), 'before');
+});
+
+test('tab edge auto-scroll is bounded and follows the physical pointer edge', () => {
+  assert.equal(getTabAutoScrollDelta(10, 0, 200), -8);
+  assert.equal(getTabAutoScrollDelta(190, 0, 200), 8);
+  assert.equal(getTabAutoScrollDelta(100, 0, 200), 0);
+  assert.equal(getTabAutoScrollDelta(-41, 0, 200), 0);
+  assert.equal(getTabAutoScrollDelta(241, 0, 200), 0);
+  assert.equal(getTabAutoScrollDelta(-40, 0, 200), -8);
+  assert.equal(getTabAutoScrollDelta(240, 0, 200), 8);
 });

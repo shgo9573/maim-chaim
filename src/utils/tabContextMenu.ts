@@ -62,6 +62,21 @@ export function planTabClose(
 
 export type TabDropPosition = 'before' | 'after';
 
+/** Calculates the insertion side using the tab strip's visual direction. */
+export function getTabDropPositionAt(clientX: number, left: number, width: number, language: 'he' | 'en'): TabDropPosition {
+  const visualStartHalf = clientX < left + width / 2;
+  const isBefore = language === 'en' ? visualStartHalf : !visualStartHalf;
+  return isBefore ? 'before' : 'after';
+}
+
+/** Returns a physical horizontal scroll delta while the pointer is near a strip edge. */
+export function getTabAutoScrollDelta(clientX: number, left: number, right: number, edge = 40, step = 8): number {
+  if (clientX < left - edge || clientX > right + edge) return 0;
+  if (clientX < left + edge) return -step;
+  if (clientX > right - edge) return step;
+  return 0;
+
+
 /** Moves one tab relative to another without changing the tab objects or their IDs. */
 export function moveTabInOrder(
   tabs: readonly Tab[],

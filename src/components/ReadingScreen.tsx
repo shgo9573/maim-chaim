@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { BookOpen, ChevronDown, Copy, Folder, Pin, Search as SearchIcon, X } from 'lucide-react';
 import { useApp } from '../store';
@@ -10,6 +10,8 @@ import { Btn, EmptyState } from './ui';
 import { t } from '../i18n';
 import { placeReaderContextMenu } from '../utils/readerContextMenu';
 import {
+  getTabAutoScrollDelta,
+  getTabDropPositionAt,
   getTabContextMenuActions,
   tabsAfterClosable,
   tabsOtherThanClosable,
@@ -18,6 +20,7 @@ import {
 } from '../utils/tabContextMenu';
 
 type TabContextMenuState = { tabId: string; x: number; y: number };
+type TabDropTarget = { tabId: string; position: 'before' | 'after' };
 
 export default function ReadingScreen() {
   const {
@@ -47,7 +50,7 @@ export default function ReadingScreen() {
   const [openTabsExpanded, setOpenTabsExpanded] = useState(false);
   const [selectedTabIds, setSelectedTabIds] = useState<string[]>([]);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ tabId: string; position: 'before' | 'after' } | null>(null);
+  const [dropTarget, setDropTarget] = useState<TabDropTarget | null>(null);
   const lang = settings.interfaceLanguage || 'he';
   const closableTabs = tabsToCloseAll(tabs);
   const active = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -55,28 +58,174 @@ export default function ReadingScreen() {
   const menuRef = useRef<HTMLDivElement>(null);
   const menuReturnFocusRef = useRef<HTMLElement | null>(null);
   const touchTimerRef = useRef<number | null>(null);
+  const touchArmTimerRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+  const touchUpHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+  const touchCancelHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
+  const touchPointerIdRef = useRef<number | null>(null);
+  const touchDragArmedRef = useRef(false);
+  const touchDragActiveRef = useRef(false);
   const longPressTriggeredRef = useRef(false);
+  const dragSourceIdRef = useRef<string | null>(null);
+  const dropTargetRef = useRef<TabDropTarget | null>(null);
+  const dragPointRef = useRef<{ x: number; y: number; sourceId: string } | null>(null);
+  const autoScrollTimerRef = useRef<number | null>(null);
+  const autoScrollDeltaRef = useRef(0);
+  const springOpenTimerRef = useRef<number | null>(null);
+  const springTargetRef = useRef<string | null>(null);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
-  const getTabDropPosition = (event: ReactDragEvent<HTMLDivElement>): 'before' | 'after' => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const visualStartHalf = event.clientX < rect.left + rect.width / 2;
-    const isBefore = lang === 'en' ? visualStartHalf : !visualStartHalf;
-    return isBefore ? 'before' : 'after';
-  };
+  const getTabDropPosition = (clientX: number, rect: DOMRect): 'before' | 'after' =>
+    getTabDropPositionAt(clientX, rect.left, rect.width, lang);
 
-  const clearLongPress = () => {
+  const clearTouchTimers = () => {
     if (touchTimerRef.current !== null) {
       window.clearTimeout(touchTimerRef.current);
       touchTimerRef.current = null;
     }
+    if (touchArmTimerRef.current !== null) {
+      window.clearTimeout(touchArmTimerRef.current);
+      touchArmTimerRef.current = null;
+    }
+  };
+
+  const removeTouchMoveHandler = () => {
     if (touchMoveHandlerRef.current) {
       window.removeEventListener('pointermove', touchMoveHandlerRef.current);
       touchMoveHandlerRef.current = null;
     }
-    touchStartRef.current = null;
   };
+
+  const removeTouchEndHandlers = () => {
+    if (touchUpHandlerRef.current) {
+      window.removeEventListener('pointerup', touchUpHandlerRef.current);
+      touchUpHandlerRef.current = null;
+    }
+    if (touchCancelHandlerRef.current) {
+      window.removeEventListener('pointercancel', touchCancelHandlerRef.current);
+      touchCancelHandlerRef.current = null;
+    }
+  };
+
+  const clearLongPress = () => {
+    clearTouchTimers();
+    removeTouchMoveHandler();
+    removeTouchEndHandlers();
+    touchStartRef.current = null;
+    touchPointerIdRef.current = null;
+    touchDragArmedRef.current = false;
+    touchDragActiveRef.current = false;
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollTimerRef.current !== null) {
+      window.clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = null;
+    }
+    autoScrollDeltaRef.current = 0;
+  };
+
+  const clearSpringOpen = () => {
+    if (springOpenTimerRef.current !== null) {
+      window.clearTimeout(springOpenTimerRef.current);
+      springOpenTimerRef.current = null;
+    }
+    springTargetRef.current = null;
+  };
+
+  const clearDragFeedback = () => {
+    stopAutoScroll();
+    clearSpringOpen();
+    dragSourceIdRef.current = null;
+    dropTargetRef.current = null;
+    dragPointRef.current = null;
+    setDraggedTabId(null);
+    setDropTarget(null);
+  };
+
+  const scheduleSpringOpen = (sourceId: string, targetId: string | null) => {
+    if (!targetId || targetId === sourceId) {
+      clearSpringOpen();
+      return;
+    }
+    if (springTargetRef.current === targetId) return;
+    clearSpringOpen();
+    springTargetRef.current = targetId;
+    springOpenTimerRef.current = window.setTimeout(() => {
+      springOpenTimerRef.current = null;
+      if (tabsRef.current.some((tab) => tab.id === targetId)) setActiveTab(targetId);
+      springTargetRef.current = null;
+    }, 400);
+  };
+
+  const updateDropTargetAtPoint = (x: number, y: number, sourceId: string): TabDropTarget | null => {
+    const strip = stripRef.current;
+    const targetElement = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-tab]');
+    if (!strip || !targetElement || !strip.contains(targetElement)) {
+      dropTargetRef.current = null;
+      setDropTarget(null);
+      clearSpringOpen();
+      return null;
+    }
+    const targetId = targetElement.dataset.tab;
+    if (!targetId || targetId === sourceId) {
+      dropTargetRef.current = null;
+      setDropTarget(null);
+      clearSpringOpen();
+      return null;
+    }
+    const next = { tabId: targetId, position: getTabDropPosition(x, targetElement.getBoundingClientRect()) };
+    dropTargetRef.current = next;
+    setDropTarget(next);
+    scheduleSpringOpen(sourceId, targetId);
+    return next;
+  };
+
+  const updateAutoScroll = (x: number, y: number, sourceId: string) => {
+    const strip = stripRef.current;
+    if (!strip) {
+      stopAutoScroll();
+      return;
+    }
+    const rect = strip.getBoundingClientRect();
+    const delta = getTabAutoScrollDelta(x, rect.left, rect.right);
+    dragPointRef.current = { x, y, sourceId };
+    if (delta === 0) {
+      stopAutoScroll();
+      return;
+    }
+    autoScrollDeltaRef.current = delta;
+    if (autoScrollTimerRef.current !== null) return;
+    autoScrollTimerRef.current = window.setInterval(() => {
+      const currentStrip = stripRef.current;
+      const point = dragPointRef.current;
+      if (!currentStrip || !point) {
+        stopAutoScroll();
+        return;
+      }
+      const before = currentStrip.scrollLeft;
+      currentStrip.scrollBy({ left: autoScrollDeltaRef.current, behavior: 'auto' });
+      if (currentStrip.scrollLeft === before) {
+        stopAutoScroll();
+        return;
+      }
+      updateDropTargetAtPoint(point.x, point.y, point.sourceId);
+    }, 16);
+  };
+
+  const updateDragAtPoint = (x: number, y: number, sourceId: string) => {
+    dragPointRef.current = { x, y, sourceId };
+    updateDropTargetAtPoint(x, y, sourceId);
+    updateAutoScroll(x, y, sourceId);
+  };
+
+  useEffect(() => () => {
+    clearLongPress();
+    stopAutoScroll();
+    clearSpringOpen();
+  }, []);
 
   const openTabContextMenu = (tabId: string, x: number, y: number, returnFocus: HTMLElement | null) => {
     menuReturnFocusRef.current = returnFocus;
@@ -277,34 +426,46 @@ export default function ReadingScreen() {
                     return;
                   }
                   clearLongPress();
+                  stopAutoScroll();
+                  clearSpringOpen();
                   event.dataTransfer.effectAllowed = 'move';
                   event.dataTransfer.setData('text/plain', t.id);
+                  dragSourceIdRef.current = t.id;
+                  dropTargetRef.current = null;
                   setDraggedTabId(t.id);
                   setDropTarget(null);
                 }}
                 onDragOver={(event) => {
-                  if (!draggedTabId || draggedTabId === t.id) return;
+                  const sourceId = draggedTabId ?? dragSourceIdRef.current;
+                  if (!sourceId || sourceId === t.id) return;
                   event.preventDefault();
                   event.dataTransfer.dropEffect = 'move';
-                  setDropTarget({ tabId: t.id, position: getTabDropPosition(event) });
+                  updateDragAtPoint(event.clientX, event.clientY, sourceId);
                 }}
                 onDragLeave={(event) => {
                   const nextTarget = event.relatedTarget;
                   if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
-                    setDropTarget((current) => current?.tabId === t.id ? null : current);
+                    if (dropTargetRef.current?.tabId === t.id) {
+                      dropTargetRef.current = null;
+                      setDropTarget(null);
+                    }
+                    const nextTab = nextTarget instanceof Element ? nextTarget.closest('[data-tab]') : null;
+                    if (!nextTab || !stripRef.current?.contains(nextTab)) {
+                      clearSpringOpen();
+                      stopAutoScroll();
+                    }
                   }
                 }}
                 onDrop={(event) => {
-                  if (!draggedTabId) return;
+                  const sourceId = event.dataTransfer.getData('text/plain') || draggedTabId || dragSourceIdRef.current;
+                  if (!sourceId) return;
                   event.preventDefault();
-                  const sourceId = event.dataTransfer.getData('text/plain') || draggedTabId;
-                  if (sourceId !== t.id) reorderTab(sourceId, t.id, getTabDropPosition(event));
-                  setDraggedTabId(null);
-                  setDropTarget(null);
+                  if (sourceId !== t.id) reorderTab(sourceId, t.id, getTabDropPosition(event.clientX, event.currentTarget.getBoundingClientRect()));
+                  clearDragFeedback();
                 }}
                 onDragEnd={() => {
-                  setDraggedTabId(null);
-                  setDropTarget(null);
+                  clearDragFeedback();
+                  clearLongPress();
                 }}
                 onMouseDown={(e) => {
                   if (e.button === 1) {
@@ -314,7 +475,13 @@ export default function ReadingScreen() {
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  clearLongPress();
+                  if (touchPointerIdRef.current !== null) {
+                    clearTouchTimers();
+                    removeTouchMoveHandler();
+                    longPressTriggeredRef.current = true;
+                  } else {
+                    clearLongPress();
+                  }
                   const titleButton = event.currentTarget.querySelector('button:not([data-tab-control])') as HTMLButtonElement | null;
                   openTabContextMenu(t.id, event.clientX, event.clientY, titleButton);
                 }}
@@ -322,32 +489,76 @@ export default function ReadingScreen() {
                   if (event.pointerType !== 'touch' || (event.target as HTMLElement).closest('[data-tab-control]')) return;
                   clearLongPress();
                   longPressTriggeredRef.current = false;
-                  touchStartRef.current = { x: event.clientX, y: event.clientY };
-                  const titleButton = event.currentTarget.querySelector('button:not([data-tab-control])') as HTMLButtonElement | null;
                   const x = event.clientX;
                   const y = event.clientY;
                   const pointerId = event.pointerId;
+                  const titleButton = event.currentTarget.querySelector('button:not([data-tab-control])') as HTMLButtonElement | null;
+                  touchPointerIdRef.current = pointerId;
+                  touchStartRef.current = { x, y };
+                  touchDragArmedRef.current = false;
+                  touchDragActiveRef.current = false;
                   const moveHandler = (moveEvent: PointerEvent) => {
                     if (moveEvent.pointerId !== pointerId) return;
-                    if (Math.hypot(moveEvent.clientX - x, moveEvent.clientY - y) > 10) clearLongPress();
+                    const start = touchStartRef.current;
+                    if (!start) return;
+                    const distance = Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y);
+                    if (!touchDragArmedRef.current && !touchDragActiveRef.current) {
+                      if (distance > 10) {
+                        clearTouchTimers();
+                        removeTouchMoveHandler();
+                      }
+                      return;
+                    }
+                    if (touchDragArmedRef.current && !touchDragActiveRef.current && distance > 8) {
+                      clearTouchTimers();
+                      touchDragActiveRef.current = true;
+                      dragSourceIdRef.current = t.id;
+                      dropTargetRef.current = null;
+                      longPressTriggeredRef.current = true;
+                      setDraggedTabId(t.id);
+                      setDropTarget(null);
+                    }
+                    if (touchDragActiveRef.current) {
+                      moveEvent.preventDefault();
+                      updateDragAtPoint(moveEvent.clientX, moveEvent.clientY, t.id);
+                    }
+                  };
+                  const upHandler = (upEvent: PointerEvent) => {
+                    if (upEvent.pointerId !== pointerId) return;
+                    if (touchDragActiveRef.current) {
+                      updateDropTargetAtPoint(upEvent.clientX, upEvent.clientY, t.id);
+                      const target = dropTargetRef.current;
+                      if (target && target.tabId !== t.id) reorderTab(t.id, target.tabId, target.position);
+                      longPressTriggeredRef.current = true;
+                      clearDragFeedback();
+                    }
+                    clearLongPress();
+                    if (longPressTriggeredRef.current) {
+                      window.setTimeout(() => { longPressTriggeredRef.current = false; }, 0);
+                    }
+                  };
+                  const cancelHandler = (cancelEvent: PointerEvent) => {
+                    if (cancelEvent.pointerId !== pointerId) return;
+                    if (touchDragActiveRef.current) clearDragFeedback();
+                    clearLongPress();
+                    longPressTriggeredRef.current = false;
                   };
                   touchMoveHandlerRef.current = moveHandler;
-                  window.addEventListener('pointermove', moveHandler, { passive: true });
+                  touchUpHandlerRef.current = upHandler;
+                  touchCancelHandlerRef.current = cancelHandler;
+                  window.addEventListener('pointermove', moveHandler, { passive: false });
+                  window.addEventListener('pointerup', upHandler);
+                  window.addEventListener('pointercancel', cancelHandler);
+                  touchArmTimerRef.current = window.setTimeout(() => {
+                    if (touchPointerIdRef.current === pointerId) touchDragArmedRef.current = true;
+                  }, 350);
                   touchTimerRef.current = window.setTimeout(() => {
-                    clearLongPress();
+                    if (touchPointerIdRef.current !== pointerId || touchDragActiveRef.current) return;
+                    clearTouchTimers();
+                    removeTouchMoveHandler();
                     longPressTriggeredRef.current = true;
                     openTabContextMenu(t.id, x, y, titleButton);
-                  }, 550);
-                }}
-                onPointerUp={() => {
-                  clearLongPress();
-                  if (longPressTriggeredRef.current) {
-                    window.setTimeout(() => { longPressTriggeredRef.current = false; }, 0);
-                  }
-                }}
-                onPointerCancel={() => {
-                  clearLongPress();
-                  longPressTriggeredRef.current = false;
+                  }, 650);
                 }}
                 className={`reader-tab group relative flex h-[calc(100%-3px)] min-w-[60px] max-w-[140px] shrink-0 flex-[0_1_140px] sm:h-[calc(100%-4px)] items-center gap-0 rounded-t-lg text-sm transition-colors ${draggedTabId === t.id ? 'opacity-[.35]' : ''} ${
                   isActive ? 'bg-surface text-on-surface font-semibold' : isSelected ? 'bg-sec-container text-on-sec-container ring-1 ring-inset ring-outline-variant' : 'text-on-variant'
