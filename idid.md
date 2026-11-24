@@ -3265,7 +3265,8 @@ Commits חדשים ב־main שנבדקו:
 - ee4dddc9973eee35c2fa9c7227fc2bbb7b696bb1 — תיעוד התגלית והפער לפני המימוש.
 - 6b9fea5dc8b3b2e8b9d271386769b4d714974a9d — מימוש ראשון של גרירת מגע, גלילת קצה ופתיחה בהשהיה. ניסיון CI ראשון נכשל ב-lint עקב סוגר מסולסל חסר ב-tabContextMenu.ts; התקלה תוקנה מיד.
 - 59667a3e573b8ad01c47b1aebcfac1a4834bed8f — תיקון הסוגר החסר. ב-workflow 45337892699 עברו npm ci, npm run lint, typecheck:frontend, כל 158 בדיקות Frontend ובניית Beta; שלב הפריסה נכשל בגלל SSH connection timeout.
-- 9657719fae48e142043becf7d4484639fcd97cc7 — חיזוק גלילת המגע האופקית ב-RTL/LTR והוספת בדיקה ייעודית. זהו HEAD הנוכחי של main.
+- 9657719fae48e142043becf7d4484639fcd97cc7 — חיזוק גלילת המגע האופקית ב-RTL/LTR והוספת בדיקה ייעודית; זהו commit הקוד האחרון.
+- 43df662ae5dff21abb527bdc0cdd5558a5a1f26b — עדכון יומן הריצה ותוצאות CI ב-idid.md בלבד; workflow Deploy Beta מתעלם מקובץ זה.
 
 ### בדיקות ופריסה
 - workflow Deploy Beta, run 45338383070: npm ci --ignore-scripts עבר; npm run lint עבר; npm run typecheck:frontend עבר; npm run test:frontend עבר — 159/159, 0 נכשלו; npm run sync:vilna-html ו-npx vite build --base=/beta/ עברו.
@@ -3273,7 +3274,7 @@ Commits חדשים ב־main שנבדקו:
 - npm run build לא הופעל בנפרד; ה-workflow הריץ את שלב בניית Beta בפועל. לא בוצעה בדיקת דפדפן אינטראקטיבית או בדיקת Android אמיתית, ולכן אין לסמן את מחוות המגע/RTL כמאומתות חזותית עד בדיקה במכשיר.
 
 ### Branch map, מקור ודיווחי באגים
-- main: 9657719fae48e142043becf7d4484639fcd97cc7 — נבדק עד HEAD הנוכחי.
+- main: commit הקוד האחרון 9657719fae48e142043becf7d4484639fcd97cc7; לאחריו נוצר commit תיעוד idid-only: 43df662ae5dff21abb527bdc0cdd5558a5a1f26b. שני ענפי arena ללא שינוי.
 - arena/9b3e1906-maim-chaim: ee8a38c72d1e70461bc1750376660a9d15ea93a9 — ללא שינוי.
 - arena/9c1ba425-maim-chaim: c42bb45b318dbe1a5fc4ebc24f65af96d776df2d — ללא שינוי.
 - נבדקו כל עמודי branches API: עמוד 1 החזיר 3 ענפים; עמוד 2 ריק. newbugs.md נקרא בנפרד מכל שלושת הענפים: ב-main נשאר דיווח יחיד על חלונית חיפוש הכרטיסיות שמזיזה את התצוגה ומסתירה את סרגל הצד; הקובץ אינו קיים בשני ענפי arena (404). הדיווח אינו כולל מזהה/חומרה/שלבי שחזור מפורטים, לא שוחזר בדפדפן ונשאר פתוח. הקובץ לא שונה.
