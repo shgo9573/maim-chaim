@@ -7,3 +7,7 @@ const stylesheet = readFileSync(new URL('../../src/index.css', import.meta.url),
 test('Tailwind scans the tab-search component so its overlay utilities are emitted', () => {
   assert.match(stylesheet, /@source "\.\/components\/TabSearch\.tsx";/);
 });
+
+test('Tailwind scans the measurement converter component so its controls are styled', () => {
+  assert.match(stylesheet, /@source "\\.\/components\/MeasurementConverter\\.tsx";/);
+});
