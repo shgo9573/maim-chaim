@@ -3445,3 +3445,45 @@ Commits חדשים ב־main שנבדקו:
 - תוקנה גם שמירת עוגני יעד ריקים: תגית `<a id="...">` ללא `href` נשמרת רק כאשר ה-ID עובר בדיקת תווים בטוחה. כך קישורי הערות שוליים מסוג `#footnote-1` יכולים למצוא גם עוגן שאין עליו טקסט לחיץ; תגיות עוגן ללא ID וללא href עדיין נעטפות החוצה.
 
 - התאמת מיקום הטאב למקור: פתיחת קישור קדמית ופתיחה ברקע מכניסות כעת את הטאב החדש מיד אחרי הטאב הפעיל, בלי לשנות את הטאב הפעיל במקרה של פתיחה ברקע. זו ההתנהגות המקבילה ל-`AddTab(insertAdjacent: true)` במקור.
+
+
+## סיכום ריצת בוקר — 25 בנובמבר 2026
+
+### מפת ענפים בסיום שינויי הקוד
+מפת ה-HEAD להלן נבדקה לאחר commit הקוד האחרון ולפני commit תיעוד הסיכום הנוכחי:
+| ענף | HEAD SHA | מצב |
+|---|---|---|
+| `main` | `c9c21a7c4ce8bc4112e07769ba4ae11dd927da48` | כל שינויי הקוד של הריצה; commit התיעוד הנוכחי יופיע כ-commit נפרד בריצה הבאה |
+| `arena/9b3e1906-maim-chaim` | `ee8a38c72d1e70461bc1750376660a9d15ea93a9` | ללא שינוי |
+| `arena/9c1ba425-maim-chaim` | `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d` | ללא שינוי |
+- כל עמודי branches API נבדקו; עמוד שני ריק. הענף האחרון לפי תאריך HEAD הוא main.
+- `newbugs.md` נקרא בנפרד בכל שלושת הענפים: קיים ב-main בלבד; בשני ענפי arena חסר (404). הדיווח היחיד ב-main הוא קפיצת הפריסה והיעלמות סרגל הצד בפתיחת חיפוש הכרטיסיות. הוא לא שוחזר בדפדפן ונשאר פתוח.
+- מקור לקריאה בלבד בסיום הסריקה: `Otzaria/otzaria:dev` SHA `c11d5f44ffc0200c1dcfe43074ac504baaf84280`. 90 commits מאז ה-SHA הקודם שתועד. קובצי `html_link_handler.dart`, `reader_menu_entries.dart` ו-`context_menu_utils.dart` לא השתנו, אך נוספו/השתנו מודולי עוגני קישור, תצוגות מקדימות, מודל Link ובדיקות anchor.
+
+### תגליות נוספות בקישורי המקור — נשארו לפיתוח
+- `test/utils/highlight_link_anchor_test.dart`, `lib/text_book/view/page_shape/simple_text_viewer.dart`, `lib/text_book/view/page_shape/utils/commentary_anchor_links.dart`, `lib/widgets/commentary/panel_anchor_links.dart`, `lib/book_common/utils/link_anchor_markers.dart`, `lib/text_book/utils/link_preview_utils.dart` מאמתים סוגי קישור נוספים שהאתר עדיין אינו מטפל בהם:
+  - `otzaria://anchor?ref={lineIndex}_{index}`: עוגן למפרש/קישור מתוך שורת הספר. `lineIndex` הוא 0-based; `index` הוא מיקום הקישור ברשימת העוגנים של אותה שורה. לחיצה פותחת את יעד הקישור; ריחוף מציג LinkPreviewOverlay.
+  - `otzaria://note-marker`: סמן הערה ממוספרת, שמקשר לפי מראה מקום לתוכן הערה.
+  - `otzaria://book-note`: קישור להערה בתוך תוכן ספר, כולל קישורי עוגן מגוף ההערה.
+  - `otzaria://note`: קישור להערות אישיות, עם תצוגה מקדימה ורשימת הערות.
+- מודל המקור `lib/models/links.dart` כולל בין היתר `anchorStart`, `anchorEnd`, `linkedAnchorStart`, `linkedAnchorEnd`, `anchorSpans`, `targetBookId`, `targetSource`, `index2End` ו-`heRefEnd`.
+- מצב האתר: `src/types.ts` והתגובה של `api.links` חושפים כרגע רק פרטי קישור בסיסיים (ספר יעד, שורה, טקסט, סוג חיבור ומראה מקום). `src/services/seforimDatabase.ts:getBookLinksFromDb` בוחר כרגע את `start/end` אך אינו מחזיר את שדות עוגני המקור והיעד, ואין ב-API מערך `anchorLinks`. לכן אי אפשר למפות בבטחה את `ref=line_index` לרשומת Link הנכונה או להדגיש את טווח הציטוט ביעד.
+- סטטוס: סוגי `book://`, `otzaria://inline-link`, `otzaria://open/book`, עוגני `#...` וקישורים חיצוניים מאושרים מומשו בריצת קוד זו. `otzaria://anchor`, `note-marker`, `book-note` ו-`note` נשארו פתוחים ומדורגים להמשך. אין להמציא ערכי עוגן מתוך `start/end`; יש לבדוק תחילה את עמודות טבלת link בפועל, ואם קיימות להוסיף אותן לתגובה של endpoint הקישורים בלבד (לא לחיפוש), עם בדיקות כיווניות, מקור יעד וטווחים.
+- תצוגות מקדימות של עוגנים/הערות עדיין אינן ממומשות באתר. תפריט הקשר החדש מזהה רק קישורים שה-sanitizer מאשר; קישורי scheme אלה עדיין מוסרים מה-HTML עד למימוש מלא שלהן.
+
+### בדיקות, build ופריסה אוטומטית
+- Commit הקוד האחרון: `c9c21a7c4ce8bc4112e07769ba4ae11dd927da48` — `פתח קישורים ליד הטאב הפעיל כמו באוצריא`.
+- GitHub Actions run: [45557501050](https://github.com/shgo9573/maim-chaim/actions/runs/45557501050).
+- ב-attempt 2 כל שלבי האיכות עברו: `npm ci --ignore-scripts`, `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend` (185 בדיקות עברו, 0 נכשלו), ו-`npx vite build --base=/beta/` (2146 מודולים נבנו).
+- פריסה אוטומטית: attempt 1 ו-attempt 2 נכשלו רק בשלב `Deploy only to the Beta directory` עם `ssh: connect to host ... port 22: Connection timed out`; אין כשל בבנייה או בבדיקות. attempt 3 הופעל דרך פעולת rerun של אותו job ונמצא בתור/בביצוע בעת כתיבת הרשומה. לא בוצעה פריסה ידנית, ולא נגעתי בשרת או ב-DNS.
+- אם attempt 3 נכשל באותו timeout, יש לתעד חסם רשת ולהשאיר את הפריסה האוטומטית בלבד; אין לעקוף אותה ב-SSH ידני.
+- לא בוצעה בדיקת דפדפן אינטראקטיבית. לכן אין לסמן את זרימת הקישורים כהשלמה מאומתת חזותית/התנהגותית עד בדיקת פתיחה, פתיחה ברקע, עוגן, קישור חיצוני, RTL, מגע וחזרה למיקום הקודם.
+
+### מצב סופי ומשימות המשך
+- TabSearch layout jump: פתוח; לא שוחזר בדפדפן.
+- קישורי ספר/inline/external: קוד ו-185 בדיקות עברו; נדרש אימות דפדפן.
+- עוגני מפרשים והערות inline: הפער הבא בעדיפות גבוהה, לאחר הרחבת metadata של קישורים ב-API הקיים (שאינו API חיפוש).
+- תפריטי הקשר נוספים בספרייה, פרקים, סימניות והערות: להמשיך לפי מטריצת idid.
+- מרחבי עבודה: לא שונו בריצה זו; להמשיך בהשלמת מצבי השמירה/שחזור והגדרות הפריסה לפי המקור.
+- כפתור שלוש הנקודות בטאבים נשאר מוסר.
+- מנוע החיפוש ושירות החיפוש לא נערכו; לא שונו אלגוריתם, דירוג, שאילתות, אינדקסים או חוזי API של חיפוש. PDF נשאר מחוץ לתחום.
