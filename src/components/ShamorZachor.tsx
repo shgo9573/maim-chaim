@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, Folder, FolderOpen, Plus, Search, Trash2, X } from 'lucide-react';
+import { ArrowLeft, BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Folder, FolderOpen, Library, LoaderCircle, Plus, Search, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { BookItem, ShamorZachorTrackedBook } from '../types';
@@ -152,21 +152,25 @@ export default function ShamorZachor() {
     const tracked = Boolean(state.books[id]);
     const checked = tracked || selectedAddIds.includes(id);
     return (
-      <div key={id} className="border-t border-outline-variant/70 px-2 py-2" style={{ paddingInlineStart: `${depth * 14 + 8}px` }}>
-        <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2">
+      <div
+        key={id}
+        className="border-b border-outline-variant/70"
+        style={{ paddingInlineStart: `${8 + depth * 24}px`, paddingInlineEnd: "16px" }}
+      >
+        <label className={`flex min-h-12 w-full items-center gap-2 py-2 text-right transition-colors hover:bg-surface-2 focus-within:bg-surface-2 ${tracked ? "cursor-default" : "cursor-pointer"}`}>
           <input
             type="checkbox"
             checked={checked}
             disabled={tracked || Boolean(addingProgress)}
             onChange={(event) => toggleAddBook(id, event.target.checked)}
-            className="h-4 w-4 accent-primary"
+            className="h-[18px] w-[18px] shrink-0 accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label={tracked ? `${book.title}, כבר במעקב` : `בחר ${book.title}`}
           />
+          <BookOpen size={16} className="shrink-0 text-on-variant" aria-hidden="true" />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-on-surface">{book.title}</span>
-            <span className="block truncate text-xs text-on-variant">{tracked ? 'כבר במעקב' : book.categoryPath}</span>
+            <span className="block truncate text-[15px] text-on-surface">{book.title}</span>
+            {tracked && <span className="block truncate text-xs text-on-variant">כבר במעקב</span>}
           </span>
-          {tracked && <CheckCircle2 size={16} className="shrink-0 text-primary" />}
         </label>
       </div>
     );
@@ -183,13 +187,12 @@ export default function ShamorZachor() {
           aria-expanded={expanded}
           onClick={() => setAddExpanded((current) => ({ ...current, [node.path]: !expanded }))}
           disabled={Boolean(addingProgress)}
-          className="flex w-full items-center gap-2 border-b border-outline-variant px-3 py-2.5 text-right hover:bg-surface-2 disabled:opacity-60"
-          style={{ paddingInlineStart: `${12 + depth * 16}px` }}
+          className="flex min-h-[42px] w-full items-center gap-2 border-b border-outline-variant py-[10px] text-right transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:opacity-60"
+          style={{ paddingInlineStart: `${16 + depth * 24}px`, paddingInlineEnd: "16px" }}
         >
-          {expanded ? <ChevronDown size={16} className="shrink-0 text-on-variant" /> : <ChevronLeft size={16} className="shrink-0 text-on-variant" />}
-          {expanded ? <FolderOpen size={18} className="shrink-0 text-primary" /> : <Folder size={18} className="shrink-0 text-primary" />}
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">{node.name}</span>
-          <span className="text-xs tabular-nums text-on-variant">{node.count}</span>
+          {expanded ? <ChevronDown size={16} className="shrink-0 text-on-variant" /> : <ChevronRight size={16} className="shrink-0 text-on-variant" />}
+          {expanded ? <FolderOpen size={20} className="shrink-0 text-primary" /> : <Folder size={20} className="shrink-0 text-primary" />}
+          <span className={`min-w-0 flex-1 truncate text-[15px] text-on-surface ${depth === 0 ? "font-bold" : "font-medium"}`}>{node.name}</span>
         </button>
         {expanded && (
           <div>
@@ -254,7 +257,7 @@ export default function ShamorZachor() {
     {visible.length===0?<div className="rounded-xl border-dashed border-outline-variant p-10 text-center"><BookOpen size={34} className="mx-auto text-on-variant/60"/><h3 className="mt-2 font-semibold">{books.length ? 'אין תוצאות לסינון' : 'עדיין אין ספרים במעקב'}</h3><p className="mt-1 text-sm text-on-variant">הוסף ספר כדי לנהל לימוד וחזרות.</p><button type="button" onClick={openAddDialog} disabled={!library||libraryLoading} className="mt-3 rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50">הוסף ספר</button></div>:<div className="grid gap-3 xl:grid-cols-2">{visible.map((book)=>{const p=summary(book);return <article key={String(book.bookId)} className="rounded-xl border border-outline-variant bg-surface-1 p-4"><div className="flex items-start justify-between gap-3"><button type="button" onClick={()=>setSelectedId(String(book.bookId))} className="min-w-0 flex-1 text-right"><strong className="block truncate hover:text-primary">{book.title}</strong><span className="text-xs text-on-variant">{book.categoryPath} · {book.units.length} יחידות</span></button>{p.isComplete?<CheckCircle2 className="text-primary" size={20}/>:<span className="text-xs text-on-variant">{p.learningPercent}% לימוד</span>}</div><div className="mt-3 h-2 rounded-full bg-surface-3"><div className="h-full rounded-full bg-primary" style={{width:`${p.learningPercent}%`}}/></div><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-on-variant">לימוד {p.learningCompleted}/{p.totalUnits} · הושלמו בכל העמודות {p.fullyCompletedUnits}</span><div className="flex items-center gap-2"><button type="button" onClick={()=>openAt(book,book.units.find((unit)=>unit.id===book.lastTouchedUnitId)?.lineIndex||book.units[0].lineIndex)} className="text-primary">פתח ספר</button><button type="button" onClick={()=>setSelectedId(String(book.bookId))} aria-label={`נהל ${book.title}`}><ChevronLeft size={17}/></button><button type="button" onClick={()=>removeBook(book)} aria-label={`הסר ${book.title}`} className="text-error"><Trash2 size={15}/></button></div></div></article>;})}</div>}
     {adding && (
       <div
-        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/45 p-3"
+        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/45 p-0 sm:p-4"
         onMouseDown={(event) => {
           if (event.target === event.currentTarget && !addingProgress) setAdding(false);
         }}
@@ -263,26 +266,37 @@ export default function ShamorZachor() {
           role="dialog"
           aria-modal="true"
           aria-label="הוספת ספרים למעקב"
-          className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl border border-outline-variant bg-surface shadow-2xl"
+          className="flex h-dvh max-h-dvh w-full max-w-none flex-col overflow-hidden rounded-none bg-surface shadow-2xl sm:h-[85vh] sm:max-h-[85vh] sm:max-w-[720px] sm:rounded-lg sm:border sm:border-outline-variant"
         >
-          <header className="flex items-center justify-between gap-3 border-b border-outline-variant p-4">
-            <div className="min-w-0">
-              <strong className="block text-on-surface">הוספת ספרים למעקב</strong>
-              <span className="text-xs text-on-variant">{selectedAddIds.length} ספרים נבחרו</span>
+          <header className="flex items-center gap-3 border-b border-outline-variant bg-surface-3 py-2 ps-6 pe-2">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-container text-on-primary-container">
+              <Library size={20} aria-hidden="true" />
             </div>
-            <button type="button" onClick={() => setAdding(false)} disabled={Boolean(addingProgress)} aria-label="סגור" className="rounded-full p-2 hover:bg-surface-3 disabled:opacity-40">
-              <X size={19}/>
+            <div className="min-w-0 flex-1">
+              <strong className="block text-[22px] leading-7 font-semibold text-on-surface">הוספת ספרים למעקב</strong>
+              <p className="mt-0.5 text-xs leading-4 text-on-variant">
+                בחר ספרים מעץ הספרייה. הספרים שייבחרו יתווספו לרשימת "בתהליך".
+              </p>
+            </div>
+            {selectedAddIds.length > 0 && (
+              <span className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-sec-container px-2 py-1 text-xs font-medium text-on-sec-container sm:inline-flex">
+                <CheckCircle2 size={16} aria-hidden="true" />
+                נבחרו {selectedAddIds.length}
+              </span>
+            )}
+            <button type="button" onClick={() => setAdding(false)} disabled={Boolean(addingProgress)} aria-label="סגור" className="shrink-0 rounded-lg p-2 text-on-variant hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40">
+              <X size={20} />
             </button>
           </header>
-          <div className="border-b border-outline-variant p-3">
+          <div className="border-b border-outline-variant px-6 py-4">
             <label className="relative block">
-              <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-variant"/>
+              <Search size={20} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-variant" aria-hidden="true" />
               <input
                 autoFocus
                 value={addQuery}
                 onChange={(event) => setAddQuery(event.target.value)}
-                placeholder="חפש ספר, מחבר או קטגוריה"
-                className="w-full rounded-lg border border-outline-variant bg-surface-1 py-2 pr-9 pl-3 text-sm text-on-surface"
+                placeholder="חיפוש ספר..."
+                className="h-12 w-full rounded-lg border border-outline-variant bg-surface-2 py-2 pr-10 pl-3 text-base text-on-surface outline-none transition-colors placeholder:text-on-variant/80 focus:border-primary focus:ring-2 focus:ring-primary/20 sm:h-9 sm:text-[13px]"
               />
             </label>
             {error && <p role="alert" className="mt-2 text-sm text-error">{error}</p>}
@@ -292,33 +306,31 @@ export default function ShamorZachor() {
               </p>
             )}
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {addQuery.trim().length >= 2 ? (
-              addSearchResults.length === 0
-                ? <p className="p-6 text-center text-sm text-on-variant">לא נמצאו ספרים מתאימים</p>
-                : addSearchResults.map((book) => renderAddBook(book))
-            ) : (
-              <>
-                {library?.root.books.map((book) => renderAddBook(book))}
-                {library?.root.children.map((category) => renderCategory(category))}
-              </>
-            )}
-          </div>
-          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant p-3">
-            <span className="text-xs text-on-variant">
-              {addQuery.trim().length >= 2 ? 'עד 60 תוצאות חיפוש' : 'בחר קטגוריה כדי להציג את הספרים שבה'}
-            </span>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setAdding(false)} disabled={Boolean(addingProgress)} className="rounded-lg px-3 py-2 text-sm text-on-variant hover:bg-surface-2 disabled:opacity-40">סיום</button>
-              <button
-                type="button"
-                disabled={selectedAddIds.length === 0 || Boolean(addingProgress)}
-                onClick={() => void addSelectedBooks()}
-                className="rounded-lg bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-40"
-              >
-                {addingProgress ? 'מוסיף…' : `הוסף (${selectedAddIds.length})`}
-              </button>
+          <div className="min-h-0 flex-1 px-6 pb-4">
+            <div className="h-full min-h-0 overflow-y-auto rounded-lg border border-outline-variant bg-surface-1">
+              {addQuery.trim().length >= 2 ? (
+                addSearchResults.length === 0
+                  ? <p className="p-6 text-center text-sm text-on-variant">לא נמצאו ספרים מתאימים</p>
+                  : addSearchResults.map((book) => renderAddBook(book))
+              ) : (
+                <>
+                  {library?.root.books.map((book) => renderAddBook(book))}
+                  {library?.root.children.map((category) => renderCategory(category))}
+                </>
+              )}
             </div>
+          </div>
+          <footer className="flex justify-end gap-2 border-t border-outline-variant px-6 pb-4 pt-0">
+            <button type="button" onClick={() => setAdding(false)} disabled={Boolean(addingProgress)} className="min-h-10 rounded-lg bg-sec-container px-4 py-2 text-sm font-medium text-on-sec-container transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40">ביטול</button>
+            <button
+              type="button"
+              disabled={selectedAddIds.length === 0 || Boolean(addingProgress)}
+              onClick={() => void addSelectedBooks()}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40"
+            >
+              {addingProgress ? <LoaderCircle size={18} className="animate-spin" aria-hidden="true" /> : <Plus size={18} aria-hidden="true" /> }
+              {addingProgress ? "מוסיף…" : `הוסף (${selectedAddIds.length})`}
+            </button>
           </footer>
         </div>
       </div>
