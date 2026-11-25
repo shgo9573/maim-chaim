@@ -3770,3 +3770,10 @@ Commits חדשים ב־main שנבדקו:
 - ענפי יעד בתחילת הריצה: `main` `39b2185bf0a60e0f166d3b55c0a2af3a1e6aa8a3`, `arena/9b3e1906-maim-chaim` `ee8a38c72d1e70461bc1750376660a9d15ea93a9`, `arena/9c1ba425-maim-chaim` `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`. `newbugs.md` נקרא ב-main; בשני ענפי arena הוא אינו קיים (404).
 - באג TabSearch שמזיז את הפריסה שמאלה ומסתיר את סרגל הצד נשאר פתוח ולא אומת בדפדפן; לא טופל במסגרת משימת UI זו.
 - לא שונו לוגיקת בחירת ספרים, נתונים, API, backend או אחסון. לא שונו מנוע/שירות/חוזה החיפוש, PDF, מאגר המקור, שרת או DNS; לא בוצעה פריסה ידנית.
+### תוצאות CI ופריסה אוטומטית — ריצת ממשק 25.11.2026 בערב
+- Commit הממשק: `5d536ab6133c7eea05eec05fcf53462c8be543c2`.
+- GitHub Actions: [Deploy Beta run 45662553646](https://github.com/shgo9573/maim-chaim/actions/runs/45662553646), על commit הממשק.
+- הצליחו: התקנת dependencies; `npm run lint` / Typecheck project; `npm run typecheck:frontend`; `npm run test:frontend` (כולל בדיקות המצגת החדשות); סנכרון Vilna HTML ובניית Beta frontend; Configure SSH.
+- נכשל: `Deploy only to the Beta directory`. סיבת הכשל המפורטת לא נחשפה בסיכום ה-job שנגיש בריצה זו; אין להסיק שהיא זהה לכשלי SSH קודמים. לא אושר שהגרסה הגיעה ל-`/beta/`.
+- לא בוצעה פריסה ידנית או שינוי שרת/DNS. לא בוצעה בדיקת דפדפן/צילום מסך, ולכן המראה לא אומת חזותית בפועל.
+- מצב HEAD של `main` אחרי commit הממשק ולפני עדכון תיעוד זה: `5d536ab6133c7eea05eec05fcf53462c8be543c2`; שני ענפי arena נשארו ללא שינוי. מקור `Otzaria/otzaria:dev` נשאר ב-`9f5de64aa2a47d0510514cbc28fa56cc652ea0e4`.
