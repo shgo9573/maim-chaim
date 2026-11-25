@@ -3436,3 +3436,6 @@ Commits חדשים ב־main שנבדקו:
 - אימות CI ראשון (run `45556361365`, commit `66bf1ed`): התקנת תלויות, typecheck מלא ו-`typecheck:frontend` עברו; בדיקות frontend נכשלו בשני מקומות: בדיקת URL inline-link עם קידוד שגוי (תוקן ב-`10c774d`) ורכיב `ReaderContextIconRow` ללא binding של React בזמן SSR של בדיקת Node. נוסף import מפורש של React כדי לתקן את כשל הבדיקה הקיים ברכיב.
 
 - אימות CI שני (run `45556633174`, commit `10c774d`): typecheck מלא ו-typecheck frontend עברו; `test:frontend` עברו 181 מתוך 182. הכשל היחיד עבר לרכיב הבן `ReaderDirectLinkMenu` שגם הוא נרנדר ב-SSR של בדיקת Node ללא binding מפורש של React. נוסף import מפורש גם אליו; הבדיקה השלישית תוודא אם נותר רכיב נוסף באותה שרשרת.
+
+- דיוק מול מימוש המקור: `otzaria_markup.dart` מגדיר allowlist חיצוני של `http`, `https`, `mailto` בלבד; `tel` אינו נתמך במקור ולכן הוסר מה-parser. `opensAnotherBook` במקור מחזיר true רק ל-`book://` ול-`otzaria://inline-link`; בהתאם, פתיחה ברקע אינה מוצגת לקישור ישיר `otzaria://open/book`. תווית הפעולה הותאמה בדיוק ל-`פתח קישור בכרטיסייה חדשה`.
+- קישורי `#כותרת#תת-כותרת` נתמכים כעת גם הם: קודם נבדק עוגן ID, ובהיעדרו נבדקות רמות הכותרת מהעמוקה אל החיצונית. כך נשמרת התנהגות המקור גם לקישור היררכי בתוך אותו ספר וגם לקישור היררכי לספר אחר.

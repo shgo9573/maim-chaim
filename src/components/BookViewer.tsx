@@ -782,7 +782,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     }
 
     if (target.kind === 'external') {
-      if (/^(?:mailto|tel):/iu.test(target.href)) {
+      if (/^mailto:/iu.test(target.href)) {
         window.location.assign(target.href);
         return;
       }
@@ -802,7 +802,13 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
         return;
       }
-      const targetLine = toc ? findTocLine(toc, [target.anchor]) : undefined;
+      let targetLine: number | undefined;
+      if (toc) {
+        for (const heading of [...target.headings].reverse()) {
+          targetLine = findTocLine(toc, [heading]);
+          if (targetLine !== undefined) break;
+        }
+      }
       if (targetLine !== undefined) {
         goTo(targetLine);
         return;
@@ -833,7 +839,11 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       if (target.headings.length > 0) {
         try {
           const targetToc = await api.toc(targetBook.id);
-          const headingLine = findTocLine(targetToc, target.headings);
+          let headingLine: number | undefined;
+          for (const heading of [...target.headings].reverse()) {
+            headingLine = findTocLine(targetToc, [heading]);
+            if (headingLine !== undefined) break;
+          }
           if (headingLine === undefined) {
             toast('לא נמצאה הכותרת המבוקשת בספר היעד');
             return;
@@ -1504,7 +1514,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                       void openReaderLink(href, true);
                     }}
                   >
-                    <BookOpen size={18} /> פתח בכרטיסייה חדשה ברקע
+                    <BookOpen size={18} /> פתח קישור בכרטיסייה חדשה
                   </button>
                 )}
                 <button

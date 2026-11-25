@@ -34,10 +34,20 @@ test('parses direct book IDs but deliberately rejects direct PDF links', () => {
     { kind: 'book-id', id: '8154', line: 17 },
   );
   assert.equal(parseReaderLinkTarget('otzaria://open/pdf/8154'), null);
+  assert.equal(parseReaderLinkTarget('otzaria://user@open:8080/book/8154'), null);
 });
 
 test('keeps local anchors and classifies them as in-page navigation', () => {
-  assert.deepEqual(parseReaderLinkTarget('#footnote-12'), { kind: 'anchor', anchor: 'footnote-12' });
+  assert.deepEqual(parseReaderLinkTarget('#footnote-12'), {
+    kind: 'anchor',
+    anchor: 'footnote-12',
+    headings: ['footnote-12'],
+  });
+  assert.deepEqual(parseReaderLinkTarget('#פרק א#משנה ב'), {
+    kind: 'anchor',
+    anchor: 'פרק א',
+    headings: ['פרק א', 'משנה ב'],
+  });
   assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('#footnote-12')), false);
 });
 
@@ -45,7 +55,7 @@ test('allows only safe external browser schemes', () => {
   assert.equal(parseReaderLinkTarget('https://example.org/path')?.kind, 'external');
   assert.equal(isReaderExternalWebHref('https://example.org/path'), true);
   assert.equal(parseReaderLinkTarget('mailto:help@example.org')?.kind, 'external');
-  assert.equal(parseReaderLinkTarget('tel:+972501234567')?.kind, 'external');
+  assert.equal(parseReaderLinkTarget('tel:+972501234567'), null);
   assert.equal(parseReaderLinkTarget('javascript:alert(1)'), null);
   assert.equal(parseReaderLinkTarget('data:text/html,hello'), null);
   assert.equal(parseReaderLinkTarget('file:///etc/passwd'), null);
@@ -62,7 +72,7 @@ test('sanitizer preserves supported links and removes unsupported schemes', () =
 
 test('only cross-book targets can be opened in the background', () => {
   assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('book://ברכות')), true);
-  assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('otzaria://open/book/8154')), true);
+  assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('otzaria://open/book/8154')), false);
   assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('https://example.org')), false);
   assert.equal(readerLinkCanOpenInBackground(null), false);
 });

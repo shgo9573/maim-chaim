@@ -2,7 +2,7 @@ export type ReaderLinkTarget =
   | { kind: 'book'; title: string; headings: string[] }
   | { kind: 'inline-book'; title: string; line: number; reference: string }
   | { kind: 'book-id'; id: string; line?: number }
-  | { kind: 'anchor'; anchor: string }
+  | { kind: 'anchor'; anchor: string; headings: string[] }
   | { kind: 'external'; href: string };
 
 function safeDecode(value: string): string {
@@ -24,8 +24,9 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
   if (!href || /[\u0000-\u001f\u007f]/u.test(href)) return null;
 
   if (href.startsWith('#')) {
-    const anchor = safeDecode(href.slice(1)).trim();
-    return anchor ? { kind: 'anchor', anchor } : null;
+    const headings = href.slice(1).split('#').map((part) => safeDecode(part).trim()).filter(Boolean);
+    const anchor = headings[0];
+    return anchor ? { kind: 'anchor', anchor, headings } : null;
   }
 
   if (href.startsWith('book://')) {
@@ -44,7 +45,7 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
       return null;
     }
 
-    if (url.protocol !== 'otzaria:') return null;
+    if (url.protocol !== 'otzaria:' || url.username || url.password || url.port) return null;
 
     if (url.hostname === 'inline-link') {
       const path = url.searchParams.get('path') ?? '';
@@ -85,7 +86,7 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
     if (!url.hostname) return null;
     return { kind: 'external', href: url.toString() };
   }
-  if (scheme === 'mailto:' || scheme === 'tel:') {
+  if (scheme === 'mailto:') {
     if (!url.pathname.trim()) return null;
     return { kind: 'external', href: url.toString() };
   }
@@ -105,5 +106,5 @@ export function isReaderExternalWebHref(value: string): boolean {
 }
 
 export function readerLinkCanOpenInBackground(target: ReaderLinkTarget | null): boolean {
-  return target?.kind === 'book' || target?.kind === 'inline-book' || target?.kind === 'book-id';
+  return target?.kind === 'book' || target?.kind === 'inline-book';
 }
