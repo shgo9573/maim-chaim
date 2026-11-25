@@ -16,3 +16,8 @@ test('Tailwind scans the measurement converter component so its controls are sty
 test('Tailwind scans the Shamor Vezachor component so its controls are styled', () => {
   assert.ok(stylesheet.includes('@source "./components/ShamorZachor.tsx";'));
 });
+
+
+test('Tailwind scans the reader note preview so its dialog utilities are emitted', () => {
+  assert.ok(stylesheet.includes('@source "./components/ReaderNotePreview.tsx";'));
+});

@@ -10,6 +10,7 @@
 @source "./components/AdminStats.tsx";
 @source "./components/BookSidebar.tsx";
 @source "./components/BookViewer.tsx";
+@source "./components/ReaderNotePreview.tsx";
 @source "./components/ReaderContextIconRow.tsx";
 @source "./components/ReaderDirectLinkMenu.tsx";
 @source "./components/CalendarZmanim.tsx";
@@ -258,4 +259,24 @@ mark.hl {
   .reader-tab-close {
     transition: none;
   }
+}
+
+
+.reader-personal-note-link {
+  color: inherit;
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--c-primary);
+  text-decoration-thickness: 1px;
+}
+
+.reader-personal-note-link:hover {
+  text-decoration-style: solid;
+}
+
+.reader-personal-note-link:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
 }

@@ -18,6 +18,8 @@ import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
 import { normalizeReaderNavigationHistory, recordReaderNavigation, travelReaderNavigation } from '../utils/readerNavigationHistory';
+import { decorateReaderLineWithPersonalNotes, groupReaderPersonalNotes, parseReaderPersonalNoteHref, selectReaderPersonalNotesForPreview } from '../utils/readerPersonalNotes';
+import ReaderNotePreview from './ReaderNotePreview';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -98,6 +100,13 @@ interface ReaderNoteDraft {
   selectedText: string;
 }
 
+interface ReaderNotePreviewState {
+  line: number;
+  ids: string[];
+  x: number;
+  y: number;
+}
+
 function isPointInsideReaderSelection(range: Range, lineNode: HTMLElement, x: number, y: number) {
   const documentWithCaret = document as Document & {
     caretRangeFromPoint?: (x: number, y: number) => Range | null;
@@ -153,7 +162,7 @@ function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLEleme
 }
 
 export default function BookViewer({ tab }: { tab: BookTab }) {
-  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, openBookByTitle, openBookInNewTab, openBookInBackground, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
+  const { settings, updateSettings, updateTab, addBookmark, saveNote, notes, openSearch, openBookByTitle, openBookInNewTab, openBookInBackground, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
   const [lines, setLines] = useState<ContentLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -169,11 +178,17 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [referenceMenuItems, setReferenceMenuItems] = useState<ReturnType<typeof groupReaderReferenceLinks>>([]);
   const [noteDraft, setNoteDraft] = useState<ReaderNoteDraft | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [notePreview, setNotePreview] = useState<ReaderNotePreviewState | null>(null);
+  const closeNotePreview = useCallback(() => setNotePreview(null), []);
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAutoRun, setBookSearchAutoRun] = useState(false);
   const [topLine, setTopLine] = useState(tab.line);
   const navigationHistoryRef = useRef(normalizeReaderNavigationHistory(tab.navigationHistory));
   const currentLineRef = useRef(tab.line);
+  const personalNotesByLine = useMemo(() => groupReaderPersonalNotes(notes, tab.bookId), [notes, tab.bookId]);
+  const notePreviewNotes = useMemo(() => notePreview
+    ? selectReaderPersonalNotesForPreview(personalNotesByLine.get(notePreview.line) ?? [], notePreview)
+    : [], [personalNotesByLine, notePreview]);
 
   useEffect(() => {
     navigationHistoryRef.current = normalizeReaderNavigationHistory(tab.navigationHistory);
@@ -182,6 +197,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   useEffect(() => {
     currentLineRef.current = tab.line;
   }, [tab.id, tab.line]);
+
+  useEffect(() => {
+    closeNotePreview();
+  }, [tab.id, closeNotePreview]);
   const resolveReferenceBook = (item: (typeof referenceMenuItems)[number]) => {
     const books = library?.books ?? [];
     if (item.bookId != null) {
@@ -934,8 +953,30 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const anchor = target?.closest<HTMLAnchorElement>('a[href]');
     if (!anchor || !event.currentTarget.contains(anchor)) return;
     const href = anchor.getAttribute('href');
-    if (!href || !parseReaderLinkTarget(href)) return;
+    if (!href) return;
 
+    const noteTarget = parseReaderPersonalNoteHref(href);
+    if (noteTarget) {
+      event.stopPropagation();
+      event.preventDefault();
+      const matchingNotes = selectReaderPersonalNotesForPreview(
+        personalNotesByLine.get(noteTarget.line) ?? [],
+        noteTarget,
+      );
+      if (!matchingNotes.length) {
+        toast('ההערה האישית כבר אינה זמינה');
+        return;
+      }
+      setNotePreview({
+        line: noteTarget.line,
+        ids: matchingNotes.map((note) => note.id),
+        x: event.clientX,
+        y: event.clientY,
+      });
+      return;
+    }
+
+    if (!parseReaderLinkTarget(href)) return;
     const linkTarget = parseReaderLinkTarget(href);
     if (!linkTarget) return;
     event.stopPropagation();
@@ -1288,10 +1329,14 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         let html = processHtml(l.content, opts);
         if (hl?.from !== undefined && hl.line === l.lineIndex) html = highlightWords(html, hl.from, hl.to ?? hl.from);
         else if (hl?.text && (hl.line === undefined || hl.line === l.lineIndex)) html = highlight(html, hl.text);
-        return html;
+        return decorateReaderLineWithPersonalNotes(
+          html,
+          l.lineIndex - 1,
+          personalNotesByLine.get(l.lineIndex - 1) ?? [],
+        );
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lines, optsKey, hl?.text, hl?.line, hl?.from, hl?.to],
+    [lines, optsKey, hl?.text, hl?.line, hl?.from, hl?.to, personalNotesByLine],
   );
 
   const atStart = lines[0]?.lineIndex <= 1;
@@ -1434,7 +1479,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             ref={scRef}
             tabIndex={0}
             aria-label="תוכן הספר"
-            onScroll={() => { onScroll(); setContextMenu(null); }}
+            onScroll={() => { onScroll(); setContextMenu(null); closeNotePreview(); }}
             onCopy={onCopy}
             onMouseDownCapture={handleReaderMouseDownCapture}
             onContextMenu={handleReaderContextMenu}
@@ -1857,6 +1902,15 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             )}
           </div>
         </div>
+      )}
+
+      {notePreview && notePreviewNotes.length > 0 && (
+        <ReaderNotePreview
+          notes={notePreviewNotes}
+          lineLabel={lines.find((line) => line.lineIndex === notePreview.line + 1)?.heRef || `שורה ${notePreview.line + 1}`}
+          position={{ x: notePreview.x, y: notePreview.y }}
+          onClose={closeNotePreview}
+        />
       )}
 
       {noteDraft && (
