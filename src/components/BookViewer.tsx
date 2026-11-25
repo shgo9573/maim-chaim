@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bookmark, BookOpen, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, X, Copy, ScrollText } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bookmark, BookOpen, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, X, Copy, ScrollText } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { BookItem, BookTab, ContentLine, TocEntry } from '../types';
@@ -17,6 +17,7 @@ import { groupReaderReferenceLinks } from '../utils/readerReferenceContextMenu';
 import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
+import { normalizeReaderNavigationHistory, recordReaderNavigation, travelReaderNavigation } from '../utils/readerNavigationHistory';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -171,6 +172,16 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const [bookSearchQuery, setBookSearchQuery] = useState('');
   const [bookSearchAutoRun, setBookSearchAutoRun] = useState(false);
   const [topLine, setTopLine] = useState(tab.line);
+  const navigationHistoryRef = useRef(normalizeReaderNavigationHistory(tab.navigationHistory));
+  const currentLineRef = useRef(tab.line);
+
+  useEffect(() => {
+    navigationHistoryRef.current = normalizeReaderNavigationHistory(tab.navigationHistory);
+  }, [tab.id, tab.navigationHistory]);
+
+  useEffect(() => {
+    currentLineRef.current = tab.line;
+  }, [tab.id, tab.line]);
   const resolveReferenceBook = (item: (typeof referenceMenuItems)[number]) => {
     const books = library?.books ?? [];
     if (item.bookId != null) {
@@ -407,6 +418,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       sc.scrollTop = el ? Math.max(0, sc.scrollTop + el.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12) : 0;
       pending.current = null;
       setReady(true);
+      currentLineRef.current = p.line;
       setTopLine(p.line);
       setCommentLine(p.line);
     } else {
@@ -566,7 +578,11 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
           hi = mid - 1;
         } else lo = mid + 1;
       }
-      if (found >= 0) setTopLine(Number(nodes[found].dataset.line));
+      if (found >= 0) {
+        const nextLine = Number(nodes[found].dataset.line);
+        currentLineRef.current = nextLine;
+        setTopLine(nextLine);
+      }
     });
   };
 
@@ -594,13 +610,41 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
 
   const goTo = useCallback(
     (line: number, hlText?: string) => {
-      updateTab(tab.id, { jump: { line, n: Date.now() }, ...(hlText !== undefined ? { highlight: { text: hlText } } : {}) });
-      // jumping between in-book search results keeps the panel open until the user closes it;
-      // only table-of-contents navigation on small screens collapses the overlay
+      const navigationHistory = recordReaderNavigation(
+        navigationHistoryRef.current,
+        currentLineRef.current,
+        line,
+      );
+      navigationHistoryRef.current = navigationHistory;
+      currentLineRef.current = line;
+      updateTab(tab.id, {
+        line,
+        jump: { line, n: Date.now() },
+        navigationHistory,
+        ...(hlText !== undefined ? { highlight: { text: hlText } } : {}),
+      });
       if (hlText === undefined && window.innerWidth < 900) setSidebarOpen(false);
     },
     [tab.id, updateTab],
   );
+
+  const navigateHistory = useCallback((direction: 'back' | 'forward') => {
+    const result = travelReaderNavigation(
+      navigationHistoryRef.current,
+      currentLineRef.current,
+      direction,
+    );
+    if (!result) return;
+    navigationHistoryRef.current = result.history;
+    currentLineRef.current = result.line;
+    setSelected(null);
+    updateTab(tab.id, {
+      line: result.line,
+      jump: { line: result.line, n: Date.now() },
+      navigationHistory: result.history,
+    });
+    if (window.innerWidth < 900) setSidebarOpen(false);
+  }, [tab.id, updateTab]);
 
   const openBookSearch = (query = '', autoRun = false) => {
     setBookSearchQuery(query);
@@ -1236,7 +1280,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     if (dir === 1) next = m.find((x) => x > cur) ?? m[0];
     else next = [...m].reverse().find((x) => x < cur) ?? m[m.length - 1];
     setSelected(next);
-    updateTab(tab.id, { jump: { line: next, n: Date.now() } });
+    goTo(next);
   };
   const processed = useMemo(
     () =>
@@ -1252,6 +1296,11 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
 
   const atStart = lines[0]?.lineIndex <= 1;
   const atEnd = endReached || (lines.length > 0 && total > 0 && lines[lines.length - 1].lineIndex >= total);
+  const readerNavigation = normalizeReaderNavigationHistory(tab.navigationHistory);
+  const backLine = readerNavigation.back[readerNavigation.back.length - 1];
+  const forwardLine = readerNavigation.forward[readerNavigation.forward.length - 1];
+  const navigationLabel = (line: number) =>
+    lines.find((item) => item.lineIndex === line)?.heRef || `שורה ${line}`;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface">
@@ -1260,6 +1309,26 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         <IconBtn title={sidebarOpen ? 'הסתר ניווט' : 'הצג ניווט'} onClick={() => setSidebarOpen((o) => !o)}>
           {sidebarOpen ? <PanelRightClose size={20} /> : <PanelRightOpen size={20} />}
         </IconBtn>
+        <button
+          type="button"
+          disabled={backLine === undefined}
+          onClick={() => navigateHistory('back')}
+          title={backLine === undefined ? 'אין מיקום קודם' : `חזרה אל ${navigationLabel(backLine)}`}
+          aria-label={backLine === undefined ? 'אין מיקום קודם' : `חזרה אל ${navigationLabel(backLine)}`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-35 ${backLine === undefined ? '' : 'text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'}`}
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <button
+          type="button"
+          disabled={forwardLine === undefined}
+          onClick={() => navigateHistory('forward')}
+          title={forwardLine === undefined ? 'אין מיקום קדימה' : `קדימה אל ${navigationLabel(forwardLine)}`}
+          aria-label={forwardLine === undefined ? 'אין מיקום קדימה' : `קדימה אל ${navigationLabel(forwardLine)}`}
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors motion-reduce:transition-none disabled:cursor-not-allowed disabled:opacity-35 ${forwardLine === undefined ? '' : 'text-on-variant hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'}`}
+        >
+          <ArrowRight size={18} />
+        </button>
         <div className="min-w-0 flex-1 px-2" style={{ height: 36 }}>
           <div className="truncate text-[15px] font-medium leading-tight">{title}</div>
           <div className="truncate text-xs leading-tight text-on-variant tabular-nums" style={{ minHeight: 16 }}>

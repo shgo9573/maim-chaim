@@ -231,6 +231,11 @@ export interface Highlight {
   matches?: number[];
 }
 
+export interface ReaderNavigationHistory {
+  back: number[];
+  forward: number[];
+}
+
 export interface BookTab {
   id: string;
   isPinned?: boolean;
@@ -239,6 +244,7 @@ export interface BookTab {
   title: string;
   category?: string;
   line: number;
+  navigationHistory?: ReaderNavigationHistory;
   jump?: { line: number; n: number };
   highlight?: Highlight;
 }
