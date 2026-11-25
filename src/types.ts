@@ -126,6 +126,35 @@ export interface ReadingHistoryItem {
   lastReadAt: string;
 }
 
+export interface ShamorZachorUnit {
+  id: string;
+  label: string;
+  /** One-based content line used to reopen this unit in the reader. */
+  lineIndex: number;
+}
+
+export interface ShamorZachorColumn {
+  id: string;
+  label: string;
+}
+
+export interface ShamorZachorTrackedBook {
+  bookId: ID;
+  title: string;
+  categoryPath: string;
+  units: ShamorZachorUnit[];
+  columns: ShamorZachorColumn[];
+  /** Column ID -> completed unit IDs. */
+  progress: Record<string, string[]>;
+  lastTouchedUnitId?: string;
+  updatedAt: string;
+}
+
+export interface ShamorZachorState {
+  version: 1;
+  books: Record<string, ShamorZachorTrackedBook>;
+}
+
 export interface ReaderSettings {
   fontFamily: string;
   fontSize: number;
@@ -180,6 +209,8 @@ export interface ReaderSettings {
   chofetzChaimScheduleType?: 'world_three_times' | 'world_biannual';
   customStudies?: CustomStudy[];
   studyProgress?: Record<string, { done: string[]; unit: number; updatedAt: string }>;
+  /** Per-user reading and review tracking for the built-in Shamor Vezachor tool. */
+  shamorZachor?: ShamorZachorState;
   dailyNotificationsEnabled?: boolean;
   dailyNotificationTime?: string;
   [key: string]: unknown;
@@ -220,6 +251,7 @@ export const DEFAULT_SETTINGS: ReaderSettings = {
   tocAutoExpand: true,
   commentaryOpenByDefault: true,
   showLineRefs: false,
+  shamorZachor: { version: 1, books: {} },
 };
 
 export interface Highlight {

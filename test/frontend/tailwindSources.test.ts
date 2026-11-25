@@ -11,3 +11,8 @@ test('Tailwind scans the tab-search component so its overlay utilities are emitt
 test('Tailwind scans the measurement converter component so its controls are styled', () => {
   assert.ok(stylesheet.includes('@source "./components/MeasurementConverter.tsx";'));
 });
+
+
+test('Tailwind scans the Shamor Vezachor component so its controls are styled', () => {
+  assert.ok(stylesheet.includes('@source "./components/ShamorZachor.tsx";'));
+});

@@ -5,6 +5,7 @@ import CalendarZmanim from './CalendarZmanim';
 import TzuratHaDaf from './TzuratHaDaf';
 import BackupRestorePanel from './BackupRestorePanel';
 import MeasurementConverter from './MeasurementConverter';
+import ShamorZachor from './ShamorZachor';
 import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { useApp } from '../store';
@@ -17,11 +18,12 @@ import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/re
 import { getBookmarkContextMenuActions, normalizeBookmarkDescription, type BookmarkContextMenuActionId } from '../utils/bookmarkContextMenu';
 import { buildHistoryTimeline, type HistoryTimelineFilter } from '../utils/historyTimeline';
 
-type Tool = 'daily' | 'calendar' | 'measurements' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
+type Tool = 'daily' | 'calendar' | 'shamor' | 'measurements' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
 
 const TOOLS: { key: Tool; label: string; icon: ReactNode }[] = [
   { key: 'daily', label: 'לימוד יומי', icon: <CalendarCheck size={22} /> },
   { key: 'calendar', label: 'לוח וזמנים', icon: <CalendarDays size={22} /> },
+  { key: 'shamor', label: 'שמור וזכור', icon: <BookOpen size={22} /> },
   { key: 'measurements', label: 'מדות ושיעורים', icon: <Ruler size={22} /> },
 
   { key: 'daf', label: 'צורת הדף', icon: <ScrollText size={22} /> },
@@ -58,9 +60,10 @@ export default function MoreScreen() {
         ))}
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        <div className={`mx-auto p-4 md:p-6 ${tool === 'daf' ? 'h-full max-w-5xl' : tool === 'notes' ? 'h-full max-w-none' : 'max-w-3xl'}`}>
+        <div className={`mx-auto p-4 md:p-6 ${tool === 'daf' ? 'h-full max-w-5xl' : tool === 'notes' || tool === 'shamor' ? 'h-full max-w-none' : 'max-w-3xl'}`}>
           {tool === 'daily' && <DailyStudy />}
           {tool === 'calendar' && <CalendarZmanim />}
+          {tool === 'shamor' && <ShamorZachor />}
           {tool === 'measurements' && <MeasurementConverter />}
           {tool === 'daf' && <TzuratHaDaf />}
           {tool === 'bookmarks' && <Bookmarks />}
