@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
-import { ArrowLeft, BookMarked, BookOpen, CheckCircle2, ChevronLeft, Plus, Search, Trash2, X } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { ArrowLeft, BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronLeft, Folder, FolderOpen, Plus, Search, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
 import type { BookItem, ShamorZachorTrackedBook } from '../types';
+import type { LibNode } from '../utils/library';
 import {
   addShamorColumn, addTrackedShamorBook, applyShamorRange, buildShamorZachorUnits,
-  getShamorProgressSummary, normalizeShamorZachorState, removeShamorColumn,
+  getShamorAddSearchResults, getShamorProgressSummary, MAX_TRACKED_BOOKS,
+  normalizeShamorZachorState, removeShamorColumn,
   removeTrackedShamorBook, renameShamorColumn, setShamorColumnAll, toggleShamorUnit,
   updateTrackedShamorBook,
 } from '../utils/shamorZachor';
@@ -22,7 +24,9 @@ export default function ShamorZachor() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [addQuery, setAddQuery] = useState('');
-  const [addingId, setAddingId] = useState<string | null>(null);
+  const [addExpanded, setAddExpanded] = useState<Record<string, boolean>>({});
+  const [selectedAddIds, setSelectedAddIds] = useState<string[]>([]);
+  const [addingProgress, setAddingProgress] = useState<{ completed: number; total: number } | null>(null);
   const [error, setError] = useState('');
   const [columnLabel, setColumnLabel] = useState('');
   const [rangeColumn, setRangeColumn] = useState('learn');
@@ -43,24 +47,158 @@ export default function ShamorZachor() {
     if (filter === 'in_progress' && progress.isComplete) return false;
     return !query.trim() || `${book.title} ${book.categoryPath}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   }).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  const candidates = (library?.books || []).filter(trackable)
-    .filter((book) => !state.books[String(book.id)])
-    .filter((book) => !addQuery.trim() || `${book.title} ${book.categoryPath} ${book.author || ''}`.toLocaleLowerCase().includes(addQuery.trim().toLocaleLowerCase()))
-    .slice(0, 60);
+  const addSearchResults = useMemo(
+    () => getShamorAddSearchResults(library?.books || [], addQuery),
+    [library?.books, addQuery],
+  );
 
-  const addBook = async (book: BookItem) => {
-    if (addingId) return;
-    setAddingId(String(book.id)); setError('');
+  const toggleAddBook = (bookId: string, checked: boolean) => {
+    setSelectedAddIds((current) => checked
+      ? (current.includes(bookId) ? current : [...current, bookId])
+      : current.filter((id) => id !== bookId));
+  };
+
+  const addSelectedBooks = async () => {
+    if (!library || addingProgress) return;
+    const selectedBooks = selectedAddIds
+      .map((id) => library.byId.get(id))
+      .filter((book): book is BookItem => Boolean(book) && trackable(book) && !state.books[String(book.id)]);
+    if (!selectedBooks.length) {
+      setError('בחר ספר אחד לפחות');
+      return;
+    }
+
+    const availableSlots = Math.max(0, MAX_TRACKED_BOOKS - Object.keys(state.books).length);
+    if (!availableSlots) {
+      setError(`ניתן לעקוב אחרי עד ${MAX_TRACKED_BOOKS} ספרים`);
+      return;
+    }
+    const booksToAdd = selectedBooks.slice(0, availableSlots);
+    let nextState = state;
+    let added = 0;
+    let failed = 0;
+    setError('');
+    setAddingProgress({ completed: 0, total: booksToAdd.length });
+
     try {
-      const [tocResult, contentResult] = await Promise.allSettled([api.toc(book.id), api.content(book.id, 1, 1)]);
-      if (tocResult.status === 'rejected' && contentResult.status === 'rejected') throw new Error('לא ניתן לטעון את מבנה הספר');
-      const units = buildShamorZachorUnits(tocResult.status === 'fulfilled' ? tocResult.value : [], contentResult.status === 'fulfilled' ? contentResult.value.totalLines : 0);
-      const next = addTrackedShamorBook(state, book, units);
-      if (next === state) throw new Error('הספר כבר במעקב או שהגעת למגבלת הספרים');
-      persist(next); setSelectedId(String(book.id)); setAdding(false); setAddQuery('');
-      toast(`הספר ${book.title} נוסף למעקב`);
-    } catch (e) { setError((e as Error).message || 'הוספת הספר נכשלה'); }
-    finally { setAddingId(null); }
+      for (let offset = 0; offset < booksToAdd.length; offset += 4) {
+        const batch = booksToAdd.slice(offset, offset + 4);
+        const results = await Promise.allSettled(batch.map(async (book) => {
+          const [tocResult, contentResult] = await Promise.allSettled([
+            api.toc(book.id),
+            api.content(book.id, 1, 1),
+          ]);
+          if (tocResult.status === 'rejected' && contentResult.status === 'rejected') {
+            throw new Error('לא ניתן לטעון את מבנה הספר');
+          }
+          const units = buildShamorZachorUnits(
+            tocResult.status === 'fulfilled' ? tocResult.value : [],
+            contentResult.status === 'fulfilled' ? contentResult.value.totalLines : 0,
+          );
+          return { book, units };
+        }));
+
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            failed += 1;
+            continue;
+          }
+          const updated = addTrackedShamorBook(nextState, result.value.book, result.value.units);
+          if (updated === nextState) {
+            failed += 1;
+          } else {
+            nextState = updated;
+            added += 1;
+          }
+        }
+        setAddingProgress({
+          completed: Math.min(offset + batch.length, booksToAdd.length),
+          total: booksToAdd.length,
+        });
+      }
+
+      if (added > 0) {
+        persist(nextState);
+        setAdding(false);
+        setSelectedAddIds([]);
+        setAddQuery('');
+        setAddExpanded({});
+        const messages = [`${added} ספרים נוספו למעקב`];
+        if (failed) messages.push(`${failed} לא נוספו`);
+        if (selectedBooks.length > booksToAdd.length) {
+          messages.push(`${selectedBooks.length - booksToAdd.length} חרגו ממגבלת ${MAX_TRACKED_BOOKS}`);
+        }
+        toast(messages.join(' · '));
+      } else {
+        setError('לא ניתן להוסיף את הספרים שנבחרו. בדוק את זמינות הספרייה ונסה שוב.');
+      }
+    } catch (e) {
+      setError((e as Error).message || 'הוספת הספרים נכשלה');
+    } finally {
+      setAddingProgress(null);
+    }
+  };
+
+  const openAddDialog = () => {
+    setAdding(true);
+    setError('');
+    setAddQuery('');
+    setSelectedAddIds([]);
+    setAddExpanded({});
+  };
+
+  const renderAddBook = (book: BookItem, depth = 0) => {
+    const id = String(book.id);
+    const tracked = Boolean(state.books[id]);
+    const checked = tracked || selectedAddIds.includes(id);
+    return (
+      <div key={id} className="border-t border-outline-variant/70 px-2 py-2" style={{ paddingInlineStart: `${depth * 14 + 8}px` }}>
+        <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-surface-2">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={tracked || Boolean(addingProgress)}
+            onChange={(event) => toggleAddBook(id, event.target.checked)}
+            className="h-4 w-4 accent-primary"
+            aria-label={tracked ? `${book.title}, כבר במעקב` : `בחר ${book.title}`}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-on-surface">{book.title}</span>
+            <span className="block truncate text-xs text-on-variant">{tracked ? 'כבר במעקב' : book.categoryPath}</span>
+          </span>
+          {tracked && <CheckCircle2 size={16} className="shrink-0 text-primary" />}
+        </label>
+      </div>
+    );
+  };
+
+  const renderCategory: (node: LibNode, depth?: number) => ReactNode = (node, depth = 0) => {
+    const visibleBooks = node.books.filter(trackable);
+    if (!node.children.length && !visibleBooks.length) return null;
+    const expanded = addExpanded[node.path] ?? false;
+    return (
+      <div key={node.path}>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setAddExpanded((current) => ({ ...current, [node.path]: !expanded }))}
+          disabled={Boolean(addingProgress)}
+          className="flex w-full items-center gap-2 border-b border-outline-variant px-3 py-2.5 text-right hover:bg-surface-2 disabled:opacity-60"
+          style={{ paddingInlineStart: `${12 + depth * 16}px` }}
+        >
+          {expanded ? <ChevronDown size={16} className="shrink-0 text-on-variant" /> : <ChevronLeft size={16} className="shrink-0 text-on-variant" />}
+          {expanded ? <FolderOpen size={18} className="shrink-0 text-primary" /> : <Folder size={18} className="shrink-0 text-primary" />}
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">{node.name}</span>
+          <span className="text-xs tabular-nums text-on-variant">{node.count}</span>
+        </button>
+        {expanded && (
+          <div>
+            {node.children.map((child) => renderCategory(child, depth + 1))}
+            {visibleBooks.map((book) => renderAddBook(book, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const removeBook = (book: ShamorZachorTrackedBook) => {
@@ -108,12 +246,82 @@ export default function ShamorZachor() {
   }
 
   return <section dir="rtl" className="space-y-4">
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-3"><div className="flex items-center gap-3"><span className="rounded-xl bg-primary-container p-3 text-on-primary-container"><BookMarked size={22}/></span><div><h2 className="font-semibold text-on-surface">שמור וזכור</h2><p className="text-xs text-on-variant">מעקב לימוד וחזרות לפי יחידות בספר</p></div></div><button type="button" onClick={()=>{setAdding(true);setError('');}} disabled={!library||libraryLoading} className="rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50"><Plus className="ml-1 inline" size={16}/> הוסף ספרים למעקב</button></header>
+    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-3"><div className="flex items-center gap-3"><span className="rounded-xl bg-primary-container p-3 text-on-primary-container"><BookMarked size={22}/></span><div><h2 className="font-semibold text-on-surface">שמור וזכור</h2><p className="text-xs text-on-variant">מעקב לימוד וחזרות לפי יחידות בספר</p></div></div><button type="button" onClick={openAddDialog} disabled={!library||libraryLoading} className="rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50"><Plus className="ml-1 inline" size={16}/> הוסף ספרים למעקב</button></header>
     <div className="grid grid-cols-3 gap-2"><div className="rounded-xl border border-outline-variant bg-surface-1 p-3"><div className="text-xs text-on-variant">ספרים</div><strong className="text-xl">{books.length}</strong></div><div className="rounded-xl border border-outline-variant bg-surface-1 p-3"><div className="text-xs text-on-variant">בתהליך</div><strong className="text-xl">{books.length-completed}</strong></div><div className="rounded-xl border border-outline-variant bg-surface-1 p-3"><div className="text-xs text-on-variant">הושלמו</div><strong className="text-xl">{completed}</strong></div></div>
     <div className="flex flex-wrap items-center gap-2">{([['in_progress','בתהליך'],['completed','הושלם'],['all','הכל']] as const).map(([value,label])=><button key={value} type="button" onClick={()=>setFilter(value)} className={`rounded-full px-3 py-2 text-sm ${filter===value?'bg-sec-container text-on-sec-container':'text-on-variant hover:bg-surface-3'}`}>{label}</button>)}<label className="relative min-w-44 flex-1"><Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-variant"/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="חיפוש בספרים שבמעקב" className="w-full rounded-full border-outline-variant bg-surface py-2 pr-9 pl-3 text-sm"/></label></div>
     {libraryLoading &&<p className="text-sm text-on-variant">טוען ספרייה…</p>}
     {libraryError &&<p className="text-sm text-error">{libraryError} <button type="button" onClick={reloadLibrary} className="underline">נסה שוב</button></p>}
-    {visible.length===0?<div className="rounded-xl border-dashed border-outline-variant p-10 text-center"><BookOpen size={34} className="mx-auto text-on-variant/60"/><h3 className="mt-2 font-semibold">{books.length ? 'אין תוצאות לסינון' : 'עדיין אין ספרים במעקב'}</h3><p className="mt-1 text-sm text-on-variant">הוסף ספר כדי לנהל לימוד וחזרות.</p><button type="button" onClick={()=>setAdding(true)} disabled={!library||libraryLoading} className="mt-3 rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50">הוסף ספר</button></div>:<div className="grid gap-3 xl:grid-cols-2">{visible.map((book)=>{const p=summary(book);return <article key={String(book.bookId)} className="rounded-xl border border-outline-variant bg-surface-1 p-4"><div className="flex items-start justify-between gap-3"><button type="button" onClick={()=>setSelectedId(String(book.bookId))} className="min-w-0 flex-1 text-right"><strong className="block truncate hover:text-primary">{book.title}</strong><span className="text-xs text-on-variant">{book.categoryPath} · {book.units.length} יחידות</span></button>{p.isComplete?<CheckCircle2 className="text-primary" size={20}/>:<span className="text-xs text-on-variant">{p.learningPercent}% לימוד</span>}</div><div className="mt-3 h-2 rounded-full bg-surface-3"><div className="h-full rounded-full bg-primary" style={{width:`${p.learningPercent}%`}}/></div><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-on-variant">לימוד {p.learningCompleted}/{p.totalUnits} · הושלמו בכל העמודות {p.fullyCompletedUnits}</span><div className="flex items-center gap-2"><button type="button" onClick={()=>openAt(book,book.units.find((unit)=>unit.id===book.lastTouchedUnitId)?.lineIndex||book.units[0].lineIndex)} className="text-primary">פתח ספר</button><button type="button" onClick={()=>setSelectedId(String(book.bookId))} aria-label={`נהל ${book.title}`}><ChevronLeft size={17}/></button><button type="button" onClick={()=>removeBook(book)} aria-label={`הסר ${book.title}`} className="text-error"><Trash2 size={15}/></button></div></div></article>;})}</div>}
-    {adding&&<div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/45 p-3" onMouseDown={(e)=>{if(e.target===e.currentTarget)setAdding(false);}}><div role="dialog" aria-modal="true" aria-label="הוספת ספרים למעקב" className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-2xl border border-outline-variant bg-surface shadow-2xl"><header className="flex items-center justify-between border-b border-outline-variant p-4"><strong>הוספת ספרים למעקב</strong><button type="button" onClick={()=>setAdding(false)} aria-label="סגור"><X size={19}/></button></header><div className="p-3"><input autoFocus value={addQuery} onChange={(e)=>setAddQuery(e.target.value)} placeholder="חפש ספר, מחבר או קטגוריה" className="w-full rounded-lg border border-outline-variant bg-surface-1 px-3 py-2 text-sm"/>{error&&<p role="alert" className="mt-2 text-sm text-error">{error}</p>}</div><div className="min-h-0 flex-1 overflow-y-auto p-2">{candidates.length===0?<p className="p-5 text-center text-sm text-on-variant">לא נמצאו ספרים זמינים</p>:candidates.map((book)=><div key={String(book.id)} className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-surface-2"><div className="min-w-0 flex-1"><strong className="block truncate text-sm">{book.title}</strong><span className="text-xs text-on-variant">{book.categoryPath}</span></div><button type="button" disabled={Boolean(addingId)} onClick={()=>void addBook(book)} className="rounded-full bg-sec-container px-3 py-2 text-xs text-on-sec-container disabled:opacity-50">{addingId===String(book.id)?'טוען…':<><Plus className="ml-1 inline" size={13}/>הוסף</>}</button></div>)}</div><footer className="flex justify-between border-t border-outline-variant p-3 text-xs text-on-variant"><span>עד 60 תוצאות מוצגות</span><button type="button" onClick={()=>setAdding(false)}>סיום</button></footer></div></div>}
+    {visible.length===0?<div className="rounded-xl border-dashed border-outline-variant p-10 text-center"><BookOpen size={34} className="mx-auto text-on-variant/60"/><h3 className="mt-2 font-semibold">{books.length ? 'אין תוצאות לסינון' : 'עדיין אין ספרים במעקב'}</h3><p className="mt-1 text-sm text-on-variant">הוסף ספר כדי לנהל לימוד וחזרות.</p><button type="button" onClick={openAddDialog} disabled={!library||libraryLoading} className="mt-3 rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50">הוסף ספר</button></div>:<div className="grid gap-3 xl:grid-cols-2">{visible.map((book)=>{const p=summary(book);return <article key={String(book.bookId)} className="rounded-xl border border-outline-variant bg-surface-1 p-4"><div className="flex items-start justify-between gap-3"><button type="button" onClick={()=>setSelectedId(String(book.bookId))} className="min-w-0 flex-1 text-right"><strong className="block truncate hover:text-primary">{book.title}</strong><span className="text-xs text-on-variant">{book.categoryPath} · {book.units.length} יחידות</span></button>{p.isComplete?<CheckCircle2 className="text-primary" size={20}/>:<span className="text-xs text-on-variant">{p.learningPercent}% לימוד</span>}</div><div className="mt-3 h-2 rounded-full bg-surface-3"><div className="h-full rounded-full bg-primary" style={{width:`${p.learningPercent}%`}}/></div><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-on-variant">לימוד {p.learningCompleted}/{p.totalUnits} · הושלמו בכל העמודות {p.fullyCompletedUnits}</span><div className="flex items-center gap-2"><button type="button" onClick={()=>openAt(book,book.units.find((unit)=>unit.id===book.lastTouchedUnitId)?.lineIndex||book.units[0].lineIndex)} className="text-primary">פתח ספר</button><button type="button" onClick={()=>setSelectedId(String(book.bookId))} aria-label={`נהל ${book.title}`}><ChevronLeft size={17}/></button><button type="button" onClick={()=>removeBook(book)} aria-label={`הסר ${book.title}`} className="text-error"><Trash2 size={15}/></button></div></div></article>;})}</div>}
+    {adding && (
+      <div
+        className="fixed inset-0 z-[140] flex items-center justify-center bg-black/45 p-3"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !addingProgress) setAdding(false);
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="הוספת ספרים למעקב"
+          className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-2xl border border-outline-variant bg-surface shadow-2xl"
+        >
+          <header className="flex items-center justify-between gap-3 border-b border-outline-variant p-4">
+            <div className="min-w-0">
+              <strong className="block text-on-surface">הוספת ספרים למעקב</strong>
+              <span className="text-xs text-on-variant">{selectedAddIds.length} ספרים נבחרו</span>
+            </div>
+            <button type="button" onClick={() => setAdding(false)} disabled={Boolean(addingProgress)} aria-label="סגור" className="rounded-full p-2 hover:bg-surface-3 disabled:opacity-40">
+              <X size={19}/>
+            </button>
+          </header>
+          <div className="border-b border-outline-variant p-3">
+            <label className="relative block">
+              <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-variant"/>
+              <input
+                autoFocus
+                value={addQuery}
+                onChange={(event) => setAddQuery(event.target.value)}
+                placeholder="חפש ספר, מחבר או קטגוריה"
+                className="w-full rounded-lg border border-outline-variant bg-surface-1 py-2 pr-9 pl-3 text-sm text-on-surface"
+              />
+            </label>
+            {error && <p role="alert" className="mt-2 text-sm text-error">{error}</p>}
+            {addingProgress && (
+              <p role="status" className="mt-2 text-xs text-on-variant">
+                מוסיף ספרים למעקב: {addingProgress.completed}/{addingProgress.total}
+              </p>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {addQuery.trim().length >= 2 ? (
+              addSearchResults.length === 0
+                ? <p className="p-6 text-center text-sm text-on-variant">לא נמצאו ספרים מתאימים</p>
+                : addSearchResults.map((book) => renderAddBook(book))
+            ) : (
+              <>
+                {library?.root.books.map((book) => renderAddBook(book))}
+                {library?.root.children.map((category) => renderCategory(category))}
+              </>
+            )}
+          </div>
+          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-outline-variant p-3">
+            <span className="text-xs text-on-variant">
+              {addQuery.trim().length >= 2 ? 'עד 60 תוצאות חיפוש' : 'בחר קטגוריה כדי להציג את הספרים שבה'}
+            </span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setAdding(false)} disabled={Boolean(addingProgress)} className="rounded-lg px-3 py-2 text-sm text-on-variant hover:bg-surface-2 disabled:opacity-40">סיום</button>
+              <button
+                type="button"
+                disabled={selectedAddIds.length === 0 || Boolean(addingProgress)}
+                onClick={() => void addSelectedBooks()}
+                className="rounded-lg bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-40"
+              >
+                {addingProgress ? 'מוסיף…' : `הוסף (${selectedAddIds.length})`}
+              </button>
+            </div>
+          </footer>
+        </div>
+      </div>
+    )}
   </section>;
 }

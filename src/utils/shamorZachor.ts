@@ -328,3 +328,25 @@ export function getShamorProgressSummary(book: ShamorZachorTrackedBook): ShamorP
     hasProgress,
   };
 }
+
+
+/** Searchable books in the Shamor Vezachor add dialog; the category tree remains the default view. */
+export function getShamorAddSearchResults(
+  books: readonly BookItem[],
+  query: string,
+  limit = 60,
+): BookItem[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (normalized.length < 2) return [];
+  const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 60;
+  if (safeLimit === 0) return [];
+  return books
+    .filter((book) => !/pdf/i.test(book.fileType || '') && !/\\.pdf$/i.test(book.title || ''))
+    .filter((book) =>
+      `${book.title} ${book.author || ''} ${book.categoryPath}`
+        .toLocaleLowerCase()
+        .includes(normalized),
+    )
+    .sort((a, b) => a.title.localeCompare(b.title, 'he'))
+    .slice(0, safeLimit);
+}

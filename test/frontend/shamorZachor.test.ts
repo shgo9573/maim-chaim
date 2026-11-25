@@ -9,6 +9,7 @@ import {
   applyShamorRange,
   buildShamorZachorUnits,
   createTrackedShamorBook,
+  getShamorAddSearchResults,
   getShamorProgressSummary,
   normalizeShamorZachorState,
   removeShamorColumn,
@@ -155,4 +156,31 @@ test('adds a tracked book once and removes it by stable book ID', () => {
   const updated = updateTrackedShamorBook(added, 12, (tracked) => toggleShamorUnit(tracked, 'learn', units[0].id, true));
   assert.equal(updated.books['12'].progress.learn.length, 1);
   assert.deepEqual(Object.keys(removeTrackedShamorBook(updated, 12).books), []);
+});
+
+
+test('Shamor Vezachor add search waits for at least two characters', () => {
+  assert.deepEqual(getShamorAddSearchResults([book], ''), []);
+  assert.deepEqual(getShamorAddSearchResults([book], 'מ'), []);
+});
+
+test('Shamor Vezachor add search matches title, author and category while excluding PDF books', () => {
+  const books: BookItem[] = [
+    book,
+    { id: 13, title: 'ספר נוסף', author: 'מחבר לדוגמה', categoryPath: 'הלכה' },
+    { id: 14, title: 'סריקה.pdf', fileType: 'pdf', categoryPath: 'הלכה' },
+  ];
+  assert.deepEqual(getShamorAddSearchResults(books, 'לדוגמה').map((item) => item.id), [12, 13]);
+  assert.deepEqual(getShamorAddSearchResults(books, 'הלכה').map((item) => item.id), [13]);
+  assert.deepEqual(getShamorAddSearchResults(books, 'סריקה'), []);
+});
+
+test('Shamor Vezachor add search applies a stable result limit', () => {
+  const books = Array.from({ length: 5 }, (_, index): BookItem => ({
+    id: index + 1,
+    title: `ספר ${index + 1}`,
+    categoryPath: 'קטגוריה',
+  }));
+  assert.equal(getShamorAddSearchResults(books, 'ספר', 2).length, 2);
+  assert.deepEqual(getShamorAddSearchResults(books, 'ספר', 0), []);
 });
