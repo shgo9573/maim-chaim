@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type LucideIcon } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Box, Clock3, Copy, Ruler, Scale, Square } from 'lucide-react';
 import { useApp } from '../store';
 import {
@@ -15,7 +15,7 @@ import {
 
 const STORAGE_KEY = 'otzaria.measurements.v1';
 
-const CATEGORY_META: { key: MeasurementCategory; icon: LucideIcon }[] = [
+const CATEGORY_META: { key: MeasurementCategory; icon: typeof Ruler }[] = [
   { key: 'אורך', icon: Ruler },
   { key: 'שטח', icon: Square },
   { key: 'נפח', icon: Box },

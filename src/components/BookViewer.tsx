@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { Bookmark, BookOpen, ChevronDown, ChevronUp, Hash, Minus, Plus, PanelRightClose, PanelRightOpen, Search, MessageSquareText, Link2, TextSearch, X, Copy, ScrollText } from 'lucide-react';
 import { api } from '../api';
 import { useApp } from '../store';
-import type { BookTab, ContentLine, TocEntry } from '../types';
+import type { BookItem, BookTab, ContentLine, TocEntry } from '../types';
 import { buildDeepLink, highlight, highlightWords, processHtml, stripTags, type TextOpts } from '../utils/text';
 import BookSidebar from './BookSidebar';
 import CommentaryPanel, { fontStack } from './CommentaryPanel';
@@ -10,6 +10,8 @@ import { EmptyState, IconBtn, Spinner } from './ui';
 import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
+import { parseReaderLinkTarget, readerLinkCanOpenInBackground } from '../utils/readerLinks';
+import { findTocLine } from '../utils/studyLinks';
 import { findUniqueReaderCommentaryBook, groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
 import { groupReaderReferenceLinks } from '../utils/readerReferenceContextMenu';
 import ReaderContextIconRow from './ReaderContextIconRow';
@@ -86,6 +88,7 @@ interface ReaderContextMenu {
   text: string;
   from: number;
   to: number;
+  linkUrl?: string;
 }
 
 interface ReaderNoteDraft {
@@ -149,7 +152,7 @@ function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLEleme
 }
 
 export default function BookViewer({ tab }: { tab: BookTab }) {
-  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, openBookByTitle, openBookInNewTab, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
+  const { settings, updateSettings, updateTab, addBookmark, saveNote, openSearch, openBookByTitle, openBookInNewTab, openBookInBackground, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
   const [lines, setLines] = useState<ContentLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -204,7 +207,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const commentaryMenuRequestRef = useRef(0);
   const focusCommentaryMenuItemRef = useRef(false);
   const touchTimerRef = useRef<number | null>(null);
-  const touchStartRef = useRef<{ x: number; y: number; line: number } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; line: number; linkUrl?: string } | null>(null);
   const selectionSnapshotRef = useRef<ReturnType<typeof getReaderSelectionForContextMenu> | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const topSentinel = useRef<HTMLDivElement>(null);
@@ -771,11 +774,123 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
 
   const addMark = () => addMarkAt(selected ?? topLine);
 
+  const openReaderLink = async (href: string, inBackground = false) => {
+    const target = parseReaderLinkTarget(href);
+    if (!target) {
+      toast('הקישור אינו נתמך');
+      return;
+    }
+
+    if (target.kind === 'external') {
+      const opened = window.open(target.href, '_blank', 'noopener,noreferrer');
+      if (!opened) toast('הדפדפן חסם את פתיחת הקישור');
+      return;
+    }
+
+    if (target.kind === 'anchor') {
+      if (inBackground) return;
+      const root = scRef.current;
+      const anchor = root
+        ? Array.from(root.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === target.anchor)
+        : undefined;
+      if (anchor) {
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+        anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+        return;
+      }
+      const targetLine = toc ? findTocLine(toc, [target.anchor]) : undefined;
+      if (targetLine !== undefined) {
+        goTo(targetLine);
+        return;
+      }
+      toast('היעד הפנימי לא נמצא בספר');
+      return;
+    }
+
+    if (!library) {
+      toast(libraryLoading ? 'הספרייה עדיין נטענת, נסה שוב בעוד רגע' : 'הספרייה אינה זמינה');
+      return;
+    }
+
+    let targetBook: BookItem | undefined;
+    let targetLine = 1;
+
+    if (target.kind === 'book') {
+      const matches = library.books.filter((candidate) =>
+        candidate.title.trim() === target.title.trim() && !isExcludedBook(candidate),
+      );
+      if (matches.length !== 1) {
+        toast(matches.length > 1
+          ? 'הקישור אינו חד-משמעי: נמצאו כמה ספרים בעלי אותו שם'
+          : 'הספר "' + target.title + '" לא נמצא בספרייה');
+        return;
+      }
+      targetBook = matches[0];
+      if (target.headings.length > 0) {
+        try {
+          const targetToc = await api.toc(targetBook.id);
+          const headingLine = findTocLine(targetToc, target.headings);
+          if (headingLine === undefined) {
+            toast('לא נמצאה הכותרת המבוקשת בספר היעד');
+            return;
+          }
+          targetLine = headingLine;
+        } catch {
+          toast('לא ניתן לטעון את תוכן העניינים של ספר היעד');
+          return;
+        }
+      }
+    } else if (target.kind === 'inline-book') {
+      const matches = library.books.filter((candidate) =>
+        candidate.title.trim() === target.title.trim() && !isExcludedBook(candidate),
+      );
+      if (matches.length !== 1) {
+        toast(matches.length > 1
+          ? 'הקישור אינו חד-משמעי: נמצאו כמה ספרים בעלי אותו שם'
+          : 'הספר "' + target.title + '" לא נמצא בספרייה');
+        return;
+      }
+      targetBook = matches[0];
+      targetLine = target.line;
+    } else if (target.kind === 'book-id') {
+      targetBook = library.books.find((candidate) => String(candidate.id) === target.id);
+      targetLine = target.line ?? 1;
+    }
+
+    if (!targetBook || isExcludedBook(targetBook)) {
+      toast(targetBook ? EXCLUDED_BOOK_NOTICE : 'ספר היעד של הקישור אינו זמין בספרייה');
+      return;
+    }
+
+    const bookRef = {
+      id: targetBook.id,
+      title: targetBook.title,
+      categoryPath: targetBook.categoryPath,
+    };
+    if (inBackground) openBookInBackground(bookRef, targetLine);
+    else openBookInNewTab(bookRef, targetLine);
+  };
+
+  const handleReaderLinkClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const anchor = target?.closest<HTMLAnchorElement>('a[href]');
+    if (!anchor || !event.currentTarget.contains(anchor)) return;
+    const href = anchor.getAttribute('href');
+    if (!href || !parseReaderLinkTarget(href)) return;
+
+    event.stopPropagation();
+    if (parseReaderLinkTarget(href)?.kind === 'external') return;
+
+    event.preventDefault();
+    void openReaderLink(href);
+  };
+
   const openReaderContextMenuAt = (
     x: number,
     y: number,
     lineNode: HTMLElement,
     selectionOverride?: ReturnType<typeof getReaderSelectionForContextMenu> | null,
+    linkUrl?: string,
   ) => {
     const clickedLine = Number(lineNode.dataset.line);
     if (!Number.isInteger(clickedLine) || clickedLine < 1) return;
@@ -799,6 +914,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       text: selection?.text ?? '',
       from: selection?.from ?? 0,
       to: selection?.to ?? 0,
+      ...(linkUrl ? { linkUrl } : {}),
     });
   };
 
@@ -832,10 +948,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const target = event.target instanceof Element ? event.target : null;
     const lineNode = target?.closest<HTMLElement>('[data-line]');
     if (!lineNode) return;
+    const anchor = target?.closest<HTMLAnchorElement>('a[href]');
+    const linkUrl = anchor && lineNode.contains(anchor) ? anchor.getAttribute('href') || undefined : undefined;
     event.preventDefault();
     const selectionSnapshot = selectionSnapshotRef.current;
     clearReaderTouchTimer();
-    openReaderContextMenuAt(event.clientX, event.clientY, lineNode, selectionSnapshot);
+    openReaderContextMenuAt(event.clientX, event.clientY, lineNode, selectionSnapshot, linkUrl);
   };
 
   const handleReaderKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -847,14 +965,20 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         ? selection.getRangeAt(0).startContainer as Element
         : selection.getRangeAt(0).startContainer.parentElement)
       : null;
+    const eventTarget = event.target instanceof Element ? event.target : null;
+    const eventLine = Number(eventTarget?.closest<HTMLElement>('[data-line]')?.dataset.line);
     const selectionLine = Number(startElement?.closest<HTMLElement>('[data-line]')?.dataset.line);
-    const lineIndex = Number.isInteger(selectionLine) && selectionLine > 0
-      ? selectionLine
-      : selected ?? topLine;
+    const lineIndex = Number.isInteger(eventLine) && eventLine > 0
+      ? eventLine
+      : Number.isInteger(selectionLine) && selectionLine > 0
+        ? selectionLine
+        : selected ?? topLine;
     const lineNode = scRef.current?.querySelector<HTMLElement>('[data-line="' + lineIndex + '"]');
     if (!lineNode) return;
+    const activeLink = eventTarget?.closest<HTMLAnchorElement>('a[href]');
+    const linkUrl = activeLink && lineNode.contains(activeLink) ? activeLink.getAttribute('href') || undefined : undefined;
     const rect = lineNode.getBoundingClientRect();
-    openReaderContextMenuAt(rect.left + Math.min(rect.width / 2, 180), rect.bottom, lineNode);
+    openReaderContextMenuAt(rect.left + Math.min(rect.width / 2, 180), rect.bottom, lineNode, undefined, linkUrl);
   };
 
   const clearReaderTouchTimer = () => {
@@ -873,7 +997,9 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const line = Number(lineNode?.dataset.line);
     if (!touch || event.touches.length !== 1 || !lineNode || !Number.isInteger(line) || line < 1) return;
     clearReaderTouchTimer();
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY, line };
+    const touchAnchor = target?.closest<HTMLAnchorElement>('a[href]');
+    const linkUrl = touchAnchor && lineNode.contains(touchAnchor) ? touchAnchor.getAttribute('href') || undefined : undefined;
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY, line, ...(linkUrl ? { linkUrl } : {}) };
 
     const root = scRef.current;
     const selection = window.getSelection();
@@ -891,7 +1017,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       selectionSnapshotRef.current = null;
       if (!point) return;
       const node = scRef.current?.querySelector<HTMLElement>('[data-line="' + point.line + '"]');
-      if (node) openReaderContextMenuAt(point.x, point.y, node, selectionSnapshot);
+      if (node) openReaderContextMenuAt(point.x, point.y, node, selectionSnapshot, point.linkUrl);
     }, 560);
   };
 
@@ -1227,6 +1353,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             onCopy={onCopy}
             onMouseDownCapture={handleReaderMouseDownCapture}
             onContextMenu={handleReaderContextMenu}
+            onClickCapture={handleReaderLinkClick}
             onKeyDown={handleReaderKeyDown}
             onTouchStart={handleReaderTouchStart}
             onTouchMove={handleReaderTouchMove}
@@ -1345,6 +1472,45 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 void copy(url, message);
               }}
             />
+            {contextMenu.linkUrl && parseReaderLinkTarget(contextMenu.linkUrl) && (
+              <>
+                <div role="separator" className="my-[3.5px] border-t border-outline-variant" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                  onClick={() => {
+                    const href = contextMenu.linkUrl!;
+                    closeReaderContextMenu();
+                    void openReaderLink(href);
+                  }}
+                >
+                  <BookOpen size={18} /> פתח קישור
+                </button>
+                {readerLinkCanOpenInBackground(parseReaderLinkTarget(contextMenu.linkUrl)) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                    onClick={() => {
+                      const href = contextMenu.linkUrl!;
+                      closeReaderContextMenu();
+                      void openReaderLink(href, true);
+                    }}
+                  >
+                    <BookOpen size={18} /> פתח בכרטיסייה חדשה ברקע
+                  </button>
+                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none"
+                  onClick={() => void copy(contextMenu.linkUrl!, 'כתובת הקישור הועתקה')}
+                >
+                  <Copy size={18} /> העתק כתובת קישור
+                </button>
+              </>
+            )}
             <button
               type="button"
               role="menuitem"

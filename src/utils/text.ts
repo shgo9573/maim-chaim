@@ -1,8 +1,15 @@
+import { parseReaderLinkTarget, sanitizeReaderHref } from './readerLinks';
+
 const ALLOWED = new Set([
-  'B', 'I', 'U', 'STRONG', 'EM', 'BIG', 'SMALL', 'SUP', 'SUB', 'BR',
+  'A', 'B', 'I', 'U', 'STRONG', 'EM', 'BIG', 'SMALL', 'SUP', 'SUB', 'BR',
   'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN', 'P', 'DIV', 'MARK',
 ]);
 const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'LINK', 'META']);
+
+function unwrap(node: Node, element: Element) {
+  while (element.firstChild) node.insertBefore(element.firstChild, element);
+  node.removeChild(element);
+}
 
 function clean(node: Node, doc: Document) {
   const children = Array.from(node.childNodes);
@@ -14,11 +21,32 @@ function clean(node: Node, doc: Document) {
         continue;
       }
       clean(el, doc);
-      if (ALLOWED.has(el.tagName)) {
-        for (const a of Array.from(el.attributes)) el.removeAttribute(a.name);
-      } else {
-        while (el.firstChild) node.insertBefore(el.firstChild, el);
-        node.removeChild(el);
+      if (!ALLOWED.has(el.tagName)) {
+        unwrap(node, el);
+        continue;
+      }
+
+      const safeId = el.getAttribute('id');
+      const safeTitle = el.tagName === 'A' ? el.getAttribute('title') : null;
+      const safeHref = el.tagName === 'A' ? sanitizeReaderHref(el.getAttribute('href') || '') : null;
+      for (const attribute of Array.from(el.attributes)) el.removeAttribute(attribute.name);
+
+      if (safeId && /^[A-Za-z0-9_.:-א-ת]{1,120}$/u.test(safeId)) {
+        el.setAttribute('id', safeId);
+      }
+
+      if (el.tagName === 'A') {
+        if (!safeHref) {
+          unwrap(node, el);
+          continue;
+        }
+        el.setAttribute('href', safeHref);
+        const linkTarget = parseReaderLinkTarget(safeHref);
+        if (linkTarget?.kind === 'external' && /^https?:\/\//iu.test(safeHref)) {
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noopener noreferrer');
+        }
+        if (safeTitle) el.setAttribute('title', safeTitle.slice(0, 160));
       }
     } else if (child.nodeType !== 3) {
       node.removeChild(child);
