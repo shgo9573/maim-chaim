@@ -341,7 +341,7 @@ export function getShamorAddSearchResults(
   const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 60;
   if (safeLimit === 0) return [];
   return books
-    .filter((book) => !/pdf/i.test(book.fileType || '') && !/\\.pdf$/i.test(book.title || ''))
+    .filter((book) => !/pdf/i.test(book.fileType || '') && !/\.pdf$/i.test(book.title || ''))
     .filter((book) =>
       `${book.title} ${book.author || ''} ${book.categoryPath}`
         .toLocaleLowerCase()

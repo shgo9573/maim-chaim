@@ -3699,3 +3699,10 @@ Commits חדשים ב־main שנבדקו:
 - `main`: `1c1343ef60c9ad3f68b5c3cf234d6ecf0d65a548`.
 - `arena/9b3e1906-maim-chaim`: `ee8a38c72d1e70461bc1750376660a9d15ea93a9` — מאחור ב-221 commits, ללא commits ייחודיים קדימה.
 - `arena/9c1ba425-maim-chaim`: `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d` — מאחור ב-219 commits, ללא commits ייחודיים קדימה.
+
+
+### תיקון לאחר בדיקת CI
+- ריצת GitHub Actions `45636689639` עבור commit `34e7df4f182a88e4b84c04c7c654094ffc8c8523` הגיעה להתקנת התלויות אך נכשלה ב-`npm run lint` (שהוא `tsc --noEmit` בפרויקט): TypeScript לא צמצם `BookItem | undefined` בעקבות `Boolean(book)` בתוך type guard.
+- תוקן ה-type guard ל-`book !== undefined`, ותוקן גם regex החרגת קובץ PDF עם סיומת `.pdf` כאשר `fileType` חסר.
+- נוספה אסרטציה שמוודאת שגם כותרת שמסתיימת ב-`.pdf` מוחרגת ללא `fileType`.
+- ריצת CI חדשה נדרשת ל-commit התיקון; אין להחשיב את ריצת `45636689639` כהצלחה.

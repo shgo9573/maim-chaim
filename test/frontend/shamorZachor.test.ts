@@ -169,10 +169,12 @@ test('Shamor Vezachor add search matches title, author and category while exclud
     book,
     { id: 13, title: 'ספר נוסף', author: 'מחבר לדוגמה', categoryPath: 'הלכה' },
     { id: 14, title: 'סריקה.pdf', fileType: 'pdf', categoryPath: 'הלכה' },
+    { id: 15, title: 'קובץ.pdf', categoryPath: 'הלכה' },
   ];
   assert.deepEqual(getShamorAddSearchResults(books, 'לדוגמה').map((item) => item.id), [12, 13]);
   assert.deepEqual(getShamorAddSearchResults(books, 'הלכה').map((item) => item.id), [13]);
   assert.deepEqual(getShamorAddSearchResults(books, 'סריקה'), []);
+  assert.deepEqual(getShamorAddSearchResults(books, 'קובץ'), []);
 });
 
 test('Shamor Vezachor add search applies a stable result limit', () => {

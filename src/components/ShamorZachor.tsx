@@ -62,7 +62,7 @@ export default function ShamorZachor() {
     if (!library || addingProgress) return;
     const selectedBooks = selectedAddIds
       .map((id) => library.byId.get(id))
-      .filter((book): book is BookItem => Boolean(book) && trackable(book) && !state.books[String(book.id)]);
+      .filter((book): book is BookItem => book !== undefined && trackable(book) && !state.books[String(book.id)]);
     if (!selectedBooks.length) {
       setError('בחר ספר אחד לפחות');
       return;
