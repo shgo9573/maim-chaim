@@ -3434,3 +3434,5 @@ Commits חדשים ב־main שנבדקו:
 - תוקנה בדיקת URL מקודד כך שמחרוזת `ref` משתמשת בקידוד UTF-8 תקין, ופענוח כותרות `book://` אינו ממיר סימן `+` לרווח שלא לפי כללי מקור.
 
 - אימות CI ראשון (run `45556361365`, commit `66bf1ed`): התקנת תלויות, typecheck מלא ו-`typecheck:frontend` עברו; בדיקות frontend נכשלו בשני מקומות: בדיקת URL inline-link עם קידוד שגוי (תוקן ב-`10c774d`) ורכיב `ReaderContextIconRow` ללא binding של React בזמן SSR של בדיקת Node. נוסף import מפורש של React כדי לתקן את כשל הבדיקה הקיים ברכיב.
+
+- אימות CI שני (run `45556633174`, commit `10c774d`): typecheck מלא ו-typecheck frontend עברו; `test:frontend` עברו 181 מתוך 182. הכשל היחיד עבר לרכיב הבן `ReaderDirectLinkMenu` שגם הוא נרנדר ב-SSR של בדיקת Node ללא binding מפורש של React. נוסף import מפורש גם אליו; הבדיקה השלישית תוודא אם נותר רכיב נוסף באותה שרשרת.

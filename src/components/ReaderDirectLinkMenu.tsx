@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, FileText, Highlighter, Link2, Type } from 'lucide-react';
 import type { ReaderDirectLinkMenuItem } from '../utils/readerDirectLinkMenu';
