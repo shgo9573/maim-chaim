@@ -881,8 +881,8 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       title: targetBook.title,
       categoryPath: targetBook.categoryPath,
     };
-    if (inBackground) openBookInBackground(bookRef, targetLine);
-    else openBookInNewTab(bookRef, targetLine, undefined, { textOnly: true });
+    if (inBackground) openBookInBackground(bookRef, targetLine, undefined, { insertAdjacent: true });
+    else openBookInNewTab(bookRef, targetLine, undefined, { textOnly: true, insertAdjacent: true });
   };
 
   const handleReaderLinkClick = (event: React.MouseEvent<HTMLDivElement>) => {

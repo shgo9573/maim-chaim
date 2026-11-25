@@ -4,6 +4,7 @@ import { buildLibrary, type Library } from './utils/library';
 import { parseDeepLink } from './utils/text';
 import { applyTheme } from './utils/theme';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from './utils/bookFilter';
+import { insertTabAdjacent } from './utils/tabPlacement';
 import { masechtaForName } from './utils/talmud';
 import { currentAccount, logout as authLogout, type Account } from './auth';
 import {
@@ -80,8 +81,8 @@ interface Ctx {
   updateTab: (id: string, patch: Partial<BookTab> | Partial<SearchTab> | Partial<TzuratHaDafTab>) => void;
   openTzuratHaDaf: (ref: BookRef, daf?: number, amud?: 'a' | 'b', mode?: 'reuse' | 'new' | 'replace') => boolean;
   openBook: (ref: BookRef, line?: number, highlight?: Highlight) => void;
-  openBookInNewTab: (ref: BookRef, line?: number, highlight?: Highlight, options?: { textOnly?: boolean }) => void;
-  openBookInBackground: (ref: BookRef, line?: number, highlight?: Highlight) => void;
+  openBookInNewTab: (ref: BookRef, line?: number, highlight?: Highlight, options?: { textOnly?: boolean; insertAdjacent?: boolean }) => void;
+  openBookInBackground: (ref: BookRef, line?: number, highlight?: Highlight, options?: { insertAdjacent?: boolean }) => void;
   openBooksInReadingTabs: (refs: BookRef[]) => void;
   openBookInActiveTab: (ref: BookRef, line?: number) => void;
   removeHistoryItem: (item: ReadingHistoryItem) => Promise<void>;
@@ -765,7 +766,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const openBookInNewTab = useCallback(
-    (ref: BookRef, line?: number, highlight?: Highlight, options?: { textOnly?: boolean }) => {
+    (ref: BookRef, line?: number, highlight?: Highlight, options?: { textOnly?: boolean; insertAdjacent?: boolean }) => {
       const knownBook = libRef.current?.byId.get(String(ref.id));
       if (isExcludedBook(knownBook || ref)) {
         toast(EXCLUDED_BOOK_NOTICE);
@@ -782,15 +783,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         line: line ?? h?.lastPosition ?? 1,
         highlight,
       };
-      setTabs((ts) => [...ts, tab]);
+      setTabs((ts) => options?.insertAdjacent ? insertTabAdjacent(ts, tab, activeTabId) : [...ts, tab]);
       setActiveTabId(tab.id);
       setScreen('reading');
     },
-    [setScreen, toast, settings.talmudBavliOpenFormat, openTzuratHaDaf],
+    [setScreen, toast, settings.talmudBavliOpenFormat, openTzuratHaDaf, activeTabId],
   );
 
   const openBookInBackground = useCallback(
-    (ref: BookRef, line?: number, highlight?: Highlight) => {
+    (ref: BookRef, line?: number, highlight?: Highlight, options?: { insertAdjacent?: boolean }) => {
       const knownBook = libRef.current?.byId.get(String(ref.id));
       if (isExcludedBook(knownBook || ref)) {
         toast(EXCLUDED_BOOK_NOTICE);
@@ -807,9 +808,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         highlight,
       };
       // Background opening must not change activeTabId or screen.
-      setTabs((ts) => [...ts, tab]);
+      setTabs((ts) => options?.insertAdjacent ? insertTabAdjacent(ts, tab, activeTabId) : [...ts, tab]);
     },
-    [toast],
+    [toast, activeTabId],
   );
 
   // Opens a selected library batch as ordinary reading tabs. This deliberately
