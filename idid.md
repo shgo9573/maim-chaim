@@ -3718,3 +3718,10 @@ Commits חדשים ב־main שנבדקו:
   - הגדרת SSH — הצליחה.
   - שלב העברת הקבצים ל-`/var/www/beta/` עדיין היה `in_progress` בבדיקה האחרונה; אין אישור פריסה עד לסיום השלב.
 - ריצת commit `34e7df4` נכשלה קודם לכן ב-type guard בלבד; התיקון ב-`6bab487` אומת ב-TypeScript ובכל בדיקות החזית.
+
+
+### תוצאה סופית של ריצת Beta
+- ריצת `45637060092` הסתיימה ב-`failure` רק בשלב הפריסה.
+- כל שלבי האיכות והבנייה עברו: `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend` (217/217 עברו), סנכרון Vilna HTML ובניית Vite ל-`/beta/`.
+- שלב `Configure SSH` עבר; `Deploy only to the Beta directory` נכשל ב-`2026-11-25 14:46:08 UTC`: `ssh: connect to host [redacted] port 22: Connection timed out`; rsync הסתיים בקוד 255.
+- הפריסה האוטומטית לא הושלמה. לא בוצעה פריסה ידנית, לא שונה השרת ולא שונה DNS. נדרשת חזרתיות/בדיקת נגישות SSH מחוץ לריצת הקוד לפני שניתן יהיה לאשר פריסה.
