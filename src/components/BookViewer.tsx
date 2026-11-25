@@ -782,6 +782,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     }
 
     if (target.kind === 'external') {
+      if (/^(?:mailto|tel):/iu.test(target.href)) {
+        window.location.assign(target.href);
+        return;
+      }
       const opened = window.open(target.href, '_blank', 'noopener,noreferrer');
       if (!opened) toast('הדפדפן חסם את פתיחת הקישור');
       return;
@@ -868,7 +872,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       categoryPath: targetBook.categoryPath,
     };
     if (inBackground) openBookInBackground(bookRef, targetLine);
-    else openBookInNewTab(bookRef, targetLine);
+    else openBookInNewTab(bookRef, targetLine, undefined, { textOnly: true });
   };
 
   const handleReaderLinkClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -878,8 +882,10 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     const href = anchor.getAttribute('href');
     if (!href || !parseReaderLinkTarget(href)) return;
 
+    const linkTarget = parseReaderLinkTarget(href);
+    if (!linkTarget) return;
     event.stopPropagation();
-    if (parseReaderLinkTarget(href)?.kind === 'external') return;
+    if (linkTarget.kind === 'external') return;
 
     event.preventDefault();
     void openReaderLink(href);

@@ -7,9 +7,9 @@ export type ReaderLinkTarget =
 
 function safeDecode(value: string): string {
   try {
-    return decodeURIComponent(value.replace(/\+/gu, ' '));
+    return decodeURIComponent(value);
   } catch {
-    return value.replace(/\+/gu, ' ');
+    return value;
   }
 }
 

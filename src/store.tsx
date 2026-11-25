@@ -80,7 +80,7 @@ interface Ctx {
   updateTab: (id: string, patch: Partial<BookTab> | Partial<SearchTab> | Partial<TzuratHaDafTab>) => void;
   openTzuratHaDaf: (ref: BookRef, daf?: number, amud?: 'a' | 'b', mode?: 'reuse' | 'new' | 'replace') => boolean;
   openBook: (ref: BookRef, line?: number, highlight?: Highlight) => void;
-  openBookInNewTab: (ref: BookRef, line?: number, highlight?: Highlight) => void;
+  openBookInNewTab: (ref: BookRef, line?: number, highlight?: Highlight, options?: { textOnly?: boolean }) => void;
   openBookInBackground: (ref: BookRef, line?: number, highlight?: Highlight) => void;
   openBooksInReadingTabs: (refs: BookRef[]) => void;
   openBookInActiveTab: (ref: BookRef, line?: number) => void;
@@ -765,13 +765,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const openBookInNewTab = useCallback(
-    (ref: BookRef, line?: number, highlight?: Highlight) => {
+    (ref: BookRef, line?: number, highlight?: Highlight, options?: { textOnly?: boolean }) => {
       const knownBook = libRef.current?.byId.get(String(ref.id));
       if (isExcludedBook(knownBook || ref)) {
         toast(EXCLUDED_BOOK_NOTICE);
         return;
       }
-      if (settings.talmudBavliOpenFormat === 'pdf' && openTzuratHaDaf(ref, 2, 'a', 'new')) return;
+      if (!options?.textOnly && settings.talmudBavliOpenFormat === 'pdf' && openTzuratHaDaf(ref, 2, 'a', 'new')) return;
       const h = histRef.current.find((x) => String(x.bookId) === String(ref.id));
       const tab: BookTab = {
         id: newTabId(),

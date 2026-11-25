@@ -23,7 +23,7 @@ test('decodes encoded book titles and headings without splitting encoded separat
 
 test('parses character-based inline links using their one-based source line', () => {
   assert.deepEqual(
-    parseReaderLinkTarget('otzaria://inline-link?path=%2Fbooks%2F%D7%91%D7%A8%D7%9B%D7%95%D7%AA.txt&index=42&ref=%D7%91%D7%A8%D7%9B%D7%95%D7%AA%20%D7%ב'),
+    parseReaderLinkTarget('otzaria://inline-link?path=%2Fbooks%2F%D7%91%D7%A8%D7%9B%D7%95%D7%AA.txt&index=42&ref=%D7%91%D7%A8%D7%9B%D7%95%D7%AA%20%D7%91'),
     { kind: 'inline-book', title: 'ברכות', line: 42, reference: 'ברכות ב' },
   );
 });

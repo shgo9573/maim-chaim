@@ -1,4 +1,4 @@
-import { parseReaderLinkTarget, sanitizeReaderHref } from './readerLinks';
+import { isReaderExternalWebHref, parseReaderLinkTarget, sanitizeReaderHref } from './readerLinks';
 
 const ALLOWED = new Set([
   'A', 'B', 'I', 'U', 'STRONG', 'EM', 'BIG', 'SMALL', 'SUP', 'SUB', 'BR',
@@ -41,8 +41,7 @@ function clean(node: Node, doc: Document) {
           continue;
         }
         el.setAttribute('href', safeHref);
-        const linkTarget = parseReaderLinkTarget(safeHref);
-        if (linkTarget?.kind === 'external' && /^https?:\/\//iu.test(safeHref)) {
+        if (isReaderExternalWebHref(safeHref)) {
           el.setAttribute('target', '_blank');
           el.setAttribute('rel', 'noopener noreferrer');
         }
