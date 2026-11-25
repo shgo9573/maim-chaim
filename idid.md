@@ -3725,3 +3725,11 @@ Commits חדשים ב־main שנבדקו:
 - כל שלבי האיכות והבנייה עברו: `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend` (217/217 עברו), סנכרון Vilna HTML ובניית Vite ל-`/beta/`.
 - שלב `Configure SSH` עבר; `Deploy only to the Beta directory` נכשל ב-`2026-11-25 14:46:08 UTC`: `ssh: connect to host [redacted] port 22: Connection timed out`; rsync הסתיים בקוד 255.
 - הפריסה האוטומטית לא הושלמה. לא בוצעה פריסה ידנית, לא שונה השרת ולא שונה DNS. נדרשת חזרתיות/בדיקת נגישות SSH מחוץ לריצת הקוד לפני שניתן יהיה לאשר פריסה.
+
+
+### מפת ענפים לאחר סיום הריצה
+- `main`: `2635765df0b895dc925dbd681288ace6532e44f7`.
+- `arena/9b3e1906-maim-chaim`: `behind 225`, `ahead 0`.
+- `arena/9c1ba425-maim-chaim`: `behind 223`, `ahead 0`.
+- מקור `Otzaria/otzaria:dev`: `ec16271c9ac82c547eec853e4464155a5d85f1c6`.
+- לא נמצאו commits ייחודיים בענפי arena להחזרה; לא בוצעה כתיבה אליהם.
