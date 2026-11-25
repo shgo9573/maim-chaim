@@ -48,6 +48,11 @@ test('keeps local anchors and classifies them as in-page navigation', () => {
     anchor: 'פרק א',
     headings: ['פרק א', 'משנה ב'],
   });
+  assert.deepEqual(parseReaderLinkTarget('#פרק%20א%23משנה%20ב'), {
+    kind: 'anchor',
+    anchor: 'פרק א',
+    headings: ['פרק א', 'משנה ב'],
+  });
   assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('#footnote-12')), false);
 });
 

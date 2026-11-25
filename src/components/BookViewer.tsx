@@ -794,8 +794,9 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     if (target.kind === 'anchor') {
       if (inBackground) return;
       const root = scRef.current;
+      const anchorId = target.headings.join('#');
       const anchor = root
-        ? Array.from(root.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === target.anchor)
+        ? Array.from(root.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === anchorId)
         : undefined;
       if (anchor) {
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -845,13 +846,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             if (headingLine !== undefined) break;
           }
           if (headingLine === undefined) {
-            toast('לא נמצאה הכותרת המבוקשת בספר היעד');
-            return;
+            toast('לא נמצאה הכותרת המבוקשת; הספר ייפתח בתחילתו');
+          } else {
+            targetLine = headingLine;
           }
-          targetLine = headingLine;
         } catch {
-          toast('לא ניתן לטעון את תוכן העניינים של ספר היעד');
-          return;
+          toast('לא ניתן לטעון את תוכן העניינים; הספר ייפתח בתחילתו');
         }
       }
     } else if (target.kind === 'inline-book') {

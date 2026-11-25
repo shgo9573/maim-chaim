@@ -24,7 +24,8 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
   if (!href || /[\u0000-\u001f\u007f]/u.test(href)) return null;
 
   if (href.startsWith('#')) {
-    const headings = href.slice(1).split('#').map((part) => safeDecode(part).trim()).filter(Boolean);
+    const decoded = safeDecode(href.slice(1));
+    const headings = decoded.split('#').map((part) => part.trim()).filter(Boolean);
     const anchor = headings[0];
     return anchor ? { kind: 'anchor', anchor, headings } : null;
   }
