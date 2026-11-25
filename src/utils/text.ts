@@ -1,4 +1,4 @@
-import { isReaderExternalWebHref, parseReaderLinkTarget, sanitizeReaderHref } from './readerLinks';
+import { isReaderExternalWebHref, isSafeReaderAnchorId, parseReaderLinkTarget, sanitizeReaderHref } from './readerLinks';
 
 const ALLOWED = new Set([
   'A', 'B', 'I', 'U', 'STRONG', 'EM', 'BIG', 'SMALL', 'SUP', 'SUB', 'BR',
@@ -31,12 +31,13 @@ function clean(node: Node, doc: Document) {
       const safeHref = el.tagName === 'A' ? sanitizeReaderHref(el.getAttribute('href') || '') : null;
       for (const attribute of Array.from(el.attributes)) el.removeAttribute(attribute.name);
 
-      if (safeId && /^[A-Za-z0-9_.:-א-ת]{1,120}$/u.test(safeId)) {
+      if (safeId && isSafeReaderAnchorId(safeId)) {
         el.setAttribute('id', safeId);
       }
 
       if (el.tagName === 'A') {
         if (!safeHref) {
+          if (safeId && isSafeReaderAnchorId(safeId)) continue;
           unwrap(node, el);
           continue;
         }

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isReaderExternalWebHref,
+  isSafeReaderAnchorId,
   parseReaderLinkTarget,
   readerLinkCanOpenInBackground,
   sanitizeReaderHref,
@@ -80,4 +81,11 @@ test('only cross-book targets can be opened in the background', () => {
   assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('otzaria://open/book/8154')), false);
   assert.equal(readerLinkCanOpenInBackground(parseReaderLinkTarget('https://example.org')), false);
   assert.equal(readerLinkCanOpenInBackground(null), false);
+});
+
+test('accepts inert HTML anchor IDs and rejects IDs with whitespace or control characters', () => {
+  assert.equal(isSafeReaderAnchorId('footnote-12'), true);
+  assert.equal(isSafeReaderAnchorId('פרק_א.1'), true);
+  assert.equal(isSafeReaderAnchorId('bad id'), false);
+  assert.equal(isSafeReaderAnchorId('bad\n id'), false);
 });

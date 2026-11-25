@@ -109,3 +109,8 @@ export function isReaderExternalWebHref(value: string): boolean {
 export function readerLinkCanOpenInBackground(target: ReaderLinkTarget | null): boolean {
   return target?.kind === 'book' || target?.kind === 'inline-book';
 }
+
+/** Keeps fragment IDs limited to plain, inert identifiers used by book markup. */
+export function isSafeReaderAnchorId(value: string): boolean {
+  return /^[\p{L}\p{N}_.:-]{1,120}$/u.test(value);
+}
