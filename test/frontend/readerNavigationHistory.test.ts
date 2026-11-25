@@ -37,7 +37,7 @@ test('a new jump after going back removes the abandoned forward path', () => {
   const back = travelReaderNavigation(first, 20, 'back');
   assert.ok(back);
   const branched = recordReaderNavigation(back.history, back.line, 35);
-  assert.deepEqual(branched, { back: [10, 12], forward: [] });
+  assert.deepEqual(branched, { back: [10], forward: [] });
 });
 
 test('history is bounded to the most recent persisted destinations', () => {
