@@ -3706,3 +3706,15 @@ Commits חדשים ב־main שנבדקו:
 - תוקן ה-type guard ל-`book !== undefined`, ותוקן גם regex החרגת קובץ PDF עם סיומת `.pdf` כאשר `fileType` חסר.
 - נוספה אסרטציה שמוודאת שגם כותרת שמסתיימת ב-`.pdf` מוחרגת ללא `fileType`.
 - ריצת CI חדשה נדרשת ל-commit התיקון; אין להחשיב את ריצת `45636689639` כהצלחה.
+
+
+### תוצאת GitHub Actions לאחר תיקון
+- ריצת Beta `45637060092` על commit `6bab4875325de26db994be1d5831e265bf98e861`:
+  - `npm ci --ignore-scripts` — הצליח.
+  - `npm run lint` / TypeScript project — הצליח.
+  - `npm run typecheck:frontend` — הצליח.
+  - `npm run test:frontend` — הצליח.
+  - סנכרון Vilna HTML ובניית Vite ל-`/beta/` — הצליחו.
+  - הגדרת SSH — הצליחה.
+  - שלב העברת הקבצים ל-`/var/www/beta/` עדיין היה `in_progress` בבדיקה האחרונה; אין אישור פריסה עד לסיום השלב.
+- ריצת commit `34e7df4` נכשלה קודם לכן ב-type guard בלבד; התיקון ב-`6bab487` אומת ב-TypeScript ובכל בדיקות החזית.
