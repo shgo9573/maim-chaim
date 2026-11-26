@@ -17,6 +17,7 @@ import { t as translate } from '../i18n';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 import { getBookmarkContextMenuActions, normalizeBookmarkDescription, type BookmarkContextMenuActionId } from '../utils/bookmarkContextMenu';
 import { buildHistoryTimeline, type HistoryTimelineFilter } from '../utils/historyTimeline';
+import { createBookmarkHighlight } from '../utils/bookmarkNavigation';
 
 type Tool = 'daily' | 'calendar' | 'shamor' | 'measurements' | 'daf' | 'bookmarks' | 'history' | 'notes' | 'gematria' | 'backup' | 'status' | 'feedback';
 
@@ -319,7 +320,14 @@ function Bookmarks() {
           </span>
           <button
             type="button"
-            onClick={() => openBook({ id: b.bookId, title: b.bookTitle, categoryPath: b.category }, b.lineIndex)}
+            onClick={() => {
+              const highlight = createBookmarkHighlight(b.lineIndex);
+              if (!highlight) {
+                toast('לא ניתן לפתוח את מיקום הסימנייה');
+                return;
+              }
+              openBook({ id: b.bookId, title: b.bookTitle, categoryPath: b.category }, b.lineIndex, highlight);
+            }}
             className="min-w-0 flex-1 px-1 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
           >
             <div className="truncate text-base font-bold text-primary">

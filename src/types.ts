@@ -261,6 +261,10 @@ export interface Highlight {
   to?: number;
   /** every matching line in this book, for in-book result navigation */
   matches?: number[];
+  /** Highlights the full line when the reader is opened from a bookmark. */
+  wholeLine?: boolean;
+  /** Changes on each bookmark open so the target-line flash can restart. */
+  flashId?: number;
 }
 
 export interface ReaderNavigationHistory {

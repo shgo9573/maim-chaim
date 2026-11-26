@@ -186,6 +186,18 @@ mark.hl {
 }
 .fade-in { animation: fadeIn 0.18s ease-out; }
 
+@keyframes readerBookmarkTarget {
+  0%, 100% { background-color: transparent; box-shadow: none; }
+  14%, 62% {
+    background-color: color-mix(in srgb, var(--c-primary) 18%, transparent);
+    box-shadow: inset -3px 0 0 var(--c-primary);
+  }
+}
+.reader-bookmark-target {
+  border-radius: 4px;
+  animation: readerBookmarkTarget 2.2s ease-out both;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
   width: 28px;
@@ -258,6 +270,11 @@ mark.hl {
 @media (prefers-reduced-motion: reduce) {
   .reader-tab-close {
     transition: none;
+  }
+  .reader-bookmark-target {
+    animation: none;
+    background-color: color-mix(in srgb, var(--c-primary) 15%, transparent);
+    box-shadow: inset -3px 0 0 var(--c-primary);
   }
 }
 

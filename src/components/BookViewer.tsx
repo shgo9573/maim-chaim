@@ -18,6 +18,7 @@ import ReaderContextIconRow from './ReaderContextIconRow';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
 import { normalizeReaderNavigationHistory, recordReaderNavigation, travelReaderNavigation } from '../utils/readerNavigationHistory';
+import { isBookmarkHighlightLine } from '../utils/bookmarkNavigation';
 import { decorateReaderLineWithPersonalNotes, groupReaderPersonalNotes, parseReaderPersonalNoteHref, selectReaderPersonalNotesForPreview } from '../utils/readerPersonalNotes';
 import ReaderNotePreview from './ReaderNotePreview';
 
@@ -33,6 +34,7 @@ const LineView = memo(function LineView({
   html,
   selected,
   isMatch,
+  bookmarkTarget,
   inline,
   isHead,
   showRef,
@@ -42,6 +44,7 @@ const LineView = memo(function LineView({
   html: string;
   selected: boolean;
   isMatch?: boolean;
+  bookmarkTarget?: boolean;
   inline: boolean;
   isHead: boolean;
   showRef?: boolean;
@@ -53,7 +56,7 @@ const LineView = memo(function LineView({
     <div
       data-line={line.lineIndex}
       onClick={() => onSelect(line.lineIndex)}
-      className={`cursor-text rounded transition-colors ${selected ? 'bg-primary/15' : ''} ${isMatch && !selected ? 'bg-primary/5' : ''} ${inline && !heading ? 'inline' : 'block'}`}
+      className={`cursor-text rounded transition-colors ${selected ? 'bg-primary/15' : ''} ${isMatch && !selected ? 'bg-primary/5' : ''} ${bookmarkTarget ? 'reader-bookmark-target' : ''} ${inline && !heading ? 'inline' : 'block'}`}
       style={{
         marginBottom: inline && !heading ? 0 : '0.15em',
         ...(isMatch ? { boxShadow: 'inset -3px 0 0 0 var(--c-primary)', paddingInlineEnd: 6 } : null),
@@ -1516,11 +1519,12 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                 {atStart && <div className="h-2" />}
                 {lines.map((l, i) => (
                   <LineView
-                    key={l.lineIndex}
+                    key={isBookmarkHighlightLine(hl, l.lineIndex) ? `${l.lineIndex}-${hl?.flashId ?? 0}` : l.lineIndex}
                     line={l}
                     html={processed[i]}
                     selected={selected === l.lineIndex}
                     isMatch={matchSet.has(l.lineIndex)}
+                    bookmarkTarget={isBookmarkHighlightLine(hl, l.lineIndex)}
                     inline={inline}
                     isHead={headIdx.has(l.lineIndex) && !l.heRef && l.content.length < 60}
                     showRef={!!settings.showLineRefs}
