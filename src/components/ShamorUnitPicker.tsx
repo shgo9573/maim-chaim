@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -31,7 +32,7 @@ interface MenuPosition {
   direction: 'rtl' | 'ltr';
 }
 
-const ROW_HEIGHT = 40;
+const ROW_HEIGHT = 36;
 const MAX_VISIBLE_ROWS = 8;
 const MENU_MAX_HEIGHT = 56 + ROW_HEIGHT * MAX_VISIBLE_ROWS + 24;
 
@@ -96,10 +97,18 @@ export function ShamorUnitPicker({
       const viewportHeight = document.documentElement.clientHeight || window.innerHeight;
       const direction = window.getComputedStyle(trigger).direction === 'ltr' ? 'ltr' : 'rtl';
       const availableWidth = Math.max(0, viewportWidth - 16);
-      const width = Math.min(
-        Math.max(rect.width, Math.min(440, availableWidth)),
-        availableWidth,
-      );
+      const measureCanvas = document.createElement('canvas');
+      const measureContext = measureCanvas.getContext('2d');
+      const preferredWidth = measureContext
+        ? (() => {
+            measureContext.font = window.getComputedStyle(trigger).font;
+            return Math.max(
+              150,
+              ...options.map((option) => measureContext.measureText(option.label).width + 48),
+            );
+          })()
+        : Math.max(150, ...options.map((option) => option.label.length * 8 + 48));
+      const width = Math.min(Math.max(rect.width, preferredWidth), availableWidth);
       const spaceBelow = Math.max(0, viewportHeight - rect.bottom - 12);
       const spaceAbove = Math.max(0, rect.top - 12);
       const opensBelow = spaceBelow >= MENU_MAX_HEIGHT || spaceBelow >= spaceAbove;
@@ -168,7 +177,7 @@ export function ShamorUnitPicker({
     closeMenu(true);
   };
 
-  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       closeMenu(true);
@@ -213,12 +222,12 @@ export function ShamorUnitPicker({
             closeMenu(true);
           }
         }}
-        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-lg bg-sec-container px-3 py-2 text-sm text-on-sec-container transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        className="flex min-h-10 w-full min-w-0 items-center gap-2 rounded-lg bg-sec-container ps-4 pe-2 py-2 text-sm text-on-sec-container transition-colors hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       >
         <span className="min-w-0 flex-1 truncate text-center">
           {value || 'בחירת יחידה'}
         </span>
-        <ChevronDown size={18} className="shrink-0" aria-hidden="true" />
+        <ChevronDown size={20} className="shrink-0" aria-hidden="true" />
       </button>
 
       {open && menuPosition && createPortal(
@@ -236,7 +245,7 @@ export function ShamorUnitPicker({
             height: menuPosition.height,
             zIndex: 1000,
           }}
-          className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-1 shadow-lg"
+          className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface shadow-lg"
         >
           <div className="shrink-0 px-2 pt-2 pb-1">
             <div className="relative">
@@ -259,7 +268,8 @@ export function ShamorUnitPicker({
                 onChange={(event) => updateQuery(event.target.value)}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="חיפוש"
-                className={`h-10 w-full rounded-lg bg-surface-2 px-3 text-sm text-on-surface outline-none focus-visible:ring-2 focus-visible:ring-primary ${menuPosition.direction === 'rtl' ? 'pr-10' : 'pl-10'}`}
+                style={{ backgroundColor: 'color-mix(in srgb, var(--c-on-surface) 6%, var(--c-surface))' }}
+                className={`h-10 w-full rounded-lg px-3 text-sm text-on-surface outline-none focus-visible:ring-2 focus-visible:ring-primary ${menuPosition.direction === 'rtl' ? 'pr-10' : 'pl-10'}`}
               />
             </div>
           </div>
