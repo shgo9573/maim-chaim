@@ -4016,3 +4016,57 @@ Commits חדשים ב־main שנבדקו:
 2. לבדוק אם אפשר להפיק תוויות דף/עמוד/דף גמרא באופן אמין מנתוני ה-Web הקיימים. כרגע `TocEntry` ו-`ContentLine` מספקים אינדקסי שורה, ולא הוכח מיפוי חד-חד-ערכי לעמוד/עמוד בבלי; אין להמציא מיפוי.
 3. לאחר מכן להמשיך לפער משמעותי נוסף במטריצת ההתאמה, ולא להמתין להשלמת כל תתי-האפשרויות בכלי זה.
 4. אין PDF; מנוע החיפוש, שירות החיפוש וחוזה ה-API של החיפוש לא נערכו. מאגר המקור וענפי arena לא שונו.
+
+
+## 26 בנובמבר 2026 — התאמת בורר טווח היחידות לחיפוש המעוגן של אוצריא
+
+### מניעת כפילות ומצב מאגרים
+- נקראו `idid.md`, `newbugs.md`, `AGENTS.md` ו-`package.json` מ-`main`.
+- `newbugs.md` ב-main אינו מכיל כרגע באג מוצר פתוח; קיימת בו רשומת CI היסטורית בלבד. ב-`arena/9b3e1906-maim-chaim` וב-`arena/9c1ba425-maim-chaim` הקובץ אינו קיים (404).
+- כל הענפים נבדקו: `main` = `5a1b9cdb4c4639da97fb05a14a76d7963f977eb0`; `arena/9b3e1906-maim-chaim` = `ee8a38c72d1e70461bc1750376660a9d15ea93a9`; `arena/9c1ba425-maim-chaim` = `c42bb45b318dbe1a5fc4ebc24f65af96d776df2d`. לא בוצעה כתיבה לענפי arena.
+- שני commits ה-main האחרונים לפני הריצה היו תיעוד ובדיקה של חיפוש יחידות (`664275fa`, `86d229f4`). הפיצ'ר עצמו נוסף ב-`9ed77b4a` וב-`b5cf13fe`; ההיסטוריה ב-`idid.md` כבר ציינה במפורש שהאתר משתמש ב-native `datalist` בעוד המקור משתמש ב-`AppDropdownField(enableSearch: true)`. זהו פער חזותי/אינטראקטיבי קונקרטי, ולכן הותר לחזור לאותו פיצ'ר ולא לשכפל את מימוש הטווח או את הלוגיקה.
+- מקור לקריאה בלבד: `Otzaria/otzaria:dev`, HEAD `4fe1973a4ae098d03b6b3eb8b080b2b0915ee8d7` (25.11.2026 23:46 UTC). שמונת ה-commits האחרונים נבדקו; לא נמצא שינוי מאוחר יותר ב-dev שמשנה את רכיב בורר הטווח שנבדק.
+
+### רכיב המקור המדויק
+- `lib/tools/shamor_zachor/widgets/mark_range_dialog.dart`, בפונקציה `_picker`: שני בוררי קצה משתמשים ב-`AppDropdownField<int>` עם `enableSearch: true`, תוויות `מ־` ו-`עד`, ובחירה לפי ערך יחידה מדויק.
+- `lib/widgets/misc/app_dropdown_field.dart`: הטריגר הוא `FilledButton.tonal`, גובה מינימלי 40px, ריפוד כיווני start=16/end=8, וחץ `chevron_down_24_regular`. התפריט נפתח באמצעות `showAnchoredAppSearchMenu`.
+- `lib/widgets/misc/app_popup_menu.dart`: תפריט חיפוש מעוגן לטריגר, offset של 4px, שדה חיפוש בראש החלונית, מיקוד אוטומטי, התאמת מיקום מעל/מתחת לטריגר, גלילה, בחירה וסגירה.
+- `packages/otzaria_context_menu/lib/src/menu_metrics.dart`: גובה שורת פריט 36px, ריפוד אופקי 12px, ריפוד אנכי לתפריט 8px, גופן 14px, אייקון 18px ורוחב מינימלי 150px.
+- במימוש המקור תפריט החיפוש מחשב גובה מרבי לפי שדה חיפוש 56px, עד 8 שורות, ריפוד התפריט ו-8px נוספים; רוחבו מחושב לפי התוכן ומוגבל ל-viewport. שדה החיפוש מקבל רקע של 6% מצבע onSurface.
+
+### השוואה לפני השינוי
+- באתר: `src/components/ShamorZachor.tsx` הציג שני `input type="search"` עם `datalist` משותף.
+- הדפדפן סיפק popup native שהמראה, הרוחב, מיקום הרשימה, שורות האפשרויות, סימון הבחירה והמקלדת שלו משתנים בין דפדפנים ומערכות הפעלה. הוא לא דמה לכפתור tonal של אוצריא או לתפריט החיפוש המעוגן.
+- מנגנוני `formatShamorUnitOption`, `findShamorUnitOptionIndex`, `handleRangeFromChange`, `handleRangeToChange` ו-`getShamorRangePreview` נשארו קיימים; הם לא הוחלפו ולא שונו סמנטית.
+
+### השינוי החזותי שבוצע
+- נוסף `src/components/ShamorUnitPicker.tsx`: בורר מותאם עם טריגר tonal בגובה 40px, טקסט נבחר ממורכז, חץ פתיחה, תפריט Portal מעוגן, חיפוש אוטומטי, רשימת אפשרויות מסומנת, וסגירה בלחיצה מחוץ לחלונית או Escape.
+- התפריט מתיישר לצד הנכון ב-RTL/LTR, מחשב רוחב לפי מדידת תוויות עם רצפה של 150px, נפתח מעל/מתחת לפי המקום הזמין ומוגבל לגבולות המסך. גובהו המרבי 368px לפי מדדי המקור; שורות הרשימה 36px.
+- שדה החיפוש קיבל אייקון בגודל 18px, גובה 40px ורקע CSS של 6% onSurface. הטריגר שומר על padding כיווני start=16/end=8.
+- הרשימה משתמשת ב-`@tanstack/react-virtual`, שכבר קיימת כתלות בפרויקט, כדי לטעון רק שורות נראות גם בספרים עם עד 5,000 יחידות. חיצי למעלה/למטה מזיזים את הבחירה וגוללים אותה לתוך התצוגה; Enter בוחר, Escape סוגר ומחזיר מיקוד, Tab סוגר, ומגע/לחיצה בוחרים שורה.
+- `src/components/ShamorZachor.tsx`: שני שדות הטווח הוחלפו ב-`ShamorUnitPicker`; ה-callbacks המקוריים נשמרו.
+- `src/index.css`: נוסף `@source "./components/ShamorUnitPicker.tsx";` כדי ש-Tailwind יפיק את מחלקות הממשק של הרכיב החדש.
+- `test/frontend/shamorUnitPickerPresentation.test.ts` (חדש): בדיקות חוזה UI לטריגר ולרשימה הנגישה, ניווט מקלדת, בחירה מדויקת, סגירה בלחיצה מחוץ לחלונית, וודאות שאין חזרה ל-`datalist`.
+- מיפוי האייקונים באתר: `Search`, `ChevronDown`, `Check` מ-Lucide. גליפי המקור `OtzariaIcons.search_24_regular` ו-`FluentIcons.chevron_down_24_regular` לא זמינים כחבילת Web בפרויקט, ולכן נשאר הבדל קטן בצורת הגליף; לא הועתקו נכסי המקור.
+
+### Commits
+- `60fde4939be961ba4c678fe8fbe0aef2ed9438bd` — החלפת datalist בבורר חיפוש מעוגן, רישום מקור Tailwind ובדיקות UI.
+- `7346b85990d1d2335e8cce707506cc63bd1e1cc9` — דיוק גובה שורה, גובה תפריט, רוחב ורקע החיפוש לפי מדדי המקור.
+- `5a1b9cdb4c4639da97fb05a14a76d7963f977eb0` — גלילת מקלדת לפריט הפעיל והתעלמות מגלילת הרשימה עצמה בעת חישוב מחדש של מיקום התפריט.
+- ה-HEAD של קוד הממשק בסיום: `5a1b9cdb4c4639da97fb05a14a76d7963f977eb0`.
+
+### בדיקות ופריסה
+- GitHub Actions Deploy Beta run `45869349565`, עבור commit `5a1b9cdb4c4639da97fb05a14a76d7963f977eb0`.
+- `npm run lint` / Typecheck project — עבר.
+- `npm run typecheck:frontend` — עבר.
+- `npm run test:frontend` — **259 עברו, 0 נכשלו**.
+- `npm run sync:vilna-html` ו-`npx vite build --base=/beta/` — עברו; Vite בנה 2,158 מודולים.
+- Configure SSH — עבר.
+- פריסת Beta נכשלה רק בשלב `Deploy only to the Beta directory`: SSH דיווח `REMOTE HOST IDENTIFICATION HAS CHANGED`; טביעת המפתח שהתקבלה היא `SHA256:6UnKGgaMk/ynuz8hkpiSvi1+fPbo3JwitlIpprH3kGY`, ו-rsync הסתיים בקוד 255. לא שונתה רשומת known_hosts, לא נערך GitHub Secret, ולא נעשתה פריסה ידנית. אין אישור שה-Beta עודכן. יש לאמת את טביעת המפתח בערוץ מהימן לפני שינוי סוד הפריסה.
+- לא בוצעה בדיקת דפדפן/צילום מסך ידנית בריצה זו; התאמת המיקום, RTL/LTR והמראה נבדקו סטטית ובדיקות אוטומטיות, לא בעין בדפדפן.
+
+### המשך
+1. לבצע בדיקת דפדפן במסך רחב ובמסך צר, RTL/LTR, מקלדת ומגע; לבדוק גם תוויות ארוכות, רשימה ריקה וגלילה של אלפי יחידות.
+2. אם נדרש דמיון glyph מדויק יותר, להוסיף מיפוי Web מורשה לאייקוני המקור במקום Lucide; אין להעתיק נכסים בלי בדיקת רישוי.
+3. לחסום פריסה עד שטביעת SSH תאומת ותעודכן בערוץ ההרשאות המתאים. אין לעקוף StrictHostKeyChecking.
+4. אין שינוי במנוע/שירות/API החיפוש, Backend, נתונים, אחסון, PDF, מאגר המקור, שרת או DNS.
