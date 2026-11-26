@@ -3926,3 +3926,41 @@ Commits חדשים ב־main שנבדקו:
 3. תצוגה מקדימה מרחפת לקישורים בעת ריחוף (כמו link_preview_utils.dart במקור).
 4. סנכרון `public/vilna-html/index.html` מול התבנית אם עדיין רלוונטי.
 5. אין PDF; מנוע החיפוש, שירות החיפוש וחוזי ה-API של החיפוש לא נערכו; לא נערך Backend; לא נגעו בשרת, DNS או פריסה.
+
+## 26 בנובמבר 2026 — תצוגה מקדימה ופתיחה ברקע להפניות בתפריט הקורא
+
+### מניעת כפילות ובדיקת המקור
+- נקראו idid.md, newbugs.md, AGENTS.md ו-package.json מ-main. ב-newbugs.md אין דיווחי מוצר פתוחים; קיימת רשומת CI ישנה על JSX ב-ShamorZachor, וה-build הנוכחי עבר לאחר תיקונה.
+- נבדקו commits האחרונים ב-main: הדגשת שורת סימנייה (1fc10fb), חיבור ראשי תיבות לתפריט (febbb29), תיקון מיקוד TabSearch (fd49d20) ופתיחת הפניות מתוך טקסט המפרשים (dd3c2af). משימת הממשק האחרונה שנבדקה היא התאמת דיאלוג שמור וזכור (5d536ab). לא שוכפלו עבודות אלה.
+- מקור הקריאה בלבד: Otzaria/otzaria:dev, HEAD 4fe1973a4ae098d03b6b3eb8b080b2b0915ee8d7 (25.11.2026 23:46 UTC). נבדקו lib/widgets/misc/link_context_menu_entry.dart, lib/widgets/misc/link_preview_overlay.dart, lib/text_book/utils/link_preview_utils.dart, lib/text_book/view/page_shape/simple_text_viewer.dart ו-lib/widgets/misc/app_context_menu.dart.
+- המקור מציג תצוגה מקדימה של תוכן הפניה בריחוף, עם השהיה, מיקום לצד פריט התפריט, השהיית סגירה במעבר לחלונית, קיבוע החלונית בעת לחיצה כדי לאפשר סימון/העתקה, ופתיחת היעד מהכותרת. הוחלט לממש את הפער הבא בתת-התפריט "קישורים" בקורא, שבו כבר קיים טקסט preview מקומי.
+
+### מימוש
+- src/components/ReaderLinkPreview.tsx (חדש): רכיב תצוגה מקדימה ב-Portal, נפתח לאחר השהיית ריחוף של 320ms או מיקוד מקלדת; מעבר מהפריט לחלונית אינו סוגר אותה מיד; לחיצה בגוף החלונית מקבעת אותה, ולחיצה מחוץ לה סוגרת; Escape סוגר. הכותרת פותחת את הספר בקדמת הבמה, וכפתור נפרד פותח אותו ברקע.
+- src/components/BookViewer.tsx: פריטי הפניות בתת-התפריט "קישורים" עטופים ברכיב החדש. לחיצה רגילה ממשיכה לפתוח בקדמת הבמה; לחיצה אמצעית פותחת ברקע; Shift+Enter מספק מסלול מקלדת לפתיחה ברקע. ספר חסום/לא מזוהה אינו מקבל פעולת פתיחה, ותצוגת preview מוסתרת כאשר אין יעד זמין.
+- src/utils/readerLinkPreview.ts (חדש): חישוב מיקום RTL/LTR, היפוך צד כשאין מקום, והגבלת רוחב/גובה/קואורדינטות לגבולות viewport.
+- test/frontend/readerLinkPreview.test.ts (חדש): 6 בדיקות למיקום RTL/LTR, היפוך צד, הצבה ליד תחתית המסך, מסך צר ו-viewport זעיר.
+- לא שונו בקשות API, נתוני קישורים או מנגנון החיפוש. לא בוצע שינוי Backend.
+
+### בדיקות ותוצאות
+- GitHub Actions Deploy Beta run 45836978112: npm run lint / Typecheck project — עבר; npm run typecheck:frontend — עבר; npm run test:frontend — 253 עברו, 0 נכשלו; Build Beta frontend — עבר; Configure SSH — עבר.
+- בריצה הראשונה (45836596381) אחת משש בדיקות המיקום נכשלה בגלל ציפייה שגויה ל-left=48 במסך 360px; בפועל המיקום הוגבל נכון ל-left=32 כדי לשמור 8px מרווח ימני. הציפייה תוקנה ב-commit d99ab102; הריצה המלאה שאחריה עברה 253/253.
+- פריסת Beta נכשלה בשלב Deploy only to the Beta directory ב-run 45836978112: REMOTE HOST IDENTIFICATION HAS CHANGED, fingerprint שהתקבל SHA256:6UnKGgaMk/ynuz8hkpiSvi1+fPbo3JwitlIpprH3kGY, ו-rsync הסתיים בקוד 255. זו אי-התאמה בין host key שמוגדר ב-GitHub Secrets לבין המפתח שמוצג כרגע בשרת. לא שונה known_hosts, secret, שרת או DNS ולא בוצעה פריסה ידנית. אין אישור שה-Beta עודכן.
+- לא בוצעה בדיקת דפדפן ידנית בריצה זו. בדיקות ה-CI מאמתות את הלוגיקה ואת הבנייה, לא את ההתנהגות החזותית בפועל.
+
+### Commits
+- c6922ad7e344918d19e5d955eb4728a3d3eaabd2 — תצוגה מקדימה ופתיחה ברקע להפניות בתפריט הקורא.
+- bfa7e83e3adef1a50a5df980075cef5ef3eaadf6 — תיקון טיפוס אירוע ברכיב.
+- d99ab102403fe26fab1b6c145b685092b388c05c — תיקון ציפיית מיקום במסך צר.
+
+### מפת ענפים בסיום
+- main: d99ab102403fe26fab1b6c145b685092b388c05c.
+- arena/9b3e1906-maim-chaim: ee8a38c72d1e70461bc1750376660a9d15ea93a9 — ללא שינוי; main מקדים ב-239 commits.
+- arena/9c1ba425-maim-chaim: c42bb45b318dbe1a5fc4ebc24f65af96d776df2d — ללא שינוי; main מקדים ב-237 commits.
+- Otzaria/otzaria:dev: 4fe1973a4ae098d03b6b3eb8b080b2b0915ee8d7 — מקור לקריאה בלבד.
+
+### המשך
+1. להוסיף תצוגה מקדימה גם לקישורים בגוף טקסט הקורא ובשורות מפרשים, תוך שימוש רק בסוגי הקישורים שאומתו במקור.
+2. להשלים בדיקת דפדפן של לחיצות ההפניה בחלונית המפרשים שהתווספו בריצת הבוקר.
+3. להמשיך לפער פונקציונלי נוסף במפת ההתאמה לאחר השלמת תצוגות הקישור.
+4. אין PDF; אין שינוי במנוע/שירות/API של החיפוש; אין שינוי במאגר המקור, בענפי arena, בשרת או ב-DNS.
