@@ -12,6 +12,8 @@ import {
   getShamorAddSearchResults,
   getShamorProgressSummary,
   getShamorRangePreview,
+  formatShamorUnitOption,
+  findShamorUnitOptionIndex,
   normalizeShamorZachorState,
   removeShamorColumn,
   removeTrackedShamorBook,
@@ -133,6 +135,15 @@ test('normalizes corrupt state and discards progress for unknown units or column
   assert.deepEqual(Object.keys(normalized.books), ['12']);
   assert.deepEqual(normalized.books['12'].progress.learn, ['u1']);
   assert.equal(normalized.books['12'].columns.length, 1);
+});
+
+test('searchable unit options resolve exact labels without accepting partial text', () => {
+  const units = sample().units;
+  const option = formatShamorUnitOption(units[1], 1);
+  assert.equal(option, '2. מסכת · פרק א · משנה ב');
+  assert.equal(findShamorUnitOptionIndex(units, option), 1);
+  assert.equal(findShamorUnitOptionIndex(units, 'משנה ב'), -1);
+  assert.equal(findShamorUnitOptionIndex(units, '  '), -1);
 });
 
 test('range preview uses unit labels and counts both endpoints in either direction', () => {
