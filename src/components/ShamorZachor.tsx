@@ -6,7 +6,7 @@ import type { BookItem, ShamorZachorTrackedBook } from '../types';
 import type { LibNode } from '../utils/library';
 import {
   addShamorColumn, addTrackedShamorBook, applyShamorRange, buildShamorZachorUnits,
-  getShamorAddSearchResults, getShamorProgressSummary, getShamorRangePreview, MAX_TRACKED_BOOKS,
+  getShamorAddSearchResults, getShamorProgressSummary, getShamorRangePreview, formatShamorUnitOption, findShamorUnitOptionIndex, MAX_TRACKED_BOOKS,
   normalizeShamorZachorState, removeShamorColumn,
   removeTrackedShamorBook, renameShamorColumn, setShamorColumnAll, toggleShamorUnit,
   updateTrackedShamorBook,
@@ -33,6 +33,8 @@ export default function ShamorZachor() {
   const [rangeFrom, setRangeFrom] = useState('0');
   const [rangeTo, setRangeTo] = useState('');
   const [rangeAction, setRangeAction] = useState<'mark' | 'unmark'>('mark');
+  const [rangeFromQuery, setRangeFromQuery] = useState('');
+  const [rangeToQuery, setRangeToQuery] = useState('');
 
   const books = Object.values(state.books);
   const selected = selectedId ? state.books[selectedId] : undefined;
@@ -215,13 +217,32 @@ export default function ShamorZachor() {
     setRangeFrom('0');
     setRangeTo('');
     setRangeAction('mark');
+    setRangeFromQuery('');
+    setRangeToQuery('');
   };
 
   if (selected) {
     const progress = summary(selected);
     const activeRangeColumn = selected.columns.some((column) => column.id === rangeColumn) ? rangeColumn : selected.columns[0].id;
     const rangeToIndex = rangeTo === '' ? selected.units.length - 1 : Number(rangeTo);
-    const rangePreview = getShamorRangePreview(selected, Number(rangeFrom), rangeToIndex);
+    const rangeFromIndex = Number(rangeFrom);
+    const rangeFromValue = rangeFromQuery || (selected.units[rangeFromIndex]
+      ? formatShamorUnitOption(selected.units[rangeFromIndex], rangeFromIndex)
+      : '');
+    const rangeToValue = rangeToQuery || (selected.units[rangeToIndex]
+      ? formatShamorUnitOption(selected.units[rangeToIndex], rangeToIndex)
+      : '');
+    const handleRangeFromChange = (value: string) => {
+      setRangeFromQuery(value);
+      const index = findShamorUnitOptionIndex(selected.units, value);
+      setRangeFrom(index >= 0 ? String(index) : 'invalid');
+    };
+    const handleRangeToChange = (value: string) => {
+      setRangeToQuery(value);
+      const index = findShamorUnitOptionIndex(selected.units, value);
+      setRangeTo(index >= 0 ? String(index) : 'invalid');
+    };
+    const rangePreview = getShamorRangePreview(selected, rangeFromIndex, rangeToIndex);
     const applyRange = () => {
       if (!rangePreview.valid) return toast('יש לבחור טווח יחידות תקין');
       updateBook(selected.bookId, (book) => applyShamorRange(
@@ -253,11 +274,14 @@ export default function ShamorZachor() {
             <select value={activeRangeColumn} onChange={(e)=>setRangeColumn(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.columns.map((c)=><option key={c.id} value={c.id}>{c.label}</option>)}</select>
           </label>
           <label className="min-w-0 text-xs text-on-variant">מ־
-            <select aria-label="יחידת התחלה" value={rangeFrom} onChange={(e)=>setRangeFrom(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.units.map((unit,index)=><option key={unit.id} value={index}>{unit.label}</option>)}</select>
+            <input type="search" list="shamor-unit-options" aria-label="יחידת התחלה" value={rangeFromValue} onChange={(e)=>handleRangeFromChange(e.target.value)} placeholder="חפש יחידה..." autoComplete="off" className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm"/>
           </label>
           <label className="min-w-0 text-xs text-on-variant">עד
-            <select aria-label="יחידת סיום" value={rangeTo === '' ? String(selected.units.length - 1) : rangeTo} onChange={(e)=>setRangeTo(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.units.map((unit,index)=><option key={unit.id} value={index}>{unit.label}</option>)}</select>
+            <input type="search" list="shamor-unit-options" aria-label="יחידת סיום" value={rangeToValue} onChange={(e)=>handleRangeToChange(e.target.value)} placeholder="חפש יחידה..." autoComplete="off" className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm"/>
           </label>
+          <datalist id="shamor-unit-options">
+            {selected.units.map((unit,index)=><option key={unit.id} value={formatShamorUnitOption(unit,index)}/>)}
+          </datalist>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div role="group" aria-label="פעולת סימון טווח" className="inline-flex shrink-0 rounded-lg border border-outline-variant bg-surface p-1">
