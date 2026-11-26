@@ -31,5 +31,6 @@ test('unit picker keeps exact selection callbacks and closes on outside interact
   assert.ok(picker.includes('onChange(option.value)'));
   assert.ok(picker.includes("document.addEventListener('pointerdown'"));
   assert.ok(picker.includes('useVirtualizer'));
+  assert.ok(picker.includes("virtualizer.scrollToIndex(nextIndex, { align: 'auto' })"));
   assert.ok(screen.includes('findShamorUnitOptionIndex(selected.units, value)'));
 });

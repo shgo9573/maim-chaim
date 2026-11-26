@@ -129,12 +129,18 @@ export function ShamorUnitPicker({
       setMenuPosition({ top, left, width, height, direction });
     };
 
+    const onScroll = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && popupRef.current?.contains(target)) return;
+      updatePosition();
+    };
+
     updatePosition();
     window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [open]);
 
@@ -190,10 +196,14 @@ export function ShamorUnitPicker({
     if (filteredOptions.length === 0) return;
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setActiveIndex((current) => Math.min(filteredOptions.length - 1, current + 1));
+      const nextIndex = Math.min(filteredOptions.length - 1, activeIndex + 1);
+      setActiveIndex(nextIndex);
+      virtualizer.scrollToIndex(nextIndex, { align: 'auto' });
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setActiveIndex((current) => Math.max(0, current - 1));
+      const nextIndex = Math.max(0, activeIndex - 1);
+      setActiveIndex(nextIndex);
+      virtualizer.scrollToIndex(nextIndex, { align: 'auto' });
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const option = filteredOptions[activeIndex];
