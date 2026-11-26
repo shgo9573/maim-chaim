@@ -11,6 +11,8 @@ import { findUniqueCommentaryBook, getCommentaryContextMenuActions, hasNikudOrTe
 import { getPersonalNoteContextMenuActions, type PersonalNoteContextMenuActionId } from '../utils/personalNoteContextMenu';
 import { getPersonalNoteEditorContextMenuActions, type PersonalNoteEditorContextMenuActionId } from '../utils/personalNoteEditorContextMenu';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
+import { planReaderLinkOpen } from '../utils/readerLinkOpen';
+import { readerLinkCanOpenInBackground } from '../utils/readerLinks';
 
 interface BookFilterPreference {
   hidden: string[];
@@ -65,7 +67,7 @@ function isRashiOrTosafot(name: string): boolean {
 
 export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, context = 'text' }: { bookId: ID; bookTitle: string; line: number; heRef?: string; opts: TextOpts; context?: 'text' | 'tzurat-hadaf' }) {
   const isTzuratHaDaf = context === 'tzurat-hadaf';
-  const { library, settings, updateSettings, openBookByTitle, openBookInBackground, openSearch, notes, saveNote, deleteNote, toast } = useApp();
+  const { library, settings, updateSettings, openBookByTitle, openBookInBackground, openBookInNewTab, openSearch, notes, saveNote, deleteNote, toast } = useApp();
   const [data, setData] = useState<LinksResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +84,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
   const [contextMenu, setContextMenu] = useState<CommentaryContextMenuState | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ left: number; top: number; maxWidth: number; maxHeight: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const panelContentRef = useRef<HTMLDivElement>(null);
   const menuReturnFocusRef = useRef<HTMLElement | null>(null);
   const touchTimerRef = useRef<number | null>(null);
   const touchMoveHandlerRef = useRef<((event: PointerEvent) => void) | null>(null);
@@ -236,6 +239,60 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
       targetLine,
     );
     return true;
+  };
+
+  // Opens a link found inside commentary text (references to other books, external
+  // links or in-content anchors) using the same planning rules as the book reader.
+  const openCommentaryLink = (href: string, inBackground: boolean) => {
+    const plan = planReaderLinkOpen(href, library ? library.books : null);
+
+    if (plan.status === 'unsupported' || plan.status === 'ambiguous' || plan.status === 'missing' || plan.status === 'excluded') {
+      if (plan.message) toast(plan.message);
+      return;
+    }
+
+    if (plan.status === 'library-unavailable') {
+      toast('הספרייה אינה זמינה');
+      return;
+    }
+
+    if (plan.status === 'external') {
+      if (/^mailto:/iu.test(plan.href)) {
+        window.location.assign(plan.href);
+        return;
+      }
+      const opened = window.open(plan.href, '_blank', 'noopener,noreferrer');
+      if (!opened) toast('הדפדפן חסם את פתיחת הקישור');
+      return;
+    }
+
+    if (plan.status === 'anchor') {
+      const root = panelContentRef.current;
+      const anchorId = plan.target.headings.join('#');
+      const anchor = root?.querySelector<HTMLElement>(`[id="${CSS.escape(anchorId)}"]`);
+      if (anchor) {
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+        anchor.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+      } else {
+        toast('היעד הפנימי לא נמצא');
+      }
+      return;
+    }
+
+    const bookRef = { id: plan.book.id, title: plan.book.title, categoryPath: plan.book.categoryPath };
+    if (inBackground && readerLinkCanOpenInBackground(plan.target)) {
+      openBookInBackground(bookRef, plan.line, undefined, { insertAdjacent: true });
+    } else {
+      openBookInNewTab(bookRef, plan.line, undefined, { textOnly: true, insertAdjacent: true });
+    }
+  };
+
+  const handleCommentaryLinkClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const anchor = target?.closest<HTMLAnchorElement>('a[href]');
+    if (!anchor || !event.currentTarget.contains(anchor)) return;
+    event.preventDefault();
+    openCommentaryLink(anchor.getAttribute('href') || '', false);
   };
 
   const runContextMenuAction = async (
@@ -649,7 +706,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
         </div>
       )}
 
-      <div dir="rtl" className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div ref={panelContentRef} dir="rtl" className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {/* personal notes */}
         <section className="mb-3 rounded-xl border border-dashed border-outline-variant bg-surface-1 px-2.5 py-1.5">
           <div className="flex items-center justify-between">
@@ -819,6 +876,12 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                       if (event.button !== 1) return;
                       event.preventDefault();
                       event.stopPropagation();
+                      const linkTarget = event.target instanceof Element ? event.target : null;
+                      const linkAnchor = linkTarget?.closest<HTMLAnchorElement>('a[href]');
+                      if (linkAnchor && event.currentTarget.contains(linkAnchor)) {
+                        openCommentaryLink(linkAnchor.getAttribute('href') || '', true);
+                        return;
+                      }
                       openCommentaryInBackground(src, l.line);
                     }}
                     onKeyDown={(event) => {
@@ -839,10 +902,13 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                       longPressTriggeredRef.current = false;
                     }}
                     onClickCapture={(event) => {
-                      if (!longPressTriggeredRef.current) return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      longPressTriggeredRef.current = false;
+                      if (longPressTriggeredRef.current) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        longPressTriggeredRef.current = false;
+                        return;
+                      }
+                      handleCommentaryLinkClickCapture(event);
                     }}
                     className="book-text group relative mb-2 border-r-2 border-outline-variant py-0.5 pr-3 pl-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
                     style={{ fontFamily: fontStack(settings.commentaryFontFamily), fontSize: settings.commentaryFontSize, lineHeight: 1.55 }}

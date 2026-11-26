@@ -11,6 +11,7 @@ import { hebrewNumber, masechtaForName, parseDafRef } from '../utils/talmud';
 import { EXCLUDED_BOOK_NOTICE, isExcludedBook } from '../utils/bookFilter';
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 import { parseReaderLinkTarget, readerLinkCanOpenInBackground } from '../utils/readerLinks';
+import { planReaderLinkOpen } from '../utils/readerLinkOpen';
 import { findTocLine } from '../utils/studyLinks';
 import { findUniqueReaderCommentaryBook, groupReaderCommentaryLinks } from '../utils/readerCommentaryContextMenu';
 import { groupReaderReferenceLinks } from '../utils/readerReferenceContextMenu';
@@ -853,26 +854,32 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const addMark = () => addMarkAt(selected ?? topLine);
 
   const openReaderLink = async (href: string, inBackground = false) => {
-    const target = parseReaderLinkTarget(href);
-    if (!target) {
-      toast('הקישור אינו נתמך');
+    const plan = planReaderLinkOpen(href, library ? library.books : null);
+
+    if (plan.status === 'unsupported' || plan.status === 'ambiguous' || plan.status === 'missing' || plan.status === 'excluded') {
+      if (plan.message) toast(plan.message);
       return;
     }
 
-    if (target.kind === 'external') {
-      if (/^mailto:/iu.test(target.href)) {
-        window.location.assign(target.href);
+    if (plan.status === 'library-unavailable') {
+      toast(libraryLoading ? 'הספרייה עדיין נטענת, נסה שוב בעוד רגע' : 'הספרייה אינה זמינה');
+      return;
+    }
+
+    if (plan.status === 'external') {
+      if (/^mailto:/iu.test(plan.href)) {
+        window.location.assign(plan.href);
         return;
       }
-      const opened = window.open(target.href, '_blank', 'noopener,noreferrer');
+      const opened = window.open(plan.href, '_blank', 'noopener,noreferrer');
       if (!opened) toast('הדפדפן חסם את פתיחת הקישור');
       return;
     }
 
-    if (target.kind === 'anchor') {
+    if (plan.status === 'anchor') {
       if (inBackground) return;
       const root = scRef.current;
-      const anchorId = target.headings.join('#');
+      const anchorId = plan.target.headings.join('#');
       const anchor = root
         ? Array.from(root.querySelectorAll<HTMLElement>('[id]')).find((element) => element.id === anchorId)
         : undefined;
@@ -883,7 +890,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       }
       let targetLine: number | undefined;
       if (toc) {
-        for (const heading of [...target.headings].reverse()) {
+        for (const heading of [...plan.target.headings].reverse()) {
           targetLine = findTocLine(toc, [heading]);
           if (targetLine !== undefined) break;
         }
@@ -896,68 +903,29 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       return;
     }
 
-    if (!library) {
-      toast(libraryLoading ? 'הספרייה עדיין נטענת, נסה שוב בעוד רגע' : 'הספרייה אינה זמינה');
-      return;
-    }
-
-    let targetBook: BookItem | undefined;
-    let targetLine = 1;
-
-    if (target.kind === 'book') {
-      const matches = library.books.filter((candidate) =>
-        candidate.title.trim() === target.title.trim() && !isExcludedBook(candidate),
-      );
-      if (matches.length !== 1) {
-        toast(matches.length > 1
-          ? 'הקישור אינו חד-משמעי: נמצאו כמה ספרים בעלי אותו שם'
-          : 'הספר "' + target.title + '" לא נמצא בספרייה');
-        return;
-      }
-      targetBook = matches[0];
-      if (target.headings.length > 0) {
-        try {
-          const targetToc = await api.toc(targetBook.id);
-          let headingLine: number | undefined;
-          for (const heading of [...target.headings].reverse()) {
-            headingLine = findTocLine(targetToc, [heading]);
-            if (headingLine !== undefined) break;
-          }
-          if (headingLine === undefined) {
-            toast('לא נמצאה הכותרת המבוקשת; הספר ייפתח בתחילתו');
-          } else {
-            targetLine = headingLine;
-          }
-        } catch {
-          toast('לא ניתן לטעון את תוכן העניינים; הספר ייפתח בתחילתו');
+    let targetLine = plan.line;
+    if (plan.target.kind === 'book' && plan.target.headings.length > 0) {
+      try {
+        const targetToc = await api.toc(plan.book.id);
+        let headingLine: number | undefined;
+        for (const heading of [...plan.target.headings].reverse()) {
+          headingLine = findTocLine(targetToc, [heading]);
+          if (headingLine !== undefined) break;
         }
+        if (headingLine === undefined) {
+          toast('לא נמצאה הכותרת המבוקשת; הספר ייפתח בתחילתו');
+        } else {
+          targetLine = headingLine;
+        }
+      } catch {
+        toast('לא ניתן לטעון את תוכן העניינים; הספר ייפתח בתחילתו');
       }
-    } else if (target.kind === 'inline-book') {
-      const matches = library.books.filter((candidate) =>
-        candidate.title.trim() === target.title.trim() && !isExcludedBook(candidate),
-      );
-      if (matches.length !== 1) {
-        toast(matches.length > 1
-          ? 'הקישור אינו חד-משמעי: נמצאו כמה ספרים בעלי אותו שם'
-          : 'הספר "' + target.title + '" לא נמצא בספרייה');
-        return;
-      }
-      targetBook = matches[0];
-      targetLine = target.line;
-    } else if (target.kind === 'book-id') {
-      targetBook = library.books.find((candidate) => String(candidate.id) === target.id);
-      targetLine = target.line ?? 1;
-    }
-
-    if (!targetBook || isExcludedBook(targetBook)) {
-      toast(targetBook ? EXCLUDED_BOOK_NOTICE : 'ספר היעד של הקישור אינו זמין בספרייה');
-      return;
     }
 
     const bookRef = {
-      id: targetBook.id,
-      title: targetBook.title,
-      categoryPath: targetBook.categoryPath,
+      id: plan.book.id,
+      title: plan.book.title,
+      categoryPath: plan.book.categoryPath,
     };
     if (inBackground) openBookInBackground(bookRef, targetLine, undefined, { insertAdjacent: true });
     else openBookInNewTab(bookRef, targetLine, undefined, { textOnly: true, insertAdjacent: true });
