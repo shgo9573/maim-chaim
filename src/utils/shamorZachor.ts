@@ -269,6 +269,49 @@ export function applyShamorRange(
   });
 }
 
+export interface ShamorRangePreview {
+  valid: boolean;
+  fromIndex: number;
+  toIndex: number;
+  count: number;
+  fromLabel: string;
+  toLabel: string;
+}
+
+/** Preview of the inclusive range selected in the source-compatible mark-range dialog. */
+export function getShamorRangePreview(
+  book: ShamorZachorTrackedBook,
+  fromIndex: number,
+  toIndex: number,
+): ShamorRangePreview {
+  const units = book.units;
+  const valid = units.length > 0
+    && Number.isSafeInteger(fromIndex)
+    && Number.isSafeInteger(toIndex)
+    && fromIndex >= 0
+    && toIndex >= 0
+    && fromIndex < units.length
+    && toIndex < units.length;
+  if (!valid) {
+    return {
+      valid: false,
+      fromIndex: -1,
+      toIndex: -1,
+      count: 0,
+      fromLabel: '',
+      toLabel: '',
+    };
+  }
+  return {
+    valid: true,
+    fromIndex,
+    toIndex,
+    count: Math.abs(toIndex - fromIndex) + 1,
+    fromLabel: units[fromIndex].label,
+    toLabel: units[toIndex].label,
+  };
+}
+
 export function addShamorColumn(book: ShamorZachorTrackedBook, label: string, id: string): ShamorZachorTrackedBook {
   const trimmed = cleanText(label, 80);
   const safeId = cleanText(id, 80);
