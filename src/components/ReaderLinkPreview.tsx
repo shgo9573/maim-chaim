@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { placeReaderLinkPreview } from '../utils/readerLinkPreview';
@@ -108,7 +108,7 @@ export default function ReaderLinkPreview({
 
   useEffect(() => () => clearTimers(), []);
 
-  const handleAuxClick = (event: React.MouseEvent<HTMLSpanElement>) => {
+  const handleAuxClick = (event: ReactMouseEvent<HTMLSpanElement>) => {
     if (event.button !== 1) return;
     event.preventDefault();
     event.stopPropagation();
