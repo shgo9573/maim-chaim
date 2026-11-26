@@ -23,6 +23,7 @@
 @source "./components/MoreScreen.tsx";
 @source "./components/MeasurementConverter.tsx";
 @source "./components/ShamorZachor.tsx";
+@source "./components/ShamorUnitPicker.tsx";
 @source "./components/NavRail.tsx";
 @source "./components/ReadingScreen.tsx";
 @source "./components/TabSearch.tsx";
