@@ -23,6 +23,7 @@ import { normalizeReaderNavigationHistory, recordReaderNavigation, travelReaderN
 import { isBookmarkHighlightLine } from '../utils/bookmarkNavigation';
 import { decorateReaderLineWithPersonalNotes, groupReaderPersonalNotes, parseReaderPersonalNoteHref, selectReaderPersonalNotesForPreview } from '../utils/readerPersonalNotes';
 import ReaderNotePreview from './ReaderNotePreview';
+import ReaderLinkPreview from './ReaderLinkPreview';
 
 const CHUNK = 200;
 const PRELOAD_MARGIN = '2400px 0px';
@@ -1868,37 +1869,59 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
                         ? EXCLUDED_BOOK_NOTICE
                         : '';
                   const referenceLabel = item.reference || ('שורה ' + item.line);
+                  const openReference = () => {
+                    if (!targetBook || unavailableReason) return;
+                    setContextMenu(null);
+                    setCommentaryMenuExpanded(false);
+                    setReferenceMenuExpanded(false);
+                    openBookInNewTab(targetBook, item.line);
+                  };
+                  const openReferenceInBackground = () => {
+                    if (!targetBook || unavailableReason) return;
+                    setContextMenu(null);
+                    setCommentaryMenuExpanded(false);
+                    setReferenceMenuExpanded(false);
+                    openBookInBackground(targetBook, item.line);
+                  };
                   return (
-                    <button
+                    <ReaderLinkPreview
                       key={item.key}
-                      ref={item.key === firstAvailableReferenceKey ? referenceMenuFirstItemRef : undefined}
-                      type="button"
-                      role="menuitem"
-                      disabled={Boolean(unavailableReason)}
-                      title={unavailableReason || item.preview || item.title}
-                      aria-label={item.title + ', ' + item.categoryLabel + ', ' + referenceLabel}
-                      className="flex w-full items-start gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-                      onClick={() => {
-                        if (!targetBook || unavailableReason) return;
-                        setContextMenu(null);
-                        setCommentaryMenuExpanded(false);
-                        setReferenceMenuExpanded(false);
-                        openBookInNewTab(targetBook, item.line);
-                      }}
+                      title={item.title}
+                      subtitle={item.categoryLabel}
+                      reference={referenceLabel}
+                      preview={targetBook && !isExcludedBook(targetBook) ? item.preview : ''}
+                      onOpen={openReference}
+                      onOpenInBackground={openReferenceInBackground}
                     >
-                      <Link2 size={18} className="mt-0.5 shrink-0" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{item.title}</span>
-                        <span className="block text-xs text-on-variant">
-                          {item.categoryLabel} · {referenceLabel}
-                        </span>
-                        {item.preview && (
-                          <span className="mt-0.5 block line-clamp-2 text-xs text-on-variant">
-                            {item.preview}
+                      <button
+                        ref={item.key === firstAvailableReferenceKey ? referenceMenuFirstItemRef : undefined}
+                        type="button"
+                        role="menuitem"
+                        disabled={Boolean(unavailableReason)}
+                        title={unavailableReason || item.preview || item.title}
+                        aria-label={item.title + ', ' + item.categoryLabel + ', ' + referenceLabel}
+                        className="flex w-full items-start gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter' || !event.shiftKey) return;
+                          event.preventDefault();
+                          openReferenceInBackground();
+                        }}
+                        onClick={openReference}
+                      >
+                        <Link2 size={18} className="mt-0.5 shrink-0" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{item.title}</span>
+                          <span className="block text-xs text-on-variant">
+                            {item.categoryLabel} · {referenceLabel}
                           </span>
-                        )}
-                      </span>
-                    </button>
+                          {item.preview && (
+                            <span className="mt-0.5 block line-clamp-2 text-xs text-on-variant">
+                              {item.preview}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    </ReaderLinkPreview>
                   );
                 })}
               </div>
