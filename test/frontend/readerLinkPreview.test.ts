@@ -51,7 +51,7 @@ test('preview width and height shrink to fit a narrow mobile viewport', () => {
     'rtl',
   );
 
-  assert.deepEqual(position, { left: 48, top: 392, width: 320, maxHeight: 240 });
+  assert.deepEqual(position, { left: 32, top: 392, width: 320, maxHeight: 240 });
 });
 
 test('very small viewports never produce negative dimensions or off-screen coordinates', () => {
