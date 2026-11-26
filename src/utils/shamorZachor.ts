@@ -269,6 +269,21 @@ export function applyShamorRange(
   });
 }
 
+/** Stable, human-readable option value for the searchable unit picker. */
+export function formatShamorUnitOption(unit: ShamorZachorUnit, index: number): string {
+  return `${index + 1}. ${unit.label}`;
+}
+
+/** Resolve only an exact option value; partial search text is never applied as a range. */
+export function findShamorUnitOptionIndex(
+  units: readonly ShamorZachorUnit[],
+  value: string,
+): number {
+  const normalized = value.trim();
+  if (!normalized) return -1;
+  return units.findIndex((unit, index) => formatShamorUnitOption(unit, index) === normalized);
+}
+
 export interface ShamorRangePreview {
   valid: boolean;
   fromIndex: number;
