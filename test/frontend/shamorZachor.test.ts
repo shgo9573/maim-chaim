@@ -11,6 +11,7 @@ import {
   createTrackedShamorBook,
   getShamorAddSearchResults,
   getShamorProgressSummary,
+  getShamorRangePreview,
   normalizeShamorZachorState,
   removeShamorColumn,
   removeTrackedShamorBook,
@@ -132,6 +133,31 @@ test('normalizes corrupt state and discards progress for unknown units or column
   assert.deepEqual(Object.keys(normalized.books), ['12']);
   assert.deepEqual(normalized.books['12'].progress.learn, ['u1']);
   assert.equal(normalized.books['12'].columns.length, 1);
+});
+
+test('range preview uses unit labels and counts both endpoints in either direction', () => {
+  const current = sample();
+  const forward = getShamorRangePreview(current, 0, 2);
+  assert.deepEqual(forward, {
+    valid: true,
+    fromIndex: 0,
+    toIndex: 2,
+    count: 3,
+    fromLabel: 'מסכת · פרק א · משנה א',
+    toLabel: 'מסכת · פרק ב',
+  });
+  const reverse = getShamorRangePreview(current, 2, 0);
+  assert.equal(reverse.count, 3);
+  assert.equal(reverse.fromLabel, 'מסכת · פרק ב');
+  assert.equal(reverse.toLabel, 'מסכת · פרק א · משנה א');
+});
+
+test('range preview rejects empty and out-of-range selections', () => {
+  const current = sample();
+  assert.equal(getShamorRangePreview(current, -1, 1).valid, false);
+  assert.equal(getShamorRangePreview(current, 0, current.units.length).valid, false);
+  assert.equal(getShamorRangePreview(current, 0.5, 1).valid, false);
+  assert.equal(getShamorRangePreview({ ...current, units: [] }, 0, 0).valid, false);
 });
 
 test('summary requires every unit in every column for full completion', () => {
