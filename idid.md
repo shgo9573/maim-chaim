@@ -3952,11 +3952,12 @@ Commits חדשים ב־main שנבדקו:
 - c6922ad7e344918d19e5d955eb4728a3d3eaabd2 — תצוגה מקדימה ופתיחה ברקע להפניות בתפריט הקורא.
 - bfa7e83e3adef1a50a5df980075cef5ef3eaadf6 — תיקון טיפוס אירוע ברכיב.
 - d99ab102403fe26fab1b6c145b685092b388c05c — תיקון ציפיית מיקום במסך צר.
+- 84fa52ee442b7e8fd6b7836ebf07826d5a12968c — עדכון יומן הפיתוח.
 
 ### מפת ענפים בסיום
-- main: d99ab102403fe26fab1b6c145b685092b388c05c.
-- arena/9b3e1906-maim-chaim: ee8a38c72d1e70461bc1750376660a9d15ea93a9 — ללא שינוי; main מקדים ב-239 commits.
-- arena/9c1ba425-maim-chaim: c42bb45b318dbe1a5fc4ebc24f65af96d776df2d — ללא שינוי; main מקדים ב-237 commits.
+- main מכיל את commits הקוד c6922ad, bfa7e83 ו-d99ab10 ואת commit התיעוד 84fa52e.
+- arena/9b3e1906-maim-chaim: ee8a38c72d1e70461bc1750376660a9d15ea93a9 — ללא שינוי.
+- arena/9c1ba425-maim-chaim: c42bb45b318dbe1a5fc4ebc24f65af96d776df2d — ללא שינוי.
 - Otzaria/otzaria:dev: 4fe1973a4ae098d03b6b3eb8b080b2b0915ee8d7 — מקור לקריאה בלבד.
 
 ### המשך
