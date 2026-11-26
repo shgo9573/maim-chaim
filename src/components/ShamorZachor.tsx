@@ -6,7 +6,7 @@ import type { BookItem, ShamorZachorTrackedBook } from '../types';
 import type { LibNode } from '../utils/library';
 import {
   addShamorColumn, addTrackedShamorBook, applyShamorRange, buildShamorZachorUnits,
-  getShamorAddSearchResults, getShamorProgressSummary, MAX_TRACKED_BOOKS,
+  getShamorAddSearchResults, getShamorProgressSummary, getShamorRangePreview, MAX_TRACKED_BOOKS,
   normalizeShamorZachorState, removeShamorColumn,
   removeTrackedShamorBook, renameShamorColumn, setShamorColumnAll, toggleShamorUnit,
   updateTrackedShamorBook,
@@ -30,8 +30,9 @@ export default function ShamorZachor() {
   const [error, setError] = useState('');
   const [columnLabel, setColumnLabel] = useState('');
   const [rangeColumn, setRangeColumn] = useState('learn');
-  const [rangeFrom, setRangeFrom] = useState('1');
-  const [rangeTo, setRangeTo] = useState('1');
+  const [rangeFrom, setRangeFrom] = useState('0');
+  const [rangeTo, setRangeTo] = useState('');
+  const [rangeAction, setRangeAction] = useState<'mark' | 'unmark'>('mark');
 
   const books = Object.values(state.books);
   const selected = selectedId ? state.books[selectedId] : undefined;
@@ -209,14 +210,27 @@ export default function ShamorZachor() {
     persist(removeTrackedShamorBook(state, book.bookId)); setSelectedId(null); toast('הספר הוסר מהמעקב');
   };
   const openAt = (book: ShamorZachorTrackedBook, line: number) => openBook({ id: book.bookId, title: book.title, categoryPath: book.categoryPath }, line);
+  const selectTrackedBook = (bookId: string) => {
+    setSelectedId(bookId);
+    setRangeFrom('0');
+    setRangeTo('');
+    setRangeAction('mark');
+  };
 
   if (selected) {
     const progress = summary(selected);
     const activeRangeColumn = selected.columns.some((column) => column.id === rangeColumn) ? rangeColumn : selected.columns[0].id;
-    const applyRange = (checked: boolean) => {
-      const from = Number(rangeFrom), to = Number(rangeTo);
-      if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < 1 || from > selected.units.length || to > selected.units.length) return toast('יש לבחור טווח יחידות תקין');
-      updateBook(selected.bookId, (book) => applyShamorRange(book, activeRangeColumn, from - 1, to - 1, checked));
+    const rangeToIndex = rangeTo === '' ? selected.units.length - 1 : Number(rangeTo);
+    const rangePreview = getShamorRangePreview(selected, Number(rangeFrom), rangeToIndex);
+    const applyRange = () => {
+      if (!rangePreview.valid) return toast('יש לבחור טווח יחידות תקין');
+      updateBook(selected.bookId, (book) => applyShamorRange(
+        book,
+        activeRangeColumn,
+        rangePreview.fromIndex,
+        rangePreview.toIndex,
+        rangeAction === 'mark',
+      ));
     };
     return <section dir="rtl" className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant pb-3">
@@ -233,12 +247,30 @@ export default function ShamorZachor() {
         <button type="button" disabled={!columnLabel.trim() || selected.columns.length >= 8} onClick={()=>{updateBook(selected.bookId,(book)=>addShamorColumn(book,columnLabel,newColumnId()));setColumnLabel('');}} className="rounded-lg bg-sec-container px-3 py-2 text-sm text-on-sec-container disabled:opacity-40"><Plus className="ml-1 inline" size={15}/> הוסף עמודה</button>
         <span className="text-xs text-on-variant">{selected.columns.length}/8</span>
       </div>
-      <div className="flex flex-wrap items-end gap-2 rounded-xl bg-surface-2 p-3">
-        <label className="min-w-36 flex-1 text-xs text-on-variant">עמודה<select value={activeRangeColumn} onChange={(e)=>setRangeColumn(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.columns.map((c)=><option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
-        <label className="w-24 text-xs text-on-variant">מיחידה<input type="number" min="1" max={selected.units.length} value={rangeFrom} onChange={(e)=>setRangeFrom(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm"/></label>
-        <label className="w-24 text-xs text-on-variant">עד יחידה<input type="number" min="1" max={selected.units.length} value={rangeTo} onChange={(e)=>setRangeTo(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm"/></label>
-        <button type="button" onClick={()=>applyRange(true)} className="rounded-lg bg-primary px-3 py-2 text-sm text-on-primary">סמן טווח</button>
-        <button type="button" onClick={()=>applyRange(false)} className="rounded-lg border border-outline-variant px-3 py-2 text-sm">בטל טווח</button>
+      <div className="space-y-3 rounded-xl bg-surface-2 p-3">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="min-w-0 text-xs text-on-variant">עמודה
+            <select value={activeRangeColumn} onChange={(e)=>setRangeColumn(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.columns.map((c)=><option key={c.id} value={c.id}>{c.label}</option>)}</select>
+          </label>
+          <label className="min-w-0 text-xs text-on-variant">מ־
+            <select aria-label="יחידת התחלה" value={rangeFrom} onChange={(e)=>setRangeFrom(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.units.map((unit,index)=><option key={unit.id} value={index}>{unit.label}</option>)}</select>
+          </label>
+          <label className="min-w-0 text-xs text-on-variant">עד
+            <select aria-label="יחידת סיום" value={rangeTo === '' ? String(selected.units.length - 1) : rangeTo} onChange={(e)=>setRangeTo(e.target.value)} className="mt-1 w-full rounded-lg border border-outline-variant bg-surface px-2 py-2 text-sm">{selected.units.map((unit,index)=><option key={unit.id} value={index}>{unit.label}</option>)}</select>
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="פעולת סימון טווח" className="inline-flex shrink-0 rounded-lg border border-outline-variant bg-surface p-1">
+            <button type="button" aria-pressed={rangeAction === 'mark'} onClick={()=>setRangeAction('mark')} className={`rounded-md px-3 py-1.5 text-sm transition-colors ${rangeAction === 'mark' ? 'bg-sec-container font-semibold text-on-sec-container' : 'text-on-variant hover:bg-surface-2'}`}>סמן</button>
+            <button type="button" aria-pressed={rangeAction === 'unmark'} onClick={()=>setRangeAction('unmark')} className={`rounded-md px-3 py-1.5 text-sm transition-colors ${rangeAction === 'unmark' ? 'bg-sec-container font-semibold text-on-sec-container' : 'text-on-variant hover:bg-surface-2'}`}>בטל סימון</button>
+          </div>
+          <p role="status" className="min-w-0 flex-1 text-xs text-on-variant">
+            {rangePreview.valid
+              ? `${rangePreview.count} פריטים ${rangeAction === 'mark' ? 'יסומנו' : 'הסימון שלהם יבוטל'} · ${rangePreview.fromLabel} – ${rangePreview.toLabel}`
+              : 'יש לבחור טווח יחידות תקין'}
+          </p>
+          <button type="button" onClick={applyRange} disabled={!rangePreview.valid} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-40">החל טווח</button>
+        </div>
       </div>
       <div className="overflow-x-auto rounded-xl border border-outline-variant">
         <table className="w-full min-w-[680px] text-sm"><thead className="bg-surface-2"><tr><th className="sticky right-0 bg-surface-2 p-3 text-right">יחידת לימוד</th>{selected.columns.map((column)=>{const count=(selected.progress[column.id]||[]).length;const all=count===selected.units.length;return <th key={column.id} className="border-r border-outline-variant p-2 text-center"><input key={`${selected.bookId}-${column.id}-${column.label}`} defaultValue={column.label} aria-label={`שם עמודה ${column.label}`} onBlur={(e)=>updateBook(selected.bookId,(book)=>renameShamorColumn(book,column.id,e.target.value))} className="w-full rounded border border-transparent bg-transparent p-1 text-center font-semibold focus:border-primary"/><div className="text-[11px] text-on-variant">{count}/{selected.units.length}</div><div className="flex justify-center gap-1"><button type="button" onClick={()=>updateBook(selected.bookId,(book)=>setShamorColumnAll(book,column.id,!all))} className="text-[11px] text-primary">{all?'בטל הכל':'סמן הכל'}</button><button type="button" disabled={selected.columns.length<=1} onClick={()=>{if(window.confirm('להסיר את העמודה ואת הסימונים שלה?'))updateBook(selected.bookId,(book)=>removeShamorColumn(book,column.id));}} aria-label={`הסר ${column.label}`} className="text-on-variant disabled:opacity-30"><X size={13}/></button></div></th>;})}</tr></thead>
@@ -254,7 +286,7 @@ export default function ShamorZachor() {
     <div className="flex flex-wrap items-center gap-2">{([['in_progress','בתהליך'],['completed','הושלם'],['all','הכל']] as const).map(([value,label])=><button key={value} type="button" onClick={()=>setFilter(value)} className={`rounded-full px-3 py-2 text-sm ${filter===value?'bg-sec-container text-on-sec-container':'text-on-variant hover:bg-surface-3'}`}>{label}</button>)}<label className="relative min-w-44 flex-1"><Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-on-variant"/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="חיפוש בספרים שבמעקב" className="w-full rounded-full border-outline-variant bg-surface py-2 pr-9 pl-3 text-sm"/></label></div>
     {libraryLoading &&<p className="text-sm text-on-variant">טוען ספרייה…</p>}
     {libraryError &&<p className="text-sm text-error">{libraryError} <button type="button" onClick={reloadLibrary} className="underline">נסה שוב</button></p>}
-    {visible.length===0?<div className="rounded-xl border-dashed border-outline-variant p-10 text-center"><BookOpen size={34} className="mx-auto text-on-variant/60"/><h3 className="mt-2 font-semibold">{books.length ? 'אין תוצאות לסינון' : 'עדיין אין ספרים במעקב'}</h3><p className="mt-1 text-sm text-on-variant">הוסף ספר כדי לנהל לימוד וחזרות.</p><button type="button" onClick={openAddDialog} disabled={!library||libraryLoading} className="mt-3 rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50">הוסף ספר</button></div>:<div className="grid gap-3 xl:grid-cols-2">{visible.map((book)=>{const p=summary(book);return <article key={String(book.bookId)} className="rounded-xl border border-outline-variant bg-surface-1 p-4"><div className="flex items-start justify-between gap-3"><button type="button" onClick={()=>setSelectedId(String(book.bookId))} className="min-w-0 flex-1 text-right"><strong className="block truncate hover:text-primary">{book.title}</strong><span className="text-xs text-on-variant">{book.categoryPath} · {book.units.length} יחידות</span></button>{p.isComplete?<CheckCircle2 className="text-primary" size={20}/>:<span className="text-xs text-on-variant">{p.learningPercent}% לימוד</span>}</div><div className="mt-3 h-2 rounded-full bg-surface-3"><div className="h-full rounded-full bg-primary" style={{width:`${p.learningPercent}%`}}/></div><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-on-variant">לימוד {p.learningCompleted}/{p.totalUnits} · הושלמו בכל העמודות {p.fullyCompletedUnits}</span><div className="flex items-center gap-2"><button type="button" onClick={()=>openAt(book,book.units.find((unit)=>unit.id===book.lastTouchedUnitId)?.lineIndex||book.units[0].lineIndex)} className="text-primary">פתח ספר</button><button type="button" onClick={()=>setSelectedId(String(book.bookId))} aria-label={`נהל ${book.title}`}><ChevronLeft size={17}/></button><button type="button" onClick={()=>removeBook(book)} aria-label={`הסר ${book.title}`} className="text-error"><Trash2 size={15}/></button></div></div></article>;})}</div>}
+    {visible.length===0?<div className="rounded-xl border-dashed border-outline-variant p-10 text-center"><BookOpen size={34} className="mx-auto text-on-variant/60"/><h3 className="mt-2 font-semibold">{books.length ? 'אין תוצאות לסינון' : 'עדיין אין ספרים במעקב'}</h3><p className="mt-1 text-sm text-on-variant">הוסף ספר כדי לנהל לימוד וחזרות.</p><button type="button" onClick={openAddDialog} disabled={!library||libraryLoading} className="mt-3 rounded-full bg-primary px-4 py-2 text-sm text-on-primary disabled:opacity-50">הוסף ספר</button></div>:<div className="grid gap-3 xl:grid-cols-2">{visible.map((book)=>{const p=summary(book);return <article key={String(book.bookId)} className="rounded-xl border border-outline-variant bg-surface-1 p-4"><div className="flex items-start justify-between gap-3"><button type="button" onClick={()=>selectTrackedBook(String(book.bookId))} className="min-w-0 flex-1 text-right"><strong className="block truncate hover:text-primary">{book.title}</strong><span className="text-xs text-on-variant">{book.categoryPath} · {book.units.length} יחידות</span></button>{p.isComplete?<CheckCircle2 className="text-primary" size={20}/>:<span className="text-xs text-on-variant">{p.learningPercent}% לימוד</span>}</div><div className="mt-3 h-2 rounded-full bg-surface-3"><div className="h-full rounded-full bg-primary" style={{width:`${p.learningPercent}%`}}/></div><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span className="text-on-variant">לימוד {p.learningCompleted}/{p.totalUnits} · הושלמו בכל העמודות {p.fullyCompletedUnits}</span><div className="flex items-center gap-2"><button type="button" onClick={()=>openAt(book,book.units.find((unit)=>unit.id===book.lastTouchedUnitId)?.lineIndex||book.units[0].lineIndex)} className="text-primary">פתח ספר</button><button type="button" onClick={()=>selectTrackedBook(String(book.bookId))} aria-label={`נהל ${book.title}`}><ChevronLeft size={17}/></button><button type="button" onClick={()=>removeBook(book)} aria-label={`הסר ${book.title}`} className="text-error"><Trash2 size={15}/></button></div></div></article>;})}</div>}
     {adding && (
       <div
         className="fixed inset-0 z-[140] flex items-center justify-center bg-black/45 p-0 sm:p-4"
