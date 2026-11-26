@@ -4002,8 +4002,17 @@ Commits חדשים ב־main שנבדקו:
 - `925bee6a6eff68c22bb685a6e957e905d2bccce1` — בדיקות לטווחי שמור וזכור.
 - עדכון יומן זה נוצר לאחר commits הקוד.
 
+### הרחבת בורר הטווח לחיפוש יחידות
+
+- `src/utils/shamorZachor.ts`: נוספו `formatShamorUnitOption` ו-`findShamorUnitOptionIndex`. ערך האפשרות כולל מספר סידורי ותווית יחידה; המרה לאינדקס מתבצעת רק בהתאמה מדויקת, כך שטקסט חיפוש חלקי לא יכול להפעיל טווח שגוי.
+- `src/components/ShamorZachor.tsx`: שני שדות הקצה משתמשים כעת ב-`input + datalist`, המאפשר חיפוש לפי תווית היחידה גם ברשימות ארוכות. בזמן הקלדה חלקית התצוגה מסומנת כלא תקינה והכפתור "החל טווח" נשאר מושבת עד בחירת יחידה אמיתית.
+- `test/frontend/shamorZachor.test.ts`: נוסף תרחיש שמאמת מיפוי תווית מלאה לאינדקס ודחיית התאמה חלקית/ריקה.
+- GitHub Actions Deploy Beta run `45840148129`, commit קוד אחרון `86d229f48288cac930d52308320d2f1e396384cc`: `npm run lint` עבר; `npm run typecheck:frontend` עבר; `npm run test:frontend` — **256 עברו, 0 נכשלו**; Build Beta frontend עבר; Configure SSH עבר. פריסת Beta נכשלה שוב רק בשלב rsync בגלל `REMOTE HOST IDENTIFICATION HAS CHANGED`, fingerprint `SHA256:6UnKGgaMk/ynuz8hkpiSvi1+fPbo3JwitlIpprH3kGY`, קוד 255. לא שונו secrets או שרת ולא בוצעה פריסה ידנית.
+- Commits נוספים: `9ed77b4a3b6b0784e1aabf838b0a7798206df537` (לוגיקת חיפוש), `b5cf13fe13c801c0238c3dd83868622e54463387` (ממשק), `86d229f48288cac930d52308320d2f1e396384cc` (בדיקות).
+- מפת ענפים לאחר commits הקוד: main הקדים את `arena/9b3e1906-maim-chaim` ב-248 commits ואת `arena/9c1ba425-maim-chaim` ב-246; שני ענפי arena לא השתנו.
+
 ### המשך
-1. להשלים חיפוש בתוך בורר היחידות (המקור משתמש ב-`AppDropdownField(enableSearch: true)`; האתר כרגע משתמש ב-`select` עם תוויות).
+1. לאמת בדפדפן את חיפוש ה-`datalist` במחשב ובמובייל; המקור משתמש ב-`AppDropdownField(enableSearch: true)`, והאתר משתמש כרגע ברכיב דפדפן native ולא בחלונית חיפוש מותאמת.
 2. לבדוק אם אפשר להפיק תוויות דף/עמוד/דף גמרא באופן אמין מנתוני ה-Web הקיימים. כרגע `TocEntry` ו-`ContentLine` מספקים אינדקסי שורה, ולא הוכח מיפוי חד-חד-ערכי לעמוד/עמוד בבלי; אין להמציא מיפוי.
 3. לאחר מכן להמשיך לפער משמעותי נוסף במטריצת ההתאמה, ולא להמתין להשלמת כל תתי-האפשרויות בכלי זה.
 4. אין PDF; מנוע החיפוש, שירות החיפוש וחוזה ה-API של החיפוש לא נערכו. מאגר המקור וענפי arena לא שונו.
