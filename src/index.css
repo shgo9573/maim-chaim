@@ -13,6 +13,7 @@
 @source "./components/ReaderNotePreview.tsx";
 @source "./components/ReaderContextIconRow.tsx";
 @source "./components/ReaderDirectLinkMenu.tsx";
+@source "./components/ReaderCopyAsMenu.tsx";
 @source "./components/CalendarZmanim.tsx";
 @source "./components/CommentaryPanel.tsx";
 @source "./components/DailyNotifications.tsx";
