@@ -1,6 +1,8 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { Check, ChevronDown, Copy } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Copy, Eye } from 'lucide-react';
 import type { TextOpts } from '../utils/text';
+import { placeReaderCopyAsSubmenu } from '../utils/readerCopyAsMenu';
 
 export type ReaderCopyOptionId = 'nikud' | 'teamim' | 'punctuation' | 'holyName';
 
@@ -80,46 +82,194 @@ export default function ReaderCopyAsMenu({
 }: ReaderCopyAsMenuProps) {
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState<TextOpts>(base);
+  const [position, setPosition] = useState<ReturnType<typeof placeReaderCopyAsSubmenu> | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const groupRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const hoverOpenTimerRef = useRef<number | null>(null);
+  const hoverCloseTimerRef = useRef<number | null>(null);
   const menuId = useId().replace(/:/gu, '');
   const hasSelection = Boolean(text.trim());
   const options = getReaderCopyOptionStates(base, draft);
+  const opensToRight = position?.opensToRight ?? false;
+
+  const clearHoverTimers = () => {
+    if (hoverOpenTimerRef.current !== null) {
+      window.clearTimeout(hoverOpenTimerRef.current);
+      hoverOpenTimerRef.current = null;
+    }
+    if (hoverCloseTimerRef.current !== null) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  };
+
+  const close = (restoreFocus = true) => {
+    clearHoverTimers();
+    setExpanded(false);
+    setPosition(null);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
+    }
+  };
+
+  const openMenu = (focusFirst = false) => {
+    clearHoverTimers();
+    setExpanded(true);
+    if (focusFirst) {
+      window.requestAnimationFrame(() => {
+        const first = menuRef.current?.querySelector<HTMLButtonElement>(
+          '[role="menuitemcheckbox"]:not(:disabled), [role="menuitem"]:not(:disabled)',
+        );
+        first?.focus();
+      });
+    }
+  };
+
+  const scheduleClose = () => {
+    if (hoverCloseTimerRef.current !== null) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+    }
+    hoverCloseTimerRef.current = window.setTimeout(() => close(false), 320);
+  };
+
+  const updatePosition = () => {
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+
+    const anchorRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const direction = window.getComputedStyle(trigger).direction === 'rtl' ? 'rtl' : 'ltr';
+    const next = placeReaderCopyAsSubmenu(
+      {
+        left: anchorRect.left,
+        right: anchorRect.right,
+        top: anchorRect.top,
+        bottom: anchorRect.bottom,
+      },
+      {
+        width: menuRect.width,
+        height: menuRect.height,
+      },
+      {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+      direction,
+    );
+
+    setPosition((current) => {
+      if (
+        current &&
+        Math.abs(current.left - next.left) < 0.5 &&
+        Math.abs(current.top - next.top) < 0.5 &&
+        current.maxWidth === next.maxWidth &&
+        current.maxHeight === next.maxHeight &&
+        current.opensToRight === next.opensToRight
+      ) {
+        return current;
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     setDraft(base);
     setExpanded(false);
+    setPosition(null);
+    clearHoverTimers();
   }, [base, replacement, text]);
 
-  const toggleExpanded = () => {
-    setExpanded((current) => !current);
-  };
+  useEffect(() => () => clearHoverTimers(), []);
+
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [expanded]);
+
+  useLayoutEffect(() => {
+    if (!expanded || !position) return;
+    updatePosition();
+  }, [expanded, position?.maxWidth, position?.maxHeight]);
 
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (expanded) {
-      setExpanded(false);
-      return;
+    const direction = triggerRef.current
+      ? window.getComputedStyle(triggerRef.current).direction
+      : 'rtl';
+    const openKey = direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
+    const closeKey = direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft';
+
+    if (event.key === openKey || event.key === 'ArrowDown') {
+      event.preventDefault();
+      event.stopPropagation();
+      openMenu(true);
+    } else if (expanded && (event.key === closeKey || event.key === 'Escape')) {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
     }
-    setExpanded(true);
-    window.requestAnimationFrame(() => {
-      groupRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
-    });
   };
 
-  const handleGroupKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Escape') return;
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+      return;
+    }
+
+    if (event.key === 'Tab') {
+      close(false);
+      return;
+    }
+
+    const direction = triggerRef.current
+      ? window.getComputedStyle(triggerRef.current).direction
+      : 'rtl';
+    const closeKey = direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft';
+    if (event.key === closeKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+      return;
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitemcheckbox"]:not(:disabled), [role="menuitem"]:not(:disabled)',
+      ) ?? [],
+    );
+    if (!items.length) return;
     event.preventDefault();
     event.stopPropagation();
-    setExpanded(false);
-    triggerRef.current?.focus();
+    const activeIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : event.key === 'ArrowDown'
+          ? (activeIndex + 1 + items.length) % items.length
+          : (activeIndex <= 0 ? items.length - 1 : activeIndex - 1);
+    items[nextIndex]?.focus();
   };
 
   const copyWith = (profile: TextOpts) => {
     onCopy(formatReaderCopyText(text, profile), 'הטקסט הועתק');
-    setExpanded(false);
+    close(false);
   };
 
   return (
@@ -132,23 +282,64 @@ export default function ReaderCopyAsMenu({
         aria-haspopup="menu"
         aria-expanded={expanded}
         aria-controls={menuId}
-        onClick={toggleExpanded}
+        onClick={() => openMenu(true)}
         onKeyDown={handleTriggerKeyDown}
-        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+        onPointerEnter={(event) => {
+          if (event.pointerType !== 'mouse') return;
+          if (hoverCloseTimerRef.current !== null) {
+            window.clearTimeout(hoverCloseTimerRef.current);
+            hoverCloseTimerRef.current = null;
+          }
+          if (hoverOpenTimerRef.current !== null) window.clearTimeout(hoverOpenTimerRef.current);
+          hoverOpenTimerRef.current = window.setTimeout(() => setExpanded(true), 500);
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType !== 'mouse') return;
+          if (hoverOpenTimerRef.current !== null) {
+            window.clearTimeout(hoverOpenTimerRef.current);
+            hoverOpenTimerRef.current = null;
+          }
+          if (expanded) scheduleClose();
+        }}
+        className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-right text-sm font-normal text-on-surface transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-[0.38]"
       >
-        <Copy size={18} />
-        <span className="flex-1">העתק כ...</span>
-        <ChevronDown size={14} className={expanded ? 'rotate-180' : ''} />
+        <Copy size={18} strokeWidth={1.8} />
+        <span className="min-w-0 flex-1 text-start">העתק כ...</span>
+        {opensToRight
+          ? <ChevronRight size={18} strokeWidth={1.8} className="shrink-0" />
+          : <ChevronLeft size={18} strokeWidth={1.8} className="shrink-0" />}
       </button>
-      {expanded && (
+      {expanded && typeof document !== 'undefined' && createPortal(
         <div
-          ref={groupRef}
+          ref={menuRef}
           id={menuId}
           role="menu"
           aria-label="אפשרויות העתקה"
           dir="rtl"
-          onKeyDown={handleGroupKeyDown}
-          className="mr-3 mt-1 flex flex-col border-r border-outline-variant pr-2"
+          onKeyDown={handleMenuKeyDown}
+          onPointerEnter={() => {
+            if (hoverCloseTimerRef.current !== null) {
+              window.clearTimeout(hoverCloseTimerRef.current);
+              hoverCloseTimerRef.current = null;
+            }
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType === 'mouse') scheduleClose();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          style={{
+            position: 'fixed',
+            left: position?.left ?? -10000,
+            top: position?.top ?? -10000,
+            width: 'max-content',
+            minWidth: position ? Math.min(150, position.maxWidth) : 150,
+            maxWidth: position?.maxWidth ?? 'calc(100vw - 16px)',
+            maxHeight: position?.maxHeight ?? 'calc(100vh - 16px)',
+            boxSizing: 'border-box',
+            visibility: position ? 'visible' : 'hidden',
+            zIndex: 12020,
+          }}
+          className="fixed z-[12020] flex flex-col overflow-y-auto rounded-lg bg-surface-2 py-2 text-sm text-on-surface shadow-md"
         >
           {options.map((option) => (
             <button
@@ -158,12 +349,12 @@ export default function ReaderCopyAsMenu({
               aria-checked={option.checked}
               disabled={!hasSelection || option.disabled}
               onClick={() => setDraft((current) => toggleReaderCopyOption(current, option.id, replacement))}
-              className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-start text-sm hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-[0.38]"
             >
-              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
-                {option.checked && <Check size={14} />}
+              <span className="min-w-0 flex-1">{option.label}</span>
+              <span className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center">
+                {option.checked && <CheckCircle2 size={18} strokeWidth={1.8} />}
               </span>
-              <span className="flex-1">{option.label}</span>
             </button>
           ))}
           <div role="separator" className="my-1 border-t border-outline-variant" />
@@ -172,22 +363,23 @@ export default function ReaderCopyAsMenu({
             role="menuitem"
             disabled={!hasSelection}
             onClick={() => copyWith(draft)}
-            className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-start text-sm hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-[0.38]"
           >
-            <Copy size={16} />
-            העתק
+            <Copy size={18} strokeWidth={1.8} />
+            <span>העתק</span>
           </button>
           <button
             type="button"
             role="menuitem"
             disabled={!hasSelection}
             onClick={() => copyWith(base)}
-            className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-right hover:bg-surface-3 focus:bg-surface-3 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-start text-sm hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-[0.38]"
           >
-            <Copy size={16} />
-            כמו בתצוגה
+            <Eye size={18} strokeWidth={1.8} />
+            <span>כמו בתצוגה</span>
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
