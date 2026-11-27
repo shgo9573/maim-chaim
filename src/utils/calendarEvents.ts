@@ -288,7 +288,7 @@ export function nextCalendarEventOccurrence(
 }
 
 function compareEntries(a: CalendarEventEntry, b: CalendarEventEntry): number {
-  const dateDifference = daysBetween(a.date, b.date);
+  const dateDifference = dayOrdinal(a.date) - dayOrdinal(b.date);
   if (dateDifference !== 0) return dateDifference;
 
   const aTime = a.event.startTime;
