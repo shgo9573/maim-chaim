@@ -144,7 +144,7 @@ export default function ReaderCopyAsMenu({
         <div
           ref={groupRef}
           id={menuId}
-          role="group"
+          role="menu"
           aria-label="אפשרויות העתקה"
           dir="rtl"
           onKeyDown={handleGroupKeyDown}
