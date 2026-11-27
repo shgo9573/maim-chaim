@@ -34,6 +34,7 @@ const SECTION_LABELS: Record<keyof UserBackupSummary['counts'], string> = {
   notes: 'הערות',
   personalNotes: 'חידושים אישיים',
   customStudies: 'סדרי לימוד אישיים',
+  calendarEvents: 'אירועי לוח שנה',
   total: 'סך הכול',
 };
 
