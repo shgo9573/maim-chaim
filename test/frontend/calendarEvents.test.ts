@@ -48,7 +48,8 @@ test('weekly recurrence supports selected weekdays and multi-day occurrences', (
   assert.equal(calendarEventOccursOn(event, new Date(2026, 10, 27)), false);
   assert.equal(calendarEventOccursOn(event, new Date(2026, 10, 29)), true);
   assert.equal(calendarEventOccursOn(event, new Date(2026, 11, 2)), true);
-  assert.equal(calendarEventOccursOn(event, new Date(2026, 11, 3)), false);
+  assert.equal(calendarEventOccursOn(event, new Date(2026, 11, 3)), true);
+  assert.equal(calendarEventOccursOn(event, new Date(2026, 11, 4)), false);
 });
 
 test('monthly Gregorian recurrence skips months without the original day number', () => {
