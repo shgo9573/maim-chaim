@@ -155,6 +155,27 @@ export interface ShamorZachorState {
   books: Record<string, ShamorZachorTrackedBook>;
 }
 
+export type CalendarEventRecurrence = 'none' | 'weekly' | 'monthlyGregorian' | 'annualGregorian';
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string;
+  /** Local Gregorian date in YYYY-MM-DD format. */
+  startDate: string;
+  /** Inclusive final date of the first occurrence. */
+  endDate?: string;
+  /** Local HH:mm values; omitted means an all-day event. */
+  startTime?: string;
+  endTime?: string;
+  recurrence: CalendarEventRecurrence;
+  /** JS weekday numbers: Sunday=0 through Saturday=6. */
+  weeklyDays?: number[];
+  /** Inclusive final date on which a recurring occurrence may begin. */
+  recurrenceUntil?: string;
+  createdAt: string;
+}
+
 export interface ReaderSettings {
   fontFamily: string;
   fontSize: number;
@@ -202,6 +223,8 @@ export interface ReaderSettings {
   }>;
   calendarLocation?: string;
   zmanimMethod?: 'gra' | 'mga' | 'baal_hatanya';
+  /** User calendar events, stored with the existing settings profile. */
+  calendarEvents?: CalendarEvent[];
   dailyStudyTracks?: Record<string, boolean>;
   dailyStudyOrder?: string[];
   interfaceLanguage?: 'he' | 'en';
