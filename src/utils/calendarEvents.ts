@@ -146,15 +146,22 @@ export function normalizeCalendarEvents(value: unknown): CalendarEvent[] {
     const item = raw as Record<string, unknown>;
     if (
       typeof item.id !== 'string' ||
+      !item.id.trim() ||
       typeof item.title !== 'string' ||
       typeof item.startDate !== 'string'
     ) {
       continue;
     }
 
+    if (
+      item.recurrence !== undefined &&
+      (typeof item.recurrence !== 'string' ||
+        !RECURRENCES.has(item.recurrence as CalendarEventRecurrence))
+    ) {
+      continue;
+    }
     const recurrence =
-      typeof item.recurrence === 'string' &&
-      RECURRENCES.has(item.recurrence as CalendarEventRecurrence)
+      typeof item.recurrence === 'string'
         ? (item.recurrence as CalendarEventRecurrence)
         : 'none';
 
