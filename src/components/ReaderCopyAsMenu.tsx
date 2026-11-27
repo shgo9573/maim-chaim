@@ -83,6 +83,7 @@ export default function ReaderCopyAsMenu({
   const [expanded, setExpanded] = useState(false);
   const [draft, setDraft] = useState<TextOpts>(base);
   const [position, setPosition] = useState<ReturnType<typeof placeReaderCopyAsSubmenu> | null>(null);
+  const [direction, setDirection] = useState<'rtl' | 'ltr'>('rtl');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const hoverOpenTimerRef = useRef<number | null>(null);
@@ -90,7 +91,7 @@ export default function ReaderCopyAsMenu({
   const menuId = useId().replace(/:/gu, '');
   const hasSelection = Boolean(text.trim());
   const options = getReaderCopyOptionStates(base, draft);
-  const opensToRight = position?.opensToRight ?? false;
+  const opensToRight = position?.opensToRight ?? direction === 'ltr';
 
   const clearHoverTimers = () => {
     if (hoverOpenTimerRef.current !== null) {
@@ -139,7 +140,8 @@ export default function ReaderCopyAsMenu({
 
     const anchorRect = trigger.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
-    const direction = window.getComputedStyle(trigger).direction === 'rtl' ? 'rtl' : 'ltr';
+    const nextDirection = window.getComputedStyle(trigger).direction === 'rtl' ? 'rtl' : 'ltr';
+    setDirection(nextDirection);
     const next = placeReaderCopyAsSubmenu(
       {
         left: anchorRect.left,
@@ -155,7 +157,7 @@ export default function ReaderCopyAsMenu({
         width: window.innerWidth,
         height: window.innerHeight,
       },
-      direction,
+      nextDirection,
     );
 
     setPosition((current) => {
@@ -315,7 +317,7 @@ export default function ReaderCopyAsMenu({
           id={menuId}
           role="menu"
           aria-label="אפשרויות העתקה"
-          dir="rtl"
+          dir={direction}
           onKeyDown={handleMenuKeyDown}
           onPointerEnter={() => {
             if (hoverCloseTimerRef.current !== null) {
