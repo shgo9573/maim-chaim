@@ -13,6 +13,7 @@ import { getPersonalNoteEditorContextMenuActions, type PersonalNoteEditorContext
 import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/readerContextMenu';
 import { planReaderLinkOpen } from '../utils/readerLinkOpen';
 import { readerLinkCanOpenInBackground } from '../utils/readerLinks';
+import ReaderCopyAsMenu from './ReaderCopyAsMenu';
 
 interface BookFilterPreference {
   hidden: string[];
@@ -389,7 +390,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
   };
 
   const handleContextMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || []);
+    const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)') || []);
     if (!items.length) return;
     const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
     let nextIndex = currentIndex;
@@ -1007,6 +1008,14 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                 </button>
               ))}
             </div>
+          )}
+          {isCommentaryContextMenu && (
+            <ReaderCopyAsMenu
+              text={contextMenu.selectedText}
+              base={opts}
+              replacement={settings.holyNameReplacement === 'יהוה' ? 'קוק' : settings.holyNameReplacement}
+              onCopy={copyContextText}
+            />
           )}
           {listContextMenuActions.map((action) => (
             <div key={action.id} role="none">
