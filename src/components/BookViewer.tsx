@@ -17,6 +17,7 @@ import { findUniqueReaderCommentaryBook, groupReaderCommentaryLinks } from '../u
 import { groupReaderReferenceLinks } from '../utils/readerReferenceContextMenu';
 import { findAcronymMatches, getReaderWordAtPoint, isLikelyAcronym, summarizeAcronymMeaning } from '../utils/readerAcronymLookup';
 import ReaderContextIconRow from './ReaderContextIconRow';
+import ReaderCopyAsMenu from './ReaderCopyAsMenu';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
 import { normalizeReaderNavigationHistory, recordReaderNavigation, travelReaderNavigation } from '../utils/readerNavigationHistory';
@@ -1213,7 +1214,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       return;
     }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') || []);
+    const items = Array.from(contextMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)') || []);
     if (!items.length) return;
     event.preventDefault();
     const activeIndex = items.indexOf(document.activeElement as HTMLButtonElement);
@@ -1670,6 +1671,13 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
             >
               <Link2 size={18} /> העתק טקסט כקישור
             </button>
+
+            <ReaderCopyAsMenu
+              text={contextMenu.text}
+              base={opts}
+              replacement={settings.holyNameReplacement === 'יהוה' ? 'קוק' : settings.holyNameReplacement}
+              onCopy={(value, message) => void copy(value, message)}
+            />
 
             <div role="separator" className="my-[3.5px] border-t border-outline-variant" />
 
