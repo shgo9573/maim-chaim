@@ -1,3 +1,4 @@
+import { normalizeCalendarEvents } from './calendarEvents';
 export type UserBackupMode = 'merge' | 'replace';
 
 export const MAX_USER_BACKUP_FILE_BYTES = 50 * 1024 * 1024;
@@ -13,6 +14,7 @@ export interface UserBackupCounts {
   notes: number;
   personalNotes: number;
   customStudies: number;
+  calendarEvents: number;
   total: number;
 }
 
@@ -87,6 +89,13 @@ function validateSettings(value: unknown): string | null {
     return 'רשימת מזהי ההיסטוריה המוסתרים אינה תקינה.';
   }
 
+  if (value.calendarEvents !== undefined) {
+    if (!Array.isArray(value.calendarEvents) ||
+        normalizeCalendarEvents(value.calendarEvents).length !== value.calendarEvents.length) {
+      return 'רשימת אירועי לוח השנה בהגדרות אינה תקינה.';
+    }
+  }
+
   return null;
 }
 
@@ -140,10 +149,11 @@ export function inspectUserBackup(input: unknown): UserBackupInspection {
     notes: Array.isArray(input.notes) ? input.notes.length : 0,
     personalNotes: Array.isArray(settings.personalNotes) ? settings.personalNotes.length : 0,
     customStudies: Array.isArray(settings.customStudies) ? settings.customStudies.length : 0,
+    calendarEvents: Array.isArray(settings.calendarEvents) ? settings.calendarEvents.length : 0,
     total: 0,
   };
   counts.total = counts.bookmarks + counts.history + counts.searches + counts.notes +
-    counts.personalNotes + counts.customStudies;
+    counts.personalNotes + counts.customStudies + counts.calendarEvents;
 
   return {
     valid: true,
