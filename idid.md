@@ -4250,3 +4250,52 @@ Commits חדשים ב־main שנבדקו:
 
 ### מצב המשימה
 הזרימה של קישור ספר ישיר מקורי `otzaria://open/book` הושלמה ברמת קוד ובדיקות CI, אך מערכת הקישורים הכוללת **עדיין לא הושלמה**. אין לסמן את כלל המשימה כשלמה. יש להמשיך בריצות הבאות ממטריצת הקישורים לעיל: קישורי מפרשים/מקורות וכיווניות, קישורי פסוקים ומראי מקומות, קישורי שורה וטווח, עוגני הערות שוליים, תצוגות מקדימות, ניווט חזרה/קדימה, פתיחה ברקע/בכרטיסייה, טאבים ו־Workspaces, וקישורים חיצוניים. יש לאמת כל סוג מול המקור ולבדוק אותו בדפדפן לפני סימון כהושלם.
+
+
+## 28 בנובמבר 2026 — קיצורי מקלדת לחלוניות הניווט והמפרשים
+
+### מעקב תחילת הריצה
+- נקודת תחילת main: `c5bbbd3854a5ec4bbf01dc7dd7ab5d1cda48418c`. נבדקו ה-commits האחרונים של משימת הבוקר (קישורי deep-link מקוריים, כולל תיקוני parser ובדיקות) ושל משימת הממשק (תת-תפריט „העתק כ...”). לא שוכפל אף אחד מהשינויים האלה.
+- `newbugs.md` נקרא מ-main: אין דיווחים פתוחים; נשארה בו רשומת CI היסטורית בלבד.
+- נבדקו כל שלושת ענפי המאגר: main ושני ענפי arena. שני ענפי arena מאחור, ללא commits ייחודיים קדימה: `arena/9b3e1906-maim-chaim` מאחור ב-282 commits; `arena/9c1ba425-maim-chaim` מאחור ב-280 commits. לא בוצעה בהם כתיבה.
+- נקראו `AGENTS.md` ו-`package.json`; סקריפטי הבדיקה הזמינים הם `npm run lint`, `npm run typecheck:frontend`, `npm run test:frontend` ו-`npm run build`.
+- מקור לקריאה בלבד: `Otzaria/otzaria:dev`, HEAD `48c441b8c442928c5709eb7502eb42b1da281798`.
+
+### אימות ההתנהגות במקור
+- `lib/shortcuts/shortcut_validator.dart`: ברירות המחדל הן `ctrl+shift+l` לפתיחה/סגירה של חלונית הניווט ו-`ctrl+shift+c` לפתיחה/סגירה של חלונית המפרשים.
+- `lib/shortcuts/keyboard_shortcuts.dart`: הקיצורים נבדקים במסך הקריאה; עבור `TextBookTab` נשלחת בקשת toggle דרך `toggleCommentatorsPaneNotifier`.
+- `lib/tabs/models/text_tab.dart`: ה-notifier שייך לכרטיסיית הטקסט, כך שהבקשה אינה מופעלת על כרטיסייה לא פעילה.
+- `lib/text_book/view/splited_view/splited_view_screen.dart` ו-`lib/text_book/view/page_shape/page_shape_screen.dart`: מאזינים לבקשת toggle ומחליפים את מצב חלונית הצד. לא הועתק קוד PDF ולא נגעתי במסכי PDF.
+
+### הפער באתר לפני השינוי
+- ב-`src/components/BookViewer.tsx` היו כפתורים לפתיחה/סגירה של הניווט והמפרשים, אך לא נמצאו קיצורי המקלדת המקבילים.
+- נבחרה השלמת שתי הפעולות יחד, משום שהן זוג קיצורים מוגדר במפורש במקור ומשפיעות על אותן חלוניות בקורא.
+
+### מה מומש ב-main
+- נוסף `src/utils/readerPaneShortcuts.ts`: זיהוי קיצורי `Ctrl+Shift+L` ו-`Ctrl+Shift+C`, וכן `Meta+Shift` במחשבי Mac. זיהוי מתעלם מאירוע שכבר טופל, מחזרה אוטומטית של מקש, מ-Alt ומצירוף לא מתאים.
+- `src/components/BookViewer.tsx`: הקיצורים מחוברים לפתיחה/סגירה האמיתית של חלונית הניווט ושל חלונית המפרשים. המאזין פעיל רק כאשר מסך הקריאה פתוח והכרטיסייה הזאת היא הפעילה; האירוע חייב להגיע מתוך רכיב הקורא עצמו. שדות קלט, אזורי contenteditable, תפריטים וחלוניות דו-שיח מוחרגים, כדי לא להפריע להקלדה או לפעולות בתוך תפריטים.
+- `src/components/SettingsScreen.tsx`: נוספו שורות מידע עם שני הקיצורים והבהרה על שימוש ב-⌘ ב-Mac.
+- הקיצורים משנים את מצב החלוניות הקיים; פתיחת/סגירת חלונית המפרשים ממשיכה לעדכן את העדפת הפריסה הקיימת, לרבות הגדרות פר-ספר. לא שונה API או אחסון Backend.
+
+### קבצים ו-commits
+- `src/components/BookViewer.tsx`
+- `src/components/SettingsScreen.tsx`
+- `src/utils/readerPaneShortcuts.ts` — חדש
+- `test/frontend/readerPaneShortcuts.test.ts` — חדש
+- Commit קוד ב-main: `c4f46168ae666e81fa35fa6653d559d85db6b802` — Add native reader pane keyboard shortcuts.
+
+### בדיקות ופריסה
+- נוספו 4 קבוצות בדיקה עם 11 assertions: שני הקיצורים, תמיכה ב-Meta במק, ודחיית אירועים עם modifiers חסרים/Alt/אירוע מטופל/חזרה אוטומטית/מקש לא מוכר.
+- GitHub Actions Deploy Beta run `46148343761` הסתיים `success`.
+- Typecheck project — success.
+- Typecheck frontend — success.
+- Frontend tests — **293/293 עברו, 0 נכשלו**.
+- Build Beta frontend — success.
+- Configure SSH — success.
+- Deploy only to the Beta directory — success.
+- הפריסה בוצעה על ידי מנגנון ה-push האוטומטי הקיים בלבד. לא בוצעה פריסה ידנית ולא נעשה שינוי בשרת או ב-DNS.
+
+### מה עדיין לא הושלם
+- הקיצורים ממומשים בברירות המחדל של אוצריא, אך אין עדיין מסך Web לעריכת הצירופים או לשינוי שלהם; במקור קיים מנגנון רחב יותר להתאמה אישית של קיצורים.
+- לא בוצעה בדיקת דפדפן ידנית. ה-handler מוגבל לרכיב הקורא כדי לא לתפוס קיצורי דפדפן כאשר המיקוד מחוץ לקורא; נותר לבדוק ידנית את ההתנהגות בכרום/Firefox, כולל מיקוד בכפתורי הסרגל ובחלונית המפרשים.
+- אין PDF ואין שינוי במנוע/שירות/חוזה החיפוש, ב-Backend, באינדקסים או במאגר המקור.
