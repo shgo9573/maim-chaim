@@ -10,6 +10,10 @@ const iconSource = readFileSync(
   new URL('../../src/components/ReaderActionIcon.tsx', import.meta.url),
   'utf8',
 );
+const readerRow = readFileSync(
+  new URL('../../src/components/ReaderContextIconRow.tsx', import.meta.url),
+  'utf8',
+);
 const menuStart = source.indexOf('{contextMenu && typeof document');
 const menuEnd = source.indexOf('\n        document.body,', menuStart);
 const menu = source.slice(menuStart, menuEnd);
@@ -17,6 +21,9 @@ const menu = source.slice(menuStart, menuEnd);
 test('commentary quick actions reuse the reader Fluent library and copy glyphs', () => {
   assert.ok(menuStart >= 0 && menuEnd > menuStart, 'commentary context menu is present');
   assert.ok(source.includes("import ReaderActionIcon from './ReaderActionIcon';"));
+  assert.ok(readerRow.includes("import ReaderActionIcon from './ReaderActionIcon';"));
+  assert.ok(readerRow.includes('<ReaderActionIcon name="library" />'));
+  assert.ok(readerRow.includes('<ReaderActionIcon name="copy" />'));
   assert.ok(menu.includes("<ReaderActionIcon name={action.id === 'search-selection' ? 'library' : 'copy'} />"));
   assert.ok(iconSource.includes('data-icon={`fluent-${name}-24-regular`}'));
   assert.ok(iconSource.includes('width={18} height={18}'));
