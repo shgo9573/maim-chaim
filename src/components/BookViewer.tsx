@@ -20,6 +20,7 @@ import ReaderContextIconRow from './ReaderContextIconRow';
 import ReaderCopyAsMenu from './ReaderCopyAsMenu';
 import { getReaderDirectLinkMenuItems } from '../utils/readerDirectLinkMenu';
 import { getInitialReaderRange } from '../utils/readerPagination';
+import { getReaderPaneShortcutAction } from '../utils/readerPaneShortcuts';
 import { normalizeReaderNavigationHistory, recordReaderNavigation, travelReaderNavigation } from '../utils/readerNavigationHistory';
 import { isBookmarkHighlightLine } from '../utils/bookmarkNavigation';
 import { decorateReaderLineWithPersonalNotes, groupReaderPersonalNotes, parseReaderPersonalNoteHref, selectReaderPersonalNotesForPreview } from '../utils/readerPersonalNotes';
@@ -170,7 +171,7 @@ function getReaderSelectionForContextMenu(root: HTMLElement, lineNode: HTMLEleme
 }
 
 export default function BookViewer({ tab }: { tab: BookTab }) {
-  const { settings, updateSettings, updateTab, addBookmark, saveNote, notes, openSearch, openBookByTitle, openBookInNewTab, openBookInBackground, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
+  const { screen, activeTabId, settings, updateSettings, updateTab, addBookmark, saveNote, notes, openSearch, openBookByTitle, openBookInNewTab, openBookInBackground, saveHistory, library, libraryLoading, toast, openTzuratHaDaf } = useApp();
   const [lines, setLines] = useState<ContentLine[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -250,6 +251,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
   const touchTimerRef = useRef<number | null>(null);
   const touchStartRef = useRef<{ x: number; y: number; line: number; linkUrl?: string } | null>(null);
   const selectionSnapshotRef = useRef<ReturnType<typeof getReaderSelectionForContextMenu> | null>(null);
+  const readerRootRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const topSentinel = useRef<HTMLDivElement>(null);
   const botSentinel = useRef<HTMLDivElement>(null);
@@ -1313,11 +1315,33 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     window.addEventListener('mouseup', up);
   };
 
-  const toggleCommentary = () => {
+  const toggleCommentary = useCallback(() => {
     const next = !commentOpen;
     setCommentOpen(next);
     saveLayoutPreference({ commentaryOpen: next });
-  };
+  }, [commentOpen, saveLayoutPreference]);
+
+  const toggleNavigation = useCallback(() => {
+    setSidebarOpen((open) => !open);
+  }, []);
+
+  useEffect(() => {
+    if (screen !== 'reading' || activeTabId !== tab.id) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const root = readerRootRef.current;
+      if (!root || !(event.target instanceof Node) || !root.contains(event.target)) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="menu"], [role="dialog"]')) return;
+      const action = getReaderPaneShortcutAction(event);
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === 'toggle-commentary') toggleCommentary();
+      else toggleNavigation();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [screen, activeTabId, tab.id, toggleCommentary, toggleNavigation]);
 
   const inline = settings.continuousReadingMode;
   const hl = tab.highlight;
@@ -1365,7 +1389,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
     lines.find((item) => item.lineIndex === line)?.heRef || `שורה ${line}`;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-surface">
+    <div ref={readerRootRef} className="flex h-full min-h-0 flex-col bg-surface">
       {/* toolbar */}
       <div className="flex items-center gap-1 border-b border-outline-variant bg-surface px-2 py-1.5">
         <IconBtn title={sidebarOpen ? 'הסתר ניווט' : 'הצג ניווט'} onClick={() => setSidebarOpen((o) => !o)}>

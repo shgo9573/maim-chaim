@@ -252,11 +252,17 @@ function ReaderLayoutSettings() {
       <Row label="רוחב חלונית הניווט">
         <Slider value={settings.navigationPanelWidth ?? 16} min={12} max={25} onChange={(v) => updateSettings({ navigationPanelWidth: v })} suffix="%" />
       </Row>
+      <Row label="קיצור לפתיחה/סגירה של חלונית הניווט">
+        <kbd className="rounded-md bg-surface-2 px-2 py-1 text-xs font-medium" dir="ltr">Ctrl+Shift+L</kbd>
+      </Row>
+      <Row label="קיצור לפתיחה/סגירה של חלונית המפרשים">
+        <kbd className="rounded-md bg-surface-2 px-2 py-1 text-xs font-medium" dir="ltr">Ctrl+Shift+C</kbd>
+      </Row>
       <Row label="הגדרות פר-ספר" hint="בעת גרירת חלוניות, שמור רוחב/פתיחה נפרדים לספר הנוכחי">
         <Switch checked={settings.perBookSettingsEnabled} onChange={(v) => updateSettings({ perBookSettingsEnabled: v })} />
       </Row>
       <div className="px-5 pb-4 pt-1 text-xs text-on-variant">
-        אפשר לגרור את הגבולות שבין חלוניות המפרשים, הניווט והספר. כאשר הגדרות פר-ספר פועלות, השינוי נשמר בנפרד לכל ספר; אחרת הוא מעדכן את ברירת המחדל.
+        אפשר לגרור את הגבולות שבין חלוניות המפרשים, הניווט והספר. כאשר הגדרות פר-ספר פועלות, השינוי נשמר בנפרד לכל ספר; אחרת הוא מעדכן את ברירת המחדל. הקיצורים פועלים כשהקורא הפעיל בפוקוס; במחשבי Mac אפשר להשתמש גם ב־⌘ במקום Ctrl.
       </div>
     </Section>
   );
