@@ -43,6 +43,7 @@ test('quick actions retain the existing order and do not introduce unimplemented
   assert.ok(source.includes("action.id !== 'search-selection' && action.id !== 'copy-selection'"));
   assert.ok(menu.includes('aria-label="פעולות מהירות"'));
   assert.ok(menu.includes('min-w-12 max-w-24'));
+  assert.ok(menu.includes('gap-0.5 rounded-lg px-0.5 py-1 text-[11px] leading-4'));
   assert.ok(menu.includes('role="menuitem"'));
 });
 
