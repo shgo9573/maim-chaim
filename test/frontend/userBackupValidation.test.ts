@@ -44,6 +44,7 @@ test('valid Web backup preview counts every exported collection', () => {
     notes: 1,
     personalNotes: 1,
     customStudies: 1,
+    calendarEvents: 0,
     total: 6,
   });
   assert.deepEqual(result.summary.missingSections, []);
