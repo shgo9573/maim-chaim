@@ -4322,7 +4322,7 @@ Commits חדשים ב־main שנבדקו:
 ### השינוי החזותי שבוצע
 - נוצר רכיב משותף `src/components/ReaderActionIcon.tsx` מתוך נתיבי Fluent שכבר שימשו בשורת הקורא. הוא מציג גליפים בגודל 18×18 עם שמות `fluent-library-24-regular` ו-`fluent-copy-24-regular`.
 - `src/components/ReaderContextIconRow.tsx` משתמש כעת ברכיב המשותף; מראה שורת הקורא נשמר, אך מקור האייקונים הפך לרכיב יחיד לשימוש חוזר.
-- `src/components/CommentaryPanel.tsx` משתמש באותם גליפים לשתי הפעולות הקיימות, במקום וריאציות Lucide, ומיישר את חלונית המפרשים ל-`bg-surface-2 py-2` של תפריט הקורא.
+- `src/components/CommentaryPanel.tsx` משתמש באותם גליפים לשתי הפעולות הקיימות, במקום וריאציות Lucide, ומיישר את חלונית המפרשים ל-`bg-surface-2 py-2` של תפריט הקורא. ריפוד הכפתורים בשורת האייקונים הותאם ל-2px אופקי ו-4px אנכי כמו `_IconRowButton` במקור; רוחב 48–96px וגובה/גודל glyph נשמרו.
 - לא שונו callbacks, סדר הפעולות, זמינותן, תוכן התפריט, פתיחה/סגירה, חיפוש, קישורים, נתונים, API או Backend.
 
 ### קבצים ו-commits
