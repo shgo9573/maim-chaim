@@ -65,7 +65,7 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
       const parts = url.pathname.split('/').filter(Boolean);
       if (parts.length !== 2 || parts[0] !== 'book' || !parts[1]) return null;
       const id = safeDecode(parts[1]).trim();
-      if (!/^\\d+$/u.test(id) || Number(id) <= 0) return null;
+      if (!/^\d+$/u.test(id) || !Number.isSafeInteger(Number(id)) || Number(id) <= 0) return null;
 
       // Native Otzaria links use a zero-based index; the web reader uses one-based lines.
       // Keep the older web-specific line parameter as a one-based compatibility alias.
@@ -78,7 +78,8 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
         if (!Number.isSafeInteger(parsedLine) || parsedLine < 1) return null;
         line = parsedLine;
       } else if (rawIndex !== null) {
-        const parsedIndex = Number(rawIndex);
+        const indexText = rawIndex.trim();
+        const parsedIndex = indexText ? Number(indexText) : Number.NaN;
         if (Number.isSafeInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < Number.MAX_SAFE_INTEGER) {
           line = parsedIndex + 1;
           validIndex = true;
