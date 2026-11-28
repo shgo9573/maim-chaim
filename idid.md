@@ -4328,8 +4328,8 @@ Commits חדשים ב־main שנבדקו:
 ### קבצים ו-commits
 - `src/components/ReaderActionIcon.tsx` — חדש; commit `5c58289`.
 - `src/components/ReaderContextIconRow.tsx` — שימוש חוזר ברכיב האייקון המשותף; commit `14831ac`.
-- `src/components/CommentaryPanel.tsx` — אחידות glyph, רקע וריפוד; commit `23f22ac`.
-- `test/frontend/commentaryContextMenuPresentation.test.ts` — עודכן לשקף את הגליפים והמשטח החדשים ולשמר בדיקות נפרדות לתפריטי הערות אישיות; commits `8b424c3` ו-`e663abf` (חיזוק בדיקת שימוש משותף).
+- `src/components/CommentaryPanel.tsx` — אחידות glyph, רקע וריפוד; commits `23f22ac` ו-`3877a23` (דיוק ריפוד כפתורי שורת האייקונים).
+- `test/frontend/commentaryContextMenuPresentation.test.ts` — עודכן לשקף את הגליפים, המשטח והריפוד החדשים ולשמר בדיקות נפרדות לתפריטי הערות אישיות; commits `8b424c3`, `e663abf` ו-`f371b2a`.
 - `idid.md` — תיעוד הריצה; commits `5b9cde1` ו-`deaa7b3`.
 
 ### בדיקות ופריסה
@@ -4346,5 +4346,5 @@ Commits חדשים ב־main שנבדקו:
 
 ### אימות לאחר ה-commit
 - commits של הריצה: קוד הממשק `5c58289`, `14831ac`, `23f22ac`; בדיקות `8b424c3`, `e663abf`; תיעוד ועדכוני רישום `5b9cde1`, `deaa7b3`, `da0d183`.
-- `get_commit_combined_status` עבור commit הבדיקות החזיר רשימת status checks ריקה. `fetch_commit_workflow_runs` החזיר רשימה ריקה; הכלי הזמין מציין שהוא מסנן לריצות PR בלבד ואינו מציג ריצות push. לכן אין אישור מהמחבר על תוצאת GitHub Actions או על פריסת Beta של שינוי זה.
+- `get_commit_combined_status` עבור commit הבדיקות האחרון `f371b2a` החזיר רשימת status checks ריקה. `fetch_commit_workflow_runs` החזיר רשימה ריקה; הכלי הזמין מציין שהוא מסנן לריצות PR בלבד ואינו מציג ריצות push. לכן אין אישור מהמחבר על תוצאת GitHub Actions או על פריסת Beta של שינוי זה.
 - לא בוצעה פריסה ידנית, ולא נגעתי בשרת, ב-DNS או ב-Secrets.
