@@ -6,7 +6,7 @@ import { useApp } from '../store';
 import type { ID, LinksResponse, CommentaryLink } from '../types';
 import { highlight, normalizeHe, processHtml, snippetAround, stripTags, type TextOpts } from '../utils/text';
 import { Spinner } from './ui';
-import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, ClipboardPaste, Copy, Eraser, FilePlus2, FileText, Filter, Library, ListChecks, MoreVertical, PenLine, Scissors, Search, Trash2, X, AlignJustify } from 'lucide-react';
+import { BookOpen, Check, ChevronsDownUp, ChevronsUpDown, ClipboardPaste, Copy, Eraser, FilePlus2, FileText, Filter, ListChecks, MoreVertical, PenLine, Scissors, Search, Trash2, X, AlignJustify } from 'lucide-react';
 import { findUniqueCommentaryBook, getCommentaryContextMenuActions, hasNikudOrTeamim, removeNikudAndTeamim, type CommentaryContextMenuActionId } from '../utils/commentaryContextMenu';
 import { getPersonalNoteContextMenuActions, type PersonalNoteContextMenuActionId } from '../utils/personalNoteContextMenu';
 import { getPersonalNoteEditorContextMenuActions, type PersonalNoteEditorContextMenuActionId } from '../utils/personalNoteEditorContextMenu';
@@ -14,6 +14,7 @@ import { isReaderContextMenuShortcut, placeReaderContextMenu } from '../utils/re
 import { planReaderLinkOpen } from '../utils/readerLinkOpen';
 import { readerLinkCanOpenInBackground } from '../utils/readerLinks';
 import ReaderCopyAsMenu from './ReaderCopyAsMenu';
+import ReaderActionIcon from './ReaderActionIcon';
 
 interface BookFilterPreference {
   hidden: string[];
@@ -984,7 +985,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
             zIndex: 12000,
           }}
           className={isCommentaryContextMenu
-            ? 'rounded-lg bg-surface-1 p-2 text-on-surface shadow-md'
+            ? 'rounded-lg bg-surface-2 py-2 text-on-surface shadow-md'
             : 'rounded-xl border border-outline-variant bg-surface p-1.5 text-on-surface shadow-2xl'}
         >
           {contextMenu.kind !== 'commentary' && (
@@ -1010,9 +1011,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                   onClick={() => void runContextMenuAction(action.id)}
                   className="flex min-w-12 max-w-24 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[11px] leading-4 text-on-surface hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {action.id === 'search-selection'
-                    ? <Library size={18} strokeWidth={1.8} />
-                    : <Copy size={18} strokeWidth={1.8} />}
+                  <ReaderActionIcon name={action.id === 'search-selection' ? 'library' : 'copy'} />
                   <span>{action.id === 'search-selection' ? 'חיפוש' : 'העתקה'}</span>
                 </button>
               ))}
