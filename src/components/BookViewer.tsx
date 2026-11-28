@@ -424,7 +424,11 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
         const safeTarget = r.totalLines > 0 ? Math.min(target, r.totalLines) : target;
         pending.current = { type: 'jump', line: safeTarget };
         setLines(r.lines);
-        if (tab.jump) setSelected(safeTarget);
+        if (tab.jump || tab.highlight?.selectLine) setSelected(safeTarget);
+        if (tab.highlight?.selectLine) {
+          setCommentLine(safeTarget);
+          setCommentOpen(true);
+        }
         const last = r.lines[r.lines.length - 1]?.lineIndex ?? 0;
         if ((r.totalLines > 0 && last >= r.totalLines) || (!r.totalLines && r.lines.length < end - start + 1)) {
           reachedEndRef.current = true;
@@ -437,7 +441,7 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab.bookId, jumpN, library, libraryLoading, blocked, waitingForCatalogue]);
+  }, [tab.bookId, jumpN, tab.highlight?.selectLine, library, libraryLoading, blocked, waitingForCatalogue]);
 
   useLayoutEffect(() => {
     const sc = scRef.current;
@@ -929,8 +933,17 @@ export default function BookViewer({ tab }: { tab: BookTab }) {
       title: plan.book.title,
       categoryPath: plan.book.categoryPath,
     };
-    if (inBackground) openBookInBackground(bookRef, targetLine, undefined, { insertAdjacent: true });
-    else openBookInNewTab(bookRef, targetLine, undefined, { textOnly: true, insertAdjacent: true });
+    const linkHighlight = plan.target.kind === 'book-id' &&
+      (plan.target.highlightText || plan.target.wholeLine || plan.target.selectLine)
+      ? {
+          line: targetLine,
+          ...(plan.target.highlightText ? { text: plan.target.highlightText } : {}),
+          ...(plan.target.wholeLine ? { wholeLine: true } : {}),
+          ...(plan.target.selectLine ? { selectLine: true } : {}),
+        }
+      : undefined;
+    if (inBackground) openBookInBackground(bookRef, targetLine, linkHighlight, { insertAdjacent: true });
+    else openBookInNewTab(bookRef, targetLine, linkHighlight, { textOnly: true, insertAdjacent: true });
   };
 
   const handleReaderLinkClick = (event: React.MouseEvent<HTMLDivElement>) => {

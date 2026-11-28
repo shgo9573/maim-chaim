@@ -281,10 +281,19 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
     }
 
     const bookRef = { id: plan.book.id, title: plan.book.title, categoryPath: plan.book.categoryPath };
+    const linkHighlight = plan.target.kind === 'book-id' &&
+      (plan.target.highlightText || plan.target.wholeLine || plan.target.selectLine)
+      ? {
+          line: plan.line,
+          ...(plan.target.highlightText ? { text: plan.target.highlightText } : {}),
+          ...(plan.target.wholeLine ? { wholeLine: true } : {}),
+          ...(plan.target.selectLine ? { selectLine: true } : {}),
+        }
+      : undefined;
     if (inBackground && readerLinkCanOpenInBackground(plan.target)) {
-      openBookInBackground(bookRef, plan.line, undefined, { insertAdjacent: true });
+      openBookInBackground(bookRef, plan.line, linkHighlight, { insertAdjacent: true });
     } else {
-      openBookInNewTab(bookRef, plan.line, undefined, { textOnly: true, insertAdjacent: true });
+      openBookInNewTab(bookRef, plan.line, linkHighlight, { textOnly: true, insertAdjacent: true });
     }
   };
 

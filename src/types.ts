@@ -284,8 +284,10 @@ export interface Highlight {
   to?: number;
   /** every matching line in this book, for in-book result navigation */
   matches?: number[];
-  /** Highlights the full line when the reader is opened from a bookmark. */
+  /** Highlights the full line when opened from a bookmark or native direct link. */
   wholeLine?: boolean;
+  /** Selects the target line and opens its commentary panel when requested by a direct link. */
+  selectLine?: boolean;
   /** Changes on each bookmark open so the target-line flash can restart. */
   flashId?: number;
 }

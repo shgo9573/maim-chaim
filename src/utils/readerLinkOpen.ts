@@ -42,6 +42,15 @@ export function planReaderLinkOpen(href: string, books: readonly BookItem[] | nu
     return { status: 'external', target, href: target.href };
   }
 
+  if (target.kind === 'book-id' && target.source !== undefined) {
+    const message = target.source === 'user'
+      ? 'הקישור מפנה לספרייה אישית שאינה זמינה באתר'
+      : target.source.startsWith('db:')
+        ? 'הקישור מפנה למסד ספרים מצורף שאינו זמין באתר'
+        : 'מקור הקישור אינו נתמך באתר';
+    return { status: 'unsupported', message };
+  }
+
   if (target.kind === 'anchor') {
     return { status: 'anchor', target };
   }

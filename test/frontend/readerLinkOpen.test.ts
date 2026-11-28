@@ -115,3 +115,33 @@ test('unsupported and dangerous schemes are rejected with a message', () => {
   const empty = planReaderLinkOpen('', LIBRARY);
   assert.equal(empty.status, 'unsupported');
 });
+
+
+test('native direct-link index and highlight resolve to the correct web line', () => {
+  const plan = planReaderLinkOpen('otzaria://open/book/2?index=0&m=%D7%91%D7%A8%D7%90%D7%A9%D7%99%D7%AA', LIBRARY);
+  assert.equal(plan.status, 'resolved');
+  if (plan.status === 'resolved') {
+    assert.equal(plan.line, 1);
+    assert.equal(plan.target.kind, 'book-id');
+    if (plan.target.kind === 'book-id') {
+      assert.equal(plan.target.highlightText, 'בראשית');
+      assert.equal(plan.target.wholeLine, undefined);
+    }
+  }
+});
+
+test('native user and attached-database book links fail closed instead of resolving a colliding official ID', () => {
+  const user = planReaderLinkOpen('otzaria://open/book/2?source=user', LIBRARY);
+  assert.equal(user.status, 'unsupported');
+  if (user.status === 'unsupported') assert.match(user.message, /ספרייה אישית/);
+
+  const attached = planReaderLinkOpen('otzaria://open/book/2?source=db%3Amy-library', LIBRARY);
+  assert.equal(attached.status, 'unsupported');
+  if (attached.status === 'unsupported') assert.match(attached.message, /מסד ספרים מצורף/);
+});
+
+test('explicit official source continues to resolve normally', () => {
+  const plan = planReaderLinkOpen('otzaria://open/book/2?source=official&index=5', LIBRARY);
+  assert.equal(plan.status, 'resolved');
+  if (plan.status === 'resolved') assert.equal(plan.line, 6);
+});

@@ -89,3 +89,56 @@ test('accepts inert HTML anchor IDs and rejects IDs with whitespace or control c
   assert.equal(isSafeReaderAnchorId('bad id'), false);
   assert.equal(isSafeReaderAnchorId('bad\n id'), false);
 });
+
+
+test('maps native zero-based index to the web reader one-based line', () => {
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=0'),
+    { kind: 'book-id', id: '8154', line: 1 },
+  );
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=17'),
+    { kind: 'book-id', id: '8154', line: 18 },
+  );
+});
+
+test('parses native direct-link highlights with m over mark over q precedence', () => {
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=8&mark'),
+    { kind: 'book-id', id: '8154', line: 9, wholeLine: true },
+  );
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=8&mark&m=%D7%91%D7%A8%D7%90%D7%A9%D7%99%D7%AA&q=%D7%A9%D7%9E%D7%95%D7%AA'),
+    { kind: 'book-id', id: '8154', line: 9, highlightText: 'בראשית' },
+  );
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=8&q=%D7%A9%D7%9E%D7%95%D7%AA'),
+    { kind: 'book-id', id: '8154', line: 9, highlightText: 'שמות' },
+  );
+});
+
+test('select flag applies only with a valid native index', () => {
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=3&select'),
+    { kind: 'book-id', id: '8154', line: 4, selectLine: true },
+  );
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?index=-1&select'),
+    { kind: 'book-id', id: '8154' },
+  );
+});
+
+test('preserves non-official source markers so the resolver can fail closed', () => {
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?source=user'),
+    { kind: 'book-id', id: '8154', source: 'user' },
+  );
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?source=db%3Amy-library'),
+    { kind: 'book-id', id: '8154', source: 'db:my-library' },
+  );
+  assert.deepEqual(
+    parseReaderLinkTarget('otzaria://open/book/8154?source=official'),
+    { kind: 'book-id', id: '8154' },
+  );
+});

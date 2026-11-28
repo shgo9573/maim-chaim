@@ -63,13 +63,44 @@ export function parseReaderLinkTarget(value: string): ReaderLinkTarget | null {
 
     if (url.hostname === 'open') {
       const parts = url.pathname.split('/').filter(Boolean);
-      if (parts[0] !== 'book' || !parts[1]) return null;
+      if (parts.length !== 2 || parts[0] !== 'book' || !parts[1]) return null;
       const id = safeDecode(parts[1]).trim();
-      if (!id) return null;
+      if (!/^\\d+$/u.test(id) || Number(id) <= 0) return null;
+
+      // Native Otzaria links use a zero-based index; the web reader uses one-based lines.
+      // Keep the older web-specific line parameter as a one-based compatibility alias.
       const rawLine = url.searchParams.get('line');
-      const line = rawLine == null ? undefined : Number(rawLine);
-      if (line !== undefined && (!Number.isInteger(line) || line < 1)) return null;
-      return { kind: 'book-id', id, ...(line === undefined ? {} : { line }) };
+      const rawIndex = url.searchParams.get('index');
+      let line: number | undefined;
+      let validIndex = false;
+      if (rawLine !== null) {
+        const parsedLine = Number(rawLine);
+        if (!Number.isSafeInteger(parsedLine) || parsedLine < 1) return null;
+        line = parsedLine;
+      } else if (rawIndex !== null) {
+        const parsedIndex = Number(rawIndex);
+        if (Number.isSafeInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < Number.MAX_SAFE_INTEGER) {
+          line = parsedIndex + 1;
+          validIndex = true;
+        }
+      }
+
+      const rawSource = url.searchParams.get('source');
+      const source = rawSource === null ? undefined : rawSource.trim().toLowerCase();
+      const markText = (url.searchParams.get('m') ?? '').trim();
+      const markSection = url.searchParams.has('mark');
+      const queryText = (url.searchParams.get('q') ?? '').trim();
+      const highlightText = markText || (!markSection ? queryText : '');
+
+      return {
+        kind: 'book-id',
+        id,
+        ...(line === undefined ? {} : { line }),
+        ...(source === undefined || source === 'official' ? {} : { source }),
+        ...(highlightText ? { highlightText } : {}),
+        ...(!markText && markSection ? { wholeLine: true } : {}),
+        ...(validIndex && url.searchParams.has('select') ? { selectLine: true } : {}),
+      };
     }
 
     return null;
