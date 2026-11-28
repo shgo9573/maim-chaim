@@ -1009,7 +1009,7 @@ export default function CommentaryPanel({ bookId, bookTitle, line, heRef, opts, 
                   title={action.label}
                   disabled={action.disabled}
                   onClick={() => void runContextMenuAction(action.id)}
-                  className="flex min-w-12 max-w-24 flex-col items-center justify-center gap-0.5 rounded-lg px-1 py-1 text-[11px] leading-4 text-on-surface hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex min-w-12 max-w-24 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1 text-[11px] leading-4 text-on-surface hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ReaderActionIcon name={action.id === 'search-selection' ? 'library' : 'copy'} />
                   <span>{action.id === 'search-selection' ? 'חיפוש' : 'העתקה'}</span>
