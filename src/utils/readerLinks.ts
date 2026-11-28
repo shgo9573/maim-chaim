@@ -1,7 +1,7 @@
 export type ReaderLinkTarget =
   | { kind: 'book'; title: string; headings: string[] }
   | { kind: 'inline-book'; title: string; line: number; reference: string }
-  | { kind: 'book-id'; id: string; line?: number }
+  | { kind: 'book-id'; id: string; line?: number; source?: string; highlightText?: string; wholeLine?: boolean; selectLine?: boolean }
   | { kind: 'anchor'; anchor: string; headings: string[] }
   | { kind: 'external'; href: string };
 
