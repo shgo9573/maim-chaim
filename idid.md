@@ -4312,7 +4312,7 @@ Commits חדשים ב־main שנבדקו:
 - `lib/text_book/utils/reader_menu_entries.dart`: שורת הפעולות של הקורא מסודרת חיפוש, העתקה, הערה וקישור. הגליפים הם `FluentIcons.library_24_regular`, `FluentIcons.copy_24_regular`, `FluentIcons.note_add_24_regular` ו-`OtzariaIcons.link_24_regular`.
 - `lib/utils/ui/context_menu_utils.dart`: תפריט הקשר של מפרש משתמש באותה שורת אייקונים ובאותו סדר: חיפוש, העתקה, הערה וקישור ישיר.
 - `packages/otzaria_context_menu/lib/src/context_menu_rows.dart`: חלונית התפריט משתמשת ב-`surfaceContainer`, בגובה/הצל של Material elevation 3 וב-`borderRadius` המשותף של התצוגה.
-- `packages/otzaria_context_menu/lib/src/menu_metrics.dart`: גובה שורה רגיל 36px, ריפוד אופקי 12px, ריפוד אנכי של החלונית 8px, גופן 14px, אייקון 18px ורוחב מינימלי 150px.
+- `packages/otzaria_context_menu/lib/src/menu_metrics.dart`: במצב רגיל גובה שורה 36px וריפוד אופקי 12px; במצב קומפקטי גובה 28px וריפוד אופקי 8px. ריפוד אנכי של החלונית 8px, גופן 14px, אייקון 18px ורוחב מינימלי 150px. שורת האייקונים עצמה משתמשת בריפוד חיצוני 4px אופקי/2px אנכי, ובריפוד פנימי 2px אופקי/4px אנכי לכל כפתור.
 
 ### ההבדלים באתר לפני השינוי
 - `src/components/CommentaryPanel.tsx` השתמש ב-`Library` וב-`Copy` של Lucide בשורת הפעולות, בעוד שורת הקורא באתר כבר השתמשה בנתיבי SVG של Fluent. לכן אותו סמל באותה פעולה נראה שונה בין שני תפריטי ההקשר.
@@ -4345,6 +4345,6 @@ Commits חדשים ב־main שנבדקו:
 
 
 ### אימות לאחר ה-commit
-- commits של הריצה: קוד הממשק `5c58289`, `14831ac`, `23f22ac`; בדיקות `8b424c3`, `e663abf`; תיעוד ועדכוני רישום `5b9cde1`, `deaa7b3`, `da0d183`.
+- commits של הריצה: קוד הממשק `5c58289`, `14831ac`, `23f22ac`, `3877a23`; בדיקות `8b424c3`, `e663abf`, `f371b2a`; תיעוד ועדכוני רישום `5b9cde1`, `deaa7b3`, `da0d183`, `4393c45`, `de369d3`.
 - `get_commit_combined_status` עבור commit הבדיקות האחרון `f371b2a` החזיר רשימת status checks ריקה. `fetch_commit_workflow_runs` החזיר רשימה ריקה; הכלי הזמין מציין שהוא מסנן לריצות PR בלבד ואינו מציג ריצות push. לכן אין אישור מהמחבר על תוצאת GitHub Actions או על פריסת Beta של שינוי זה.
 - לא בוצעה פריסה ידנית, ולא נגעתי בשרת, ב-DNS או ב-Secrets.
